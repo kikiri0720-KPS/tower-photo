@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#174b83">
 <title>철탑 기별사진 관리</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="철탑사진">
 <style>
 :root{--primary:#174b83;--bg:#f3f6fa;--card:#fff;--border:#dce3ec;--text:#263445;--soft:#e7eef8;--muted:#697789;--green:#168653;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10161d;--card:#1b2530;--border:#2c3a49;--text:#e6edf5;--soft:#26364a;--muted:#9aa9ba;--primary:#3f7fc4}}
@@ -60,17 +65,33 @@ button{font:inherit;cursor:pointer}
 .modal-box p{margin:0 0 12px;font-weight:bold;overflow-wrap:anywhere}
 .modal-box input{width:100%;padding:11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;margin-bottom:12px}
 .modal-btns{display:flex;gap:8px}.modal-btns button{flex:1}
+.chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px}.chk input{width:20px;height:20px;margin:0}
 </style>
 </head>
 <body>
 <header id="headerTitle">선로 선택</header>
-<div class="modal" id="login" style="display:none"><div class="modal-box"><p><b>철탑 기별사진 관리</b><br>직원 계정으로 로그인하세요.</p><input id="lgId" type="email" placeholder="아이디(이메일)" autocomplete="username"><input id="lgPw" type="password" placeholder="비밀번호" autocomplete="current-password"><label style="display:block;margin-bottom:6px"><input type="checkbox" id="lgSave" style="width:auto;margin:0 6px 0 0">아이디 저장</label><label style="display:block;margin-bottom:12px"><input type="checkbox" id="lgAuto" style="width:auto;margin:0 6px 0 0">자동 로그인</label><button class="btn" id="lgBtn" style="width:100%">로그인</button></div></div>
 <main>
-<div class="info" style="display:flex;justify-content:space-between;align-items:center">사진은 서버에 저장되어 직원들과 공유됩니다.<button class="btn secondary small" id="logoutBtn">로그아웃</button></div>
+<section id="loginBox" style="display:none"><h2>🔐 직원 로그인</h2>
+<input id="loginEmail" class="extra-input" type="email" placeholder="이메일" autocomplete="username">
+<input id="loginPw" class="extra-input" type="password" placeholder="비밀번호" autocomplete="current-password">
+<label class="chk"><input type="checkbox" id="saveId"> 아이디 저장</label>
+<label class="chk"><input type="checkbox" id="autoLogin"> 자동 로그인</label>
+<button class="btn" id="loginBtn" style="width:100%;margin-top:10px">로그인</button>
+<div id="loginMsg" class="info" style="margin-top:12px;display:none"></div>
+<div class="muted" id="loginUrl" style="margin-top:10px;overflow-wrap:anywhere"></div></section>
+<div id="appBody" style="display:none">
+<div class="info">로그인한 직원끼리 사진이 공유됩니다. <button class="btn secondary small" id="logoutBtn" hidden>로그아웃</button></div>
 
-<section id="step1" class="panel active">
-<h2>⚡ 선로 선택</h2>
-<div class="toolbar"><button class="btn" id="addLineBtn">＋ 선로 추가</button><button class="btn secondary" id="backupBtn">💾 백업 (ZIP)</button></div>
+<section id="step0" class="panel active">
+<h2>🏢 전력지사 선택</h2>
+<div class="toolbar"><button class="btn" id="addBranchBtn">＋ 전력지사 추가</button><button class="btn secondary" id="backupBtn">💾 백업 (ZIP)</button></div>
+<p class="muted" style="margin:0 0 10px">💡 전력지사를 꾹 누르면 이름을 수정할 수 있습니다. "(지사 미지정)"을 꾹 누르면 이름을 정해 선로를 한 번에 연결합니다.</p>
+<div id="branchList"></div>
+</section>
+
+<section id="step1" class="panel">
+<div class="toolbar"><button class="btn secondary" id="backToBranches">← 전력지사 목록</button><button class="btn" id="addLineBtn">＋ 선로 추가</button></div>
+<h2 id="lineHeading">⚡ 선로 선택</h2>
 <div id="lineList"></div>
 </section>
 
@@ -102,6 +123,7 @@ button{font:inherit;cursor:pointer}
 <div id="diagram"></div>
 <div id="photoGrid" class="photo-grid"></div>
 </section>
+</div>
 </main>
 
 <div class="lightbox" id="lightbox"><button id="closeLightbox">×</button><img id="lightboxImg" alt="사진 확대"></div>
@@ -143,55 +165,50 @@ const slotsFor=(t,c)=>items.filter(i=>inType(i,t)).flatMap(slotsOf).filter(s=>!s
 const allSlots=items.flatMap(slotsOf);
 
 const $=id=>document.getElementById(id);
-let db,lines=[],towers=[],photos=[],lineId=null,towerId=null,type="현수",timer,urls={};
+let curStep=0,branches=[],branchId=null,branchErr=false,lines=[],towers=[],photos=[],lineId=null,towerId=null,type="현수",timer,urls={};
 
-/* 저장소 (Supabase) — 아래 두 값을 본인 프로젝트 값으로 바꾸세요 */
-const SUPABASE_URL="여기에_Project_URL",SUPABASE_KEY="여기에_anon_public_key",BK="photos";
-const SB=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-const chk=r=>{if(r.error)throw r.error;return r};
-async function getAll(t){
-  let a=[];
-  for(let i=0;;i+=1000){
-    const r=chk(await SB.from(t).select("id,data").range(i,i+999));
-    a=a.concat(r.data.map(x=>({...x.data,id:x.id})));
-    if(r.data.length<1000)break;
+/* 저장소: Supabase (DB + Storage) */
+const SUPABASE_URL="https://cyctshvdqhgdglkdehba.supabase.co";
+const SUPABASE_KEY="sb_publishable_AyUXHnUPDy26XSHCINLZJg_h9EKL6Dx";
+const BUCKET="tower-photos";
+const AUTO=()=>localStorage.getItem("tp_auto")==="1";
+const authStore={
+  getItem:k=>localStorage.getItem(k)??sessionStorage.getItem(k),
+  setItem:(k,v)=>{const a=AUTO()?localStorage:sessionStorage,b=AUTO()?sessionStorage:localStorage;b.removeItem(k);a.setItem(k,v)},
+  removeItem:k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)}
+};
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{storage:authStore,persistSession:true,autoRefreshToken:true}});
+const urlCache={};
+const clean=v=>{const o={...v};delete o.blob;delete o.url;return o};
+async function getAll(s){
+  let out=[],from=0;
+  for(;;){
+    const {data,error}=await sb.from(s).select("data").order("id").range(from,from+999);
+    if(error)throw error;
+    out=out.concat(data.map(r=>r.data));
+    if(data.length<1000)break;from+=1000;
   }
-  if(t==="photos"){
-    const ps=a.filter(p=>p.path),m={};
-    for(let i=0;i<ps.length;i+=300){
-      const r=await SB.storage.from(BK).createSignedUrls(ps.slice(i,i+300).map(p=>p.path),21600);
-      (r.data||[]).forEach(x=>{if(x.path&&x.signedUrl)m[x.path]=x.signedUrl});
-    }
-    a.forEach(p=>{p.url=m[p.path];p.blob=!!p.url});
-  }
-  return a;
+  return out;
 }
-async function put(t,v){
-  if(t!=="photos"){chk(await SB.from(t).upsert({id:v.id,data:v}));return}
-  const {blob,url,path:vp,...rest}=v;
-  const old=photos.find(p=>p.id===v.id),oldPath=vp||(old&&old.path)||null;
-  let path=oldPath;
-  if(blob instanceof Blob){
-    path="p/"+uid()+".jpg";
-    chk(await SB.storage.from(BK).upload(path,blob,{contentType:blob.type||"image/jpeg"}));
-    if(oldPath)await SB.storage.from(BK).remove([oldPath]);
-  }else if(!blob){
-    if(oldPath)await SB.storage.from(BK).remove([oldPath]);
-    path=null;
-  }
-  chk(await SB.from(t).upsert({id:v.id,data:{...rest,path}}));
+async function put(s,v){const {error}=await sb.from(s).upsert({id:v.id,data:clean(v)});if(error)throw error}
+async function del(s,k){
+  if(s==="photos"){const p=photos.find(x=>x.id===k);if(p&&p.path)await sb.storage.from(BUCKET).remove([p.path])}
+  const {error}=await sb.from(s).delete().eq("id",k);if(error)throw error;
 }
-async function del(t,k){
-  if(t==="photos"){const o=photos.find(p=>p.id===k);if(o&&o.path)await SB.storage.from(BK).remove([o.path])}
-  chk(await SB.from(t).delete().eq("id",k));
+async function signFor(tid){
+  const need=photos.filter(p=>p.path&&p.towerId===tid&&!urlCache[p.path]).map(p=>p.path);
+  if(!need.length)return;
+  const {data}=await sb.storage.from(BUCKET).createSignedUrls(need,21600);
+  (data||[]).forEach(d=>{if(d.signedUrl)urlCache[d.path]=d.signedUrl});
 }
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* 화면 안 입력/확인 창 */
-function dlg(msg,withInput,ph){return new Promise(res=>{
+function dlg(msg,withInput,ph,init){return new Promise(res=>{
   const m=$("modal"),i=$("modalInput");
-  $("modalMsg").textContent=msg;i.hidden=!withInput;i.value="";i.placeholder=ph||"";
-  m.style.display="flex";if(withInput)setTimeout(()=>i.focus(),50);
+  $("modalMsg").textContent=msg;i.hidden=!withInput;i.value=init||"";
+  $("modalOk").textContent=withInput?"확인":"예";$("modalCancel").textContent=withInput?"취소":"아니요";$("modalOk").classList.toggle("danger",!withInput);i.placeholder=ph||"";
+  m.style.display="flex";if(withInput)setTimeout(()=>{i.focus();i.select()},50);
   const done=v=>{m.style.display="none";$("modalOk").onclick=null;$("modalCancel").onclick=null;i.onkeydown=null;res(v)};
   $("modalOk").onclick=()=>done(withInput?i.value:true);
   $("modalCancel").onclick=()=>done(withInput?null:false);
@@ -201,7 +218,8 @@ let lastCirc="4";
 const CIRC=()=>({key:"circ",title:"회선 수",def:lastCirc,opts:[["2","2회선"],["4","4회선"],["6","6회선"]]});
 function formDlg(msg,ph,groups){return new Promise(res=>{
   const m=$("modal"),i=$("modalInput"),o=$("modalOpts");
-  $("modalMsg").textContent=msg;i.hidden=false;i.value="";i.placeholder=ph||"";
+  $("modalMsg").textContent=msg;i.hidden=false;i.value="";
+  $("modalOk").textContent="확인";$("modalCancel").textContent="취소";$("modalOk").classList.remove("danger");i.placeholder=ph||"";
   const val={};o.innerHTML="";o.hidden=false;
   groups.forEach(g=>{
     val[g.key]=g.def;
@@ -216,18 +234,21 @@ function formDlg(msg,ph,groups){return new Promise(res=>{
   $("modalCancel").onclick=()=>done(null);
   i.onkeydown=e=>{if(e.key==="Enter")$("modalOk").click()};
 })}
-const askText=(m,p)=>dlg(m,true,p);
+const askText=(m,p,v)=>dlg(m,true,p,v);
 const askYes=m=>dlg(m,false);
 
 function say(m){const e=$("status");e.textContent=m;e.style.display="block";clearTimeout(timer);timer=setTimeout(()=>e.style.display="none",2500)}
 
 async function load(){
   [lines,towers,photos]=await Promise.all([getAll("lines"),getAll("towers"),getAll("photos")]);
+  try{branches=await getAll("branches");branchErr=false}catch(e){console.error(e);branches=[];branchErr=true}
+  branches.sort((a,b)=>a.name.localeCompare(b.name,"ko",{numeric:true}));
   lines.sort((a,b)=>a.name.localeCompare(b.name,"ko",{numeric:true}));
   const nums=s=>((s||"").match(/\d+/g)||[]).map(Number);
   const cmp=(a,b)=>{const x=nums(a.name),y=nums(b.name);if(!x.length||!y.length)return x.length?-1:y.length?1:a.name.localeCompare(b.name,"ko");for(let i=0;i<Math.max(x.length,y.length);i++){if(x[i]===undefined)return -1;if(y[i]===undefined)return 1;if(x[i]!==y[i])return x[i]-y[i]}return a.name.localeCompare(b.name,"ko",{numeric:true})};
   towers.sort(cmp);
   photos.sort((a,b)=>(a.at||0)-(b.at||0));
+  if(towerId)await signFor(towerId);
 }
 async function refresh(){await load();render()}
 /* 예전 '애자련/애자년도' 사진은 전원측 칸으로 옮김 */
@@ -240,11 +261,16 @@ async function migrate(){
   if(moved)await load();
 }
 
-function setStep(n){
+function showStep(n){
   document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
   $("step"+n).classList.add("active");
-  $("headerTitle").textContent=n==1?"선로 선택":n==2?"철탑 선택":"현장 사진 등록";
+  $("headerTitle").textContent=n==0?"전력지사 선택":n==1?"선로 선택":n==2?"철탑 선택":"현장 사진 등록";
   scrollTo(0,0);
+}
+function setStep(n){
+  showStep(n);
+  if(n>curStep)history.pushState({s:n},"");else history.replaceState({s:n},"");
+  curStep=n;
 }
 
 /* 사진 조회 */
@@ -252,16 +278,16 @@ const baseId=(tid,t,sid)=>tid+"|"+t+"_"+sid;
 const photoOf=(tid,t,sid)=>photos.find(p=>p.id===baseId(tid,t,sid));
 function photosOf(tid,t,sid){
   const b=baseId(tid,t,sid);
-  return photos.filter(p=>p.blob&&(p.id===b||p.id.startsWith(b+"#")));
+  return photos.filter(p=>p.path&&(p.id===b||p.id.startsWith(b+"#")));
 }
 function progress(t){
   const ty=t.type||"현수",sl=slotsFor(ty,t.circuits).filter(s=>!s.opt);
   const done=sl.filter(s=>photosOf(t.id,ty,s.id).length).length;
   return{done,total:sl.length,pct:Math.round(done/sl.length*100)};
 }
-function urlFor(p){return p.url}
+function urlFor(p){return urlCache[p.path]||""}
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
-const zoom=src=>{$("lightboxImg").src=src;$("lightbox").style.display="flex"};
+const zoom=src=>{$("lightboxImg").src=src;$("lightbox").style.display="flex";history.pushState({s:curStep,lb:1},"")};
 
 function row(title,desc,onOpen,onDelete,pct){
   const r=el("div","list-item");
@@ -277,8 +303,18 @@ function row(title,desc,onOpen,onDelete,pct){
 
 function render(){
   const ll=$("lineList");ll.innerHTML="";
-  if(!lines.length)ll.append(el("p","muted","선로가 없습니다. 위의 '선로 추가'를 눌러 만드세요."));
-  lines.forEach(l=>{
+  const bl=$("branchList");bl.innerHTML="";
+  const orphans=lines.filter(l=>!l.branchId).length;
+  if(branchErr)bl.append(el("p","muted","전력지사 저장 테이블이 없습니다. 안내받은 SQL을 Supabase에서 먼저 실행하세요."));
+  else if(!branches.length&&!orphans)bl.append(el("p","muted","전력지사가 없습니다. 위의 '전력지사 추가'를 눌러 만드세요."));
+  branches.forEach(b=>{
+    const n=lines.filter(l=>l.branchId===b.id).length;
+    bl.append(longPress(row(b.name,"선로 "+n+"개",()=>{branchId=b.id;lineId=null;towerId=null;$("lineHeading").textContent=b.name+" - 선로 선택";setStep(1);render()},()=>delBranch(b)),()=>renameBranch(b)));
+  });
+  if(orphans)bl.append(longPress(row("(지사 미지정)","선로 "+orphans+"개",()=>{branchId="none";lineId=null;towerId=null;$("lineHeading").textContent="지사 미지정 - 선로 선택";setStep(1);render()},()=>say("미지정 선로는 열어서 개별 삭제하거나, 꾹 눌러 지사를 지정하세요.")),nameOrphans));
+  const shown=lines.filter(l=>branchId==="none"?!l.branchId:l.branchId===branchId);
+  if(!shown.length)ll.append(el("p","muted","선로가 없습니다. 위의 '선로 추가'를 눌러 만드세요."));
+  shown.forEach(l=>{
     const n=towers.filter(t=>t.lineId===l.id).length;
     ll.append(row(l.name,"철탑 "+n+"기",()=>{lineId=l.id;towerId=null;$("towerHeading").textContent=l.name+" - 철탑 목록";setStep(2);render()},()=>delLine(l)));
   });
@@ -298,8 +334,49 @@ function render(){
   if(towerId)renderGrid();
 }
 
+function longPress(r,fn){
+  let t=null,fired=false,sx=0,sy=0;
+  const cancel=()=>{if(t){clearTimeout(t);t=null}};
+  const start=e=>{cancel();fired=false;const p=e.touches?e.touches[0]:e;sx=p.clientX;sy=p.clientY;t=setTimeout(()=>{t=null;fired=true;if(navigator.vibrate)navigator.vibrate(30);fn()},600)};
+  const move=e=>{const p=e.touches?e.touches[0]:e;if(Math.abs(p.clientX-sx)>10||Math.abs(p.clientY-sy)>10)cancel()};
+  r.style.userSelect="none";r.style.webkitUserSelect="none";r.style.webkitTouchCallout="none";
+  r.addEventListener("touchstart",start,{passive:true});r.addEventListener("touchmove",move,{passive:true});
+  r.addEventListener("touchend",cancel);r.addEventListener("touchcancel",cancel);
+  r.addEventListener("mousedown",start);r.addEventListener("mouseup",cancel);r.addEventListener("mouseleave",cancel);
+  r.addEventListener("contextmenu",e=>e.preventDefault());
+  const open=r.onclick;
+  r.onclick=e=>{if(fired){fired=false;return}open&&open(e)};
+  return r;
+}
+async function renameBranch(b){
+  const n=((await askText("전력지사 이름을 수정하세요.","예: 부산전력지사",b.name))||"").trim();
+  if(!n||n===b.name)return;
+  if(branches.some(x=>x.id!==b.id&&x.name===n))return say("같은 이름의 전력지사가 있습니다.");
+  try{await put("branches",{...b,name:n});say("이름을 수정했습니다.");refresh()}
+  catch(e){console.error(e);say("저장 실패: "+((e&&e.message)||"오류"))}
+}
+async function nameOrphans(){
+  const list=lines.filter(l=>!l.branchId);
+  if(!list.length)return;
+  const n=((await askText(`미지정 선로 ${list.length}개를 묶을 전력지사 이름을 입력하세요.`,"예: 부산전력지사"))||"").trim();
+  if(!n)return;
+  try{
+    let b=branches.find(x=>x.name===n);
+    if(!b){b={id:uid(),name:n};await put("branches",b)}
+    for(const l of list)await put("lines",{...l,branchId:b.id});
+    say(`선로 ${list.length}개를 '${n}'에 연결했습니다.`);refresh();
+  }catch(e){console.error(e);say("저장 실패: "+((e&&e.message)||"오류"))}
+}
+async function delBranch(b){
+  if(!await askYes(`정말 삭제하시겠습니까? "${b.name}" 전력지사와 모든 선로·철탑·사진이 함께 삭제됩니다.`))return;
+  for(const l of lines.filter(l=>l.branchId===b.id)){
+    for(const t of towers.filter(t=>t.lineId===l.id))await removeTower(t);
+    await del("lines",l.id);
+  }
+  await del("branches",b.id);refresh();
+}
 async function delLine(l){
-  if(!await askYes(`"${l.name}" 선로와 모든 철탑·사진을 삭제할까요?`))return;
+  if(!await askYes(`정말 삭제하시겠습니까? "${l.name}" 선로와 모든 철탑·사진이 함께 삭제됩니다.`))return;
   for(const t of towers.filter(t=>t.lineId===l.id))await removeTower(t);
   await del("lines",l.id);refresh();
 }
@@ -308,16 +385,23 @@ async function removeTower(t){
   await del("towers",t.id);
 }
 async function delTower(t){
-  if(!await askYes(`"${t.name}"와 사진을 삭제할까요?`))return;
+  if(!await askYes(`정말 삭제하시겠습니까? "${t.name}" 철탑과 사진이 함께 삭제됩니다.`))return;
   await removeTower(t);refresh();
 }
 
+$("addBranchBtn").onclick=async()=>{
+  const n=((await askText("추가할 전력지사 이름을 입력하세요.","예: 부산전력지사"))||"").trim();
+  if(!n)return;
+  if(branches.some(b=>b.name===n))return say("같은 이름의 전력지사가 있습니다.");
+  try{await put("branches",{id:uid(),name:n});say("전력지사를 추가했습니다.");refresh()}
+  catch(e){console.error(e);say("저장 실패: 전력지사 테이블 SQL을 먼저 실행하세요.")}
+};
 $("addLineBtn").onclick=async()=>{
   const r=await formDlg("추가할 선로 이름을 입력하세요.","예: 154kV 울산-경주선",[{key:"side1",title:"#1 측 위치",def:"left",opts:[["left","좌측이 #1"],["right","우측이 #1"]]}]);
   const n=((r&&r.text)||"").trim();
   if(!n)return;
-  if(lines.some(l=>l.name===n))return say("같은 이름의 선로가 있습니다.");
-  await put("lines",{id:uid(),name:n,side1:r.side1});say("선로를 추가했습니다.");refresh();
+  if(lines.some(l=>l.name===n&&(l.branchId||"none")===branchId))return say("같은 이름의 선로가 있습니다.");
+  await put("lines",{id:uid(),name:n,side1:r.side1,branchId:branchId==="none"?undefined:branchId});say("선로를 추가했습니다.");refresh();
 };
 $("addTowerBtn").onclick=async()=>{
   if(!lineId)return;
@@ -359,8 +443,8 @@ $("side1Btn").onclick=async()=>{
   say("#1 측을 "+(L.side1==="right"?"우측":"좌측")+"으로 바꿨습니다.");refresh();
 };
 
-function openTower(id){
-  towerId=id;sel=null;
+async function openTower(id){
+  towerId=id;sel=null;await signFor(id);
   const t=towers.find(x=>x.id===id),l=lines.find(x=>x.id===lineId);
   type=t.type||"현수";
   $("photoHeading").textContent=t.name+" 사진 등록";
@@ -406,13 +490,13 @@ function singleCard(i){
   const saved=photoOf(towerId,type,i.id);
   const c=el("div","photo-card");
   const pv=el("div","photo-preview");
-  if(saved&&saved.blob){
+  if(saved&&saved.path){
     const im=document.createElement("img");im.src=urlFor(saved);im.alt=i.label;
     im.onclick=()=>zoom(im.src);
     pv.append(im);
   }else pv.textContent="📷 사진 미등록";
   const f=fileInput(i,false);
-  const b=el("button","upload-btn",saved&&saved.blob?"📷 사진 교체":"📸 사진 촬영 / 선택");
+  const b=el("button","upload-btn",saved&&saved.path?"📷 사진 교체":"📸 사진 촬영 / 선택");
   b.onclick=()=>choosePhoto(f);
   c.append(el("div","photo-label",i.label),pv,b,f);
   if(i.input){
@@ -421,12 +505,12 @@ function singleCard(i){
     x.onblur=()=>saveExtra(i,x.value.trim());
     c.append(x);
   }
-  if(saved&&saved.blob){
+  if(saved&&saved.path){
     const d=el("button","btn danger small","사진 삭제");
     d.style.cssText="width:100%;margin-top:7px";
     d.onclick=async()=>{
-      if(!await askYes(`"${i.label}" 사진을 삭제할까요?`))return;
-      saved.blob=null;await put("photos",saved);say("사진을 삭제했습니다.");refresh();
+      if(!await askYes(`정말 삭제하시겠습니까? "${i.label}" 사진이 삭제됩니다.`))return;
+      if(saved.path)await sb.storage.from(BUCKET).remove([saved.path]);saved.path=null;await put("photos",saved);say("사진을 삭제했습니다.");refresh();
     };
     c.append(d);
   }
@@ -471,7 +555,7 @@ function groupCard(g){
       im.onclick=()=>zoom(im.src);
       const x=el("button","thumb-x","✕");
       x.onclick=async()=>{
-        if(!await askYes(`"${slot.label}" 사진을 삭제할까요?`))return;
+        if(!await askYes(`정말 삭제하시겠습니까? "${slot.label}" 사진이 삭제됩니다.`))return;
         await del("photos",p.id);say("사진을 삭제했습니다.");refresh();
       };
       w.append(im,x);th.append(w);
@@ -586,10 +670,9 @@ async function shrink(file){
   }catch(e){return file}
 }
 async function addPhoto(slot,f,multi){
-  let files=[...(f.files||[])];if(!files.length)return;
+  let files=[...(f.files||[])].filter(x=>x.type.startsWith("image/"));
+  if(!files.length){if(f.files&&f.files.length)say("이미지 파일만 등록할 수 있습니다.");f.value="";return}
   if(!multi)files=files.slice(0,1);
-  files=files.filter(x=>x.type.startsWith("image/"));
-  if(!files.length){say("이미지 파일만 등록할 수 있습니다.");f.value="";return}
   say("사진을 저장하는 중...");
   try{
     const b=baseId(towerId,type,slot.id);
@@ -604,14 +687,19 @@ async function addPhoto(slot,f,multi){
       }else{
         const old=photoOf(towerId,type,slot.id);if(old)extra=old.extra||"";
       }
-      await put("photos",{id,towerId,lineId,blob,extra,name:file.name,at:Date.now()+n});n++;
+      const path=towerId+"/"+uid()+".jpg";
+      const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:"image/jpeg"});
+      if(up.error)throw up.error;
+      const oldP=multi?null:photoOf(towerId,type,slot.id);
+      if(oldP&&oldP.path)await sb.storage.from(BUCKET).remove([oldP.path]);
+      await put("photos",{id,towerId,lineId,path,extra,name:file.name,at:Date.now()+n});n++;
     }
     say(n>1?n+"장을 저장했습니다.":"사진을 저장했습니다.");await refresh();
-  }catch(e){console.error(e);say("저장 실패: 저장 공간을 확인하세요.")}
+  }catch(e){console.error(e);say("저장 실패: 인터넷 연결을 확인하세요.")}
   f.value="";
 }
 async function saveExtra(i,v){
-  const old=photoOf(towerId,type,i.id)||{id:baseId(towerId,type,i.id),towerId,lineId,blob:null};
+  const old=photoOf(towerId,type,i.id)||{id:baseId(towerId,type,i.id),towerId,lineId,path:null};
   if((old.extra||"")===v)return;
   old.extra=v;await put("photos",old);say("저장했습니다.");await load();
 }
@@ -658,16 +746,18 @@ $("backupBtn").onclick=async()=>{
     say("ZIP 파일을 만드는 중...");
     const files=[],used={};
     for(const p of photos){
-      if(!p.blob)continue;
+      if(!p.path)continue;
       const t=towers.find(x=>x.id===p.towerId),l=t&&lines.find(x=>x.id===t.lineId);
       if(!t||!l)continue;
+      const br=branches.find(x=>x.id===l.branchId);
       const key=p.id.split("|")[1]||"",bs=key.split("#"),tp=bs[0].split("_")[0],sid=bs[0].slice(tp.length+1);
       const sl=allSlots.find(s=>s.id===sid);
       const lg=(sid==="v_line_src"||sid==="v_line_load")&&t.vleg&&t.vleg[sid.endsWith("src")?"src":"load"];
       const nm=safe(sl?sl.label:sid)+(lg?" ("+lg+"각)":"")+(tp!==(t.type||"현수")?" ("+tp+")":"")+(bs[1]?"_"+bs[1]:"")+(p.extra?" - "+safe(p.extra):"");
-      let path=`부산경남 기술팀/${safe(l.name)}/${safe(t.name)}/${nm}.jpg`;
+      let path=`부산경남 기술팀/${safe(br?br.name:"지사 미지정")}/${safe(l.name)}/${safe(t.name)}/${nm}.jpg`;
       if(used[path]){path=path.replace(/\.jpg$/,"_"+(++used[path])+".jpg")}else used[path]=1;
-      files.push({name:path,data:new Uint8Array(await (await (await fetch(p.url)).blob()).arrayBuffer())});
+      const got=await sb.storage.from(BUCKET).download(p.path);if(got.error)throw got.error;
+      files.push({name:path,data:new Uint8Array(await got.data.arrayBuffer())});
     }
     if(!files.length)return say("백업할 사진이 없습니다.");
     const d=new Date(),p2=x=>String(x).padStart(2,"0");
@@ -680,32 +770,53 @@ $("backupBtn").onclick=async()=>{
   }
 };
 
-$("backToLines").onclick=()=>{lineId=null;towerId=null;setStep(1);render()};
-$("backToTowers").onclick=()=>{towerId=null;setStep(2);render()};
-const closeLb=()=>{$("lightbox").style.display="none";$("lightboxImg").src=""};
+$("backToBranches").onclick=()=>history.back();
+$("backToLines").onclick=()=>history.back();
+$("backToTowers").onclick=()=>history.back();
+const closeLb=()=>{if(history.state&&history.state.lb){history.back()}else{$("lightbox").style.display="none";$("lightboxImg").src=""}};
 $("closeLightbox").onclick=closeLb;
 $("lightbox").onclick=e=>{if(e.target===$("lightbox"))closeLb()};
 
-async function boot(){
-  $("login").style.display="none";
-  try{await load();render()}catch(e){console.error(e);say("서버 연결 실패: "+((e&&e.message)||"오류"))}
+history.replaceState({s:0},"");
+window.addEventListener("popstate",e=>{
+  if($("lightbox").style.display==="flex"){$("lightbox").style.display="none";$("lightboxImg").src="";return}
+  const n=(e.state&&e.state.s)||0;
+  if(n>curStep){history.go(-(n-curStep));return}
+  if(n<=2)towerId=null;
+  if(n<=1)lineId=null;
+  if(n<=0)branchId=null;
+  curStep=n;showStep(n);render();
+});
+async function gate(){
+  const {data}=await sb.auth.getSession();const on=!!data.session;
+  $("loginBox").style.display=on?"none":"block";
+  $("appBody").style.display=on?"block":"none";
+  $("logoutBtn").hidden=!on;
+  if(on){try{await load();setStep(0);render()}catch(e){console.error(e);say("불러오기 실패: "+((e&&e.message)||"오류"))}}
 }
-(async()=>{
-  const ls=localStorage;
-  $("lgSave").checked=!!ls.savedId;$("lgId").value=ls.savedId||"";$("lgAuto").checked=ls.autoLogin==="1";
-  $("lgBtn").onclick=async()=>{
-    const r=await SB.auth.signInWithPassword({email:$("lgId").value.trim(),password:$("lgPw").value});
-    if(r.error)return say("로그인 실패: 아이디/비밀번호를 확인하세요.");
-    if($("lgSave").checked)ls.savedId=$("lgId").value.trim();else ls.removeItem("savedId");
-    ls.autoLogin=$("lgAuto").checked?"1":"0";sessionStorage.alive="1";
-    $("lgPw").value="";boot();
-  };
-  $("lgPw").onkeydown=e=>{if(e.key==="Enter")$("lgBtn").click()};
-  $("logoutBtn").onclick=async()=>{await SB.auth.signOut();ls.autoLogin="0";location.reload()};
-  const {data:{session}}=await SB.auth.getSession();
-  if(session&&(ls.autoLogin==="1"||sessionStorage.alive)){sessionStorage.alive="1";boot()}
-  else{if(session)await SB.auth.signOut();$("login").style.display="flex"}
-})();
+try{
+  const sid=localStorage.getItem("tp_id");
+  if(sid){$("loginEmail").value=sid;$("saveId").checked=true}
+  $("autoLogin").checked=AUTO();
+}catch(e){}
+$("loginUrl").textContent="접속 주소: "+SUPABASE_URL;
+const loginErr=m=>{const e=$("loginMsg");e.textContent=m;e.style.display="block"};
+$("loginBtn").onclick=async()=>{
+  $("loginMsg").style.display="none";
+  try{
+    localStorage.setItem("tp_auto",$("autoLogin").checked?"1":"0");
+    if($("saveId").checked)localStorage.setItem("tp_id",$("loginEmail").value.trim());else localStorage.removeItem("tp_id");
+  }catch(e){}
+  try{
+    const {error}=await sb.auth.signInWithPassword({email:$("loginEmail").value.trim(),password:$("loginPw").value});
+    if(error)return loginErr("로그인 실패: "+error.message+(error.status?" ("+error.status+")":""));
+  }catch(e){return loginErr("서버에 접속하지 못했습니다: "+((e&&e.message)||"알 수 없는 오류")+" — 접속 주소나 인터넷 연결을 확인하세요.")}
+  gate();
+};
+$("loginPw").onkeydown=e=>{if(e.key==="Enter")$("loginBtn").click()};
+$("logoutBtn").onclick=async()=>{await sb.auth.signOut();lines=[];towers=[];photos=[];branches=[];towerId=null;lineId=null;branchId=null;setStep(0);gate()};
+gate();
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
 </html>
