@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#174b83">
+<title>철탑 기별사진 관리</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="철탑사진">
+<style>
+:root{--primary:#174b83;--bg:#f3f6fa;--card:#fff;--border:#dce3ec;--text:#263445;--soft:#e7eef8;--muted:#697789;--green:#168653;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10161d;--card:#1b2530;--border:#2c3a49;--text:#e6edf5;--soft:#26364a;--muted:#9aa9ba;--primary:#3f7fc4}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:Arial,"Malgun Gothic",sans-serif}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--primary);color:#fff;padding:16px;font-size:18px;font-weight:bold}
+main{max-width:760px;margin:auto;padding:15px}
+h2{font-size:18px;margin:12px 0}
+button{font:inherit;cursor:pointer}
+.btn{border:0;border-radius:8px;padding:12px 14px;background:var(--primary);color:#fff;font-weight:bold}
+.btn.secondary{background:var(--soft);color:var(--text)}
+.btn.danger{background:#b83232}
+.btn.small{padding:7px 10px;font-size:13px}
+.panel{display:none}.panel.active{display:block}
+.list-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:10px;cursor:pointer}
+.list-item:active{background:var(--soft)}
+.grow{flex:1;min-width:0}
+.item-title{font-weight:bold}
+.item-desc{color:var(--muted);font-size:13px;margin-top:5px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.info{background:var(--soft);border-radius:8px;padding:12px;font-size:13px;margin-bottom:14px;overflow-wrap:anywhere}
+.type-selector{display:flex;gap:8px;margin:12px 0 18px}
+.type-selector button{flex:1;padding:11px 5px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px}
+.type-selector button.active{background:var(--primary);color:#fff}
+.photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.photo-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;min-width:0}
+.photo-card.group{grid-column:1/-1}
+.photo-label{font-size:14px;font-weight:bold;min-height:38px;margin-bottom:8px}
+.photo-card.group .photo-label{min-height:0;margin-bottom:4px;font-size:15px}
+.photo-preview{width:100%;height:145px;background:var(--soft);border-radius:7px;display:flex;justify-content:center;align-items:center;overflow:hidden;color:var(--muted)}
+.photo-preview img{width:100%;height:100%;object-fit:cover;cursor:zoom-in}
+.upload-btn{width:100%;margin-top:8px;padding:10px 5px;border:0;border-radius:7px;background:var(--soft);color:var(--text);font-weight:bold}
+.side{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.group-head{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:none;border:0;color:var(--text);padding:8px 2px;font-weight:bold;font-size:16px;text-align:left}
+.group-head small{color:var(--muted);font-weight:normal;font-size:13px}
+.side-head{font-size:13px;font-weight:bold;margin-bottom:6px}
+.thumbs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.thumbs:empty{display:none}
+.thumb{position:relative;aspect-ratio:1}
+.thumb img{width:100%;height:100%;object-fit:cover;border-radius:6px;cursor:zoom-in}
+.thumb-x{position:absolute;top:3px;right:3px;border:0;border-radius:50%;width:26px;height:26px;background:rgba(0,0,0,.65);color:#fff;font-size:13px;padding:0}
+.extra-input{width:100%;padding:9px;border:1px solid var(--border);border-radius:6px;margin-top:8px;background:var(--card);color:var(--text);font:inherit}
+.progress{height:7px;background:var(--soft);border-radius:20px;margin-top:9px;overflow:hidden}
+.progress-bar{height:100%;background:var(--green)}
+.status{position:fixed;bottom:calc(12px + env(safe-area-inset-bottom,0px));left:12px;right:12px;z-index:70;background:#263445;color:#fff;border-radius:9px;padding:12px;text-align:center;display:none}
+.lightbox{display:none;position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.93);justify-content:center;align-items:center;padding:15px}
+.lightbox img{max-width:100%;max-height:85vh;object-fit:contain}
+.lightbox button{position:absolute;top:calc(15px + env(safe-area-inset-top,0px));right:20px;color:#fff;font-size:32px;background:none;border:0}
+.muted{color:var(--muted);font-size:13px}
+.modal{display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);justify-content:center;align-items:center;padding:20px}
+.modal-box{background:var(--card);color:var(--text);border-radius:12px;padding:18px;width:100%;max-width:360px}
+.modal-box p{margin:0 0 12px;font-weight:bold;overflow-wrap:anywhere}
+.modal-box input{width:100%;padding:11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;margin-bottom:12px}
+.modal-btns{display:flex;gap:8px}.modal-btns button{flex:1}
+</style>
+</head>
+<body>
+<header id="headerTitle">선로 선택</header>
+<main>
+<section id="loginBox" style="display:none"><h2>🔐 직원 로그인</h2>
+<input id="loginEmail" class="extra-input" type="email" placeholder="이메일" autocomplete="username">
+<input id="loginPw" class="extra-input" type="password" placeholder="비밀번호" autocomplete="current-password">
+<button class="btn" id="loginBtn" style="width:100%;margin-top:10px">로그인</button>
+<div id="loginMsg" class="info" style="margin-top:12px;display:none"></div>
+<div class="muted" id="loginUrl" style="margin-top:10px;overflow-wrap:anywhere"></div></section>
+<div id="appBody" style="display:none">
+<div class="info">로그인한 직원끼리 사진이 공유됩니다. <button class="btn secondary small" id="logoutBtn" hidden>로그아웃</button></div>
+
+<section id="step1" class="panel active">
+<h2>⚡ 선로 선택</h2>
+<div class="toolbar"><button class="btn" id="addLineBtn">＋ 선로 추가</button><button class="btn secondary" id="backupBtn">💾 백업 (ZIP)</button></div>
+<div id="lineList"></div>
+</section>
+
+<section id="step2" class="panel">
+<div class="toolbar">
+<button class="btn secondary" id="backToLines">← 선로 목록</button>
+<button class="btn" id="addTowerBtn">＋ 철탑 추가</button>
+<button class="btn secondary" id="addRangeBtn">＋ 범위 추가</button>
+<button class="btn secondary" id="side1Btn"></button>
+</div>
+<h2 id="towerHeading">철탑 목록</h2>
+<div id="towerList"></div>
+</section>
+
+<section id="step3" class="panel">
+<div class="toolbar"><button class="btn secondary" id="backToTowers">← 철탑 목록</button></div>
+<h2 id="photoHeading">철탑 사진 등록</h2>
+<div class="info" id="photoInfo"></div>
+<h2>🏗️ 철탑 유형</h2>
+<div class="type-selector">
+<button data-type="현수">현수형</button>
+<button data-type="내장">내장형</button>
+<button data-type="항공">항공철탑</button>
+</div>
+<h2>🔌 회선 수</h2>
+<div class="type-selector"><button data-circ="2">2회선</button><button data-circ="4">4회선</button><button data-circ="6">6회선</button></div>
+<h2>📸 사진 첨부 항목</h2>
+<div id="photoProgress" class="info"></div>
+<div id="diagram"></div>
+<div id="photoGrid" class="photo-grid"></div>
+</section>
+</div>
+</main>
+
+<div class="lightbox" id="lightbox"><button id="closeLightbox">×</button><img id="lightboxImg" alt="사진 확대"></div>
+<div class="modal" id="modal"><div class="modal-box"><p id="modalMsg"></p><input id="modalInput" type="text" hidden><div id="modalOpts" hidden></div><div class="modal-btns"><button class="btn secondary" id="modalCancel">취소</button><button class="btn" id="modalOk">확인</button></div></div></div>
+<div class="status" id="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+/* 항목 정의: sides가 있으면 '측별 추가 버튼' 그룹(사진 여러 장), 없으면 사진 1장 */
+const AIR=["항공"];
+const SL=[["src","전원측"],["load","부하측"]];
+const SML=[["src","전원측"],["mid","중앙"],["load","부하측"]];
+const TIERS=[["u","상"],["m","중"],["d","하"]];
+const tiersFor=c=>["u","m","d"];
+const S12=TIERS.flatMap(([t,tn])=>[["1","#1"],["2","#2"]].flatMap(([no,nn])=>[["src","전원측"],["load","부하측"]].map(([sd,sn])=>[(t==="u"?"":t+"_")+(no==="2"?"2_":"")+sd,`${nn} ${tn} ${sn}`,t])));
+const SUP=[["sup_src","지지애자 #1 전원측"],["sup_load","지지애자 #1 부하측"],["sup_2_src","지지애자 #2 전원측"],["sup_2_load","지지애자 #2 부하측"]];
+const items=[
+{id:"top",label:"상부",sides:SL},
+{id:"view",label:"전경",sides:SL},
+{id:"base",label:"기초부지"},
+{id:"num_plate",label:"번호찰"},
+{id:"nat_plate",label:"국가지점 번호찰"},
+{id:"insulator",label:"애자련",sides:S12,optSides:SUP,nums:true},
+{id:"insulator_year",label:"애자년도",sides:S12,optSides:SUP,nums:true},
+{id:"gw",label:"GW",sides:SML},
+{id:"opgw",label:"OPGW",sides:SML},
+{id:"opgw_extra",label:"OPGW 여장"},
+{id:"opgw_box",label:"OPGW 함체"},
+{id:"power_line",label:"전력선 종류"},
+{id:"sp_type",label:"SP 종류"},
+{id:"v_line",label:"수직구명줄",sides:SL,legs:{src:["A","B"],load:["C","D"]}},
+{id:"h_line",label:"수평구명줄",sides:[["1_src","#1 전원측"],["1_load","#1 부하측"],["mid_src","중앙 전원측"],["mid_load","중앙 부하측"],["2_src","#2 전원측"],["2_load","#2 부하측"]]},
+{id:"air_light",label:"항공장애등",sides:SL,cat:AIR},
+{id:"air_light_box",label:"항공장애등 함체",cat:AIR,input:"제작사 입력"}
+];
+const inType=(i,t)=>!i.cat||i.cat.includes(t);
+const slotsOf=i=>i.sides?[...i.sides.map(([s,n,tr])=>({id:i.id+"_"+s,label:i.label+" ("+n+")",tier:tr})),...(i.optSides||[]).map(([s,n])=>({id:i.id+"_"+s,label:i.label+" ("+n+")",opt:true}))]:[i];
+const slotsFor=(t,c)=>items.filter(i=>inType(i,t)).flatMap(slotsOf).filter(s=>!s.tier||tiersFor(c||6).includes(s.tier));
+const allSlots=items.flatMap(slotsOf);
+
+const $=id=>document.getElementById(id);
+let lines=[],towers=[],photos=[],lineId=null,towerId=null,type="현수",timer,urls={};
+
+/* 저장소: Supabase (DB + Storage) */
+const SUPABASE_URL="https://cyctshvdqhgdglkdehba.supabase.co";
+const SUPABASE_KEY="sb_publishable_AyUXHnUPDy26XSHCINLZJg_h9EKL6Dx";
+const BUCKET="tower-photos";
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const urlCache={};
+const clean=v=>{const o={...v};delete o.blob;delete o.url;return o};
+async function getAll(s){
+  let out=[],from=0;
+  for(;;){
+    const {data,error}=await sb.from(s).select("data").order("id").range(from,from+999);
+    if(error)throw error;
+    out=out.concat(data.map(r=>r.data));
+    if(data.length<1000)break;from+=1000;
+  }
+  return out;
+}
+async function put(s,v){const {error}=await sb.from(s).upsert({id:v.id,data:clean(v)});if(error)throw error}
+async function del(s,k){
+  if(s==="photos"){const p=photos.find(x=>x.id===k);if(p&&p.path)await sb.storage.from(BUCKET).remove([p.path])}
+  const {error}=await sb.from(s).delete().eq("id",k);if(error)throw error;
+}
+async function signFor(tid){
+  const need=photos.filter(p=>p.path&&p.towerId===tid&&!urlCache[p.path]).map(p=>p.path);
+  if(!need.length)return;
+  const {data}=await sb.storage.from(BUCKET).createSignedUrls(need,21600);
+  (data||[]).forEach(d=>{if(d.signedUrl)urlCache[d.path]=d.signedUrl});
+}
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+/* 화면 안 입력/확인 창 */
+function dlg(msg,withInput,ph){return new Promise(res=>{
+  const m=$("modal"),i=$("modalInput");
+  $("modalMsg").textContent=msg;i.hidden=!withInput;i.value="";i.placeholder=ph||"";
+  m.style.display="flex";if(withInput)setTimeout(()=>i.focus(),50);
+  const done=v=>{m.style.display="none";$("modalOk").onclick=null;$("modalCancel").onclick=null;i.onkeydown=null;res(v)};
+  $("modalOk").onclick=()=>done(withInput?i.value:true);
+  $("modalCancel").onclick=()=>done(withInput?null:false);
+  i.onkeydown=e=>{if(e.key==="Enter")$("modalOk").click()};
+})}
+let lastCirc="4";
+const CIRC=()=>({key:"circ",title:"회선 수",def:lastCirc,opts:[["2","2회선"],["4","4회선"],["6","6회선"]]});
+function formDlg(msg,ph,groups){return new Promise(res=>{
+  const m=$("modal"),i=$("modalInput"),o=$("modalOpts");
+  $("modalMsg").textContent=msg;i.hidden=false;i.value="";i.placeholder=ph||"";
+  const val={};o.innerHTML="";o.hidden=false;
+  groups.forEach(g=>{
+    val[g.key]=g.def;
+    const t=el("div","muted",g.title);t.style.margin="4px 0";
+    const rw=el("div","type-selector");rw.style.margin="0 0 10px";
+    g.opts.forEach(([v,l])=>{const b=el("button",v===g.def?"active":null,l);b.onclick=()=>{val[g.key]=v;[...rw.children].forEach(x=>x.classList.toggle("active",x===b))};rw.append(b)});
+    o.append(t,rw);
+  });
+  m.style.display="flex";setTimeout(()=>i.focus(),50);
+  const done=v=>{m.style.display="none";o.hidden=true;o.innerHTML="";$("modalOk").onclick=null;$("modalCancel").onclick=null;i.onkeydown=null;res(v)};
+  $("modalOk").onclick=()=>{if(val.circ)lastCirc=val.circ;done({text:i.value,...val})};
+  $("modalCancel").onclick=()=>done(null);
+  i.onkeydown=e=>{if(e.key==="Enter")$("modalOk").click()};
+})}
+const askText=(m,p)=>dlg(m,true,p);
+const askYes=m=>dlg(m,false);
+
+function say(m){const e=$("status");e.textContent=m;e.style.display="block";clearTimeout(timer);timer=setTimeout(()=>e.style.display="none",2500)}
+
+async function load(){
+  [lines,towers,photos]=await Promise.all([getAll("lines"),getAll("towers"),getAll("photos")]);
+  lines.sort((a,b)=>a.name.localeCompare(b.name,"ko",{numeric:true}));
+  const nums=s=>((s||"").match(/\d+/g)||[]).map(Number);
+  const cmp=(a,b)=>{const x=nums(a.name),y=nums(b.name);if(!x.length||!y.length)return x.length?-1:y.length?1:a.name.localeCompare(b.name,"ko");for(let i=0;i<Math.max(x.length,y.length);i++){if(x[i]===undefined)return -1;if(y[i]===undefined)return 1;if(x[i]!==y[i])return x[i]-y[i]}return a.name.localeCompare(b.name,"ko",{numeric:true})};
+  towers.sort(cmp);
+  photos.sort((a,b)=>(a.at||0)-(b.at||0));
+  if(towerId)await signFor(towerId);
+}
+async function refresh(){await load();render()}
+/* 예전 '애자련/애자년도' 사진은 전원측 칸으로 옮김 */
+async function migrate(){
+  let moved=false;
+  for(const p of photos){
+    const m=p.id.match(/^(.*_)(insulator|insulator_year)(#\d+)?$/);
+    if(m){await del("photos",p.id);await put("photos",{...p,id:m[1]+m[2]+"_src"+(m[3]||"")});moved=true}
+  }
+  if(moved)await load();
+}
+
+function setStep(n){
+  document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+  $("step"+n).classList.add("active");
+  $("headerTitle").textContent=n==1?"선로 선택":n==2?"철탑 선택":"현장 사진 등록";
+  scrollTo(0,0);
+}
+
+/* 사진 조회 */
+const baseId=(tid,t,sid)=>tid+"|"+t+"_"+sid;
+const photoOf=(tid,t,sid)=>photos.find(p=>p.id===baseId(tid,t,sid));
+function photosOf(tid,t,sid){
+  const b=baseId(tid,t,sid);
+  return photos.filter(p=>p.path&&(p.id===b||p.id.startsWith(b+"#")));
+}
+function progress(t){
+  const ty=t.type||"현수",sl=slotsFor(ty,t.circuits).filter(s=>!s.opt);
+  const done=sl.filter(s=>photosOf(t.id,ty,s.id).length).length;
+  return{done,total:sl.length,pct:Math.round(done/sl.length*100)};
+}
+function urlFor(p){return urlCache[p.path]||""}
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+const zoom=src=>{$("lightboxImg").src=src;$("lightbox").style.display="flex"};
+
+function row(title,desc,onOpen,onDelete,pct){
+  const r=el("div","list-item");
+  const g=el("div","grow");
+  g.append(el("div","item-title",title),el("div","item-desc",desc));
+  if(pct!=null){const b=el("div","progress"),f=el("div","progress-bar");f.style.width=pct+"%";b.append(f);g.append(b)}
+  const d=el("button","btn danger small","삭제");
+  d.onclick=e=>{e.stopPropagation();onDelete()};
+  r.append(g,d);
+  r.onclick=onOpen;
+  return r;
+}
+
+function render(){
+  const ll=$("lineList");ll.innerHTML="";
+  if(!lines.length)ll.append(el("p","muted","선로가 없습니다. 위의 '선로 추가'를 눌러 만드세요."));
+  lines.forEach(l=>{
+    const n=towers.filter(t=>t.lineId===l.id).length;
+    ll.append(row(l.name,"철탑 "+n+"기",()=>{lineId=l.id;towerId=null;$("towerHeading").textContent=l.name+" - 철탑 목록";setStep(2);render()},()=>delLine(l)));
+  });
+  const tl=$("towerList");tl.innerHTML="";
+  if(lineId){
+    const list=towers.filter(t=>t.lineId===lineId);
+    if(!list.length)tl.append(el("p","muted","철탑이 없습니다. '철탑 추가'를 눌러 만드세요."));
+    list.forEach(t=>{
+      const p=progress(t);
+      const rw=row(t.name,`${t.type||"현수"}형 · ${p.done}/${p.total}개 등록 · ${p.pct}%`,()=>openTower(t.id),()=>delTower(t),p.pct);
+      const bd=el("span",null,t.circuits?t.circuits+"회선":"회선 미설정");
+      bd.style.cssText="margin-left:8px;padding:2px 8px;border-radius:10px;font-size:12px;background:"+(t.circuits?"var(--primary)":"var(--soft)")+";color:"+(t.circuits?"#fff":"var(--muted)");
+      rw.querySelector(".item-title").append(bd);tl.append(rw);
+    });
+  }
+  const SL1=lines.find(x=>x.id===lineId);$("side1Btn").textContent=SL1?"#1 측: "+(SL1.side1==="right"?"우측":"좌측")+" (변경)":"";
+  if(towerId)renderGrid();
+}
+
+async function delLine(l){
+  if(!await askYes(`"${l.name}" 선로와 모든 철탑·사진을 삭제할까요?`))return;
+  for(const t of towers.filter(t=>t.lineId===l.id))await removeTower(t);
+  await del("lines",l.id);refresh();
+}
+async function removeTower(t){
+  for(const p of photos.filter(p=>p.towerId===t.id))await del("photos",p.id);
+  await del("towers",t.id);
+}
+async function delTower(t){
+  if(!await askYes(`"${t.name}"와 사진을 삭제할까요?`))return;
+  await removeTower(t);refresh();
+}
+
+$("addLineBtn").onclick=async()=>{
+  const r=await formDlg("추가할 선로 이름을 입력하세요.","예: 154kV 울산-경주선",[{key:"side1",title:"#1 측 위치",def:"left",opts:[["left","좌측이 #1"],["right","우측이 #1"]]}]);
+  const n=((r&&r.text)||"").trim();
+  if(!n)return;
+  if(lines.some(l=>l.name===n))return say("같은 이름의 선로가 있습니다.");
+  await put("lines",{id:uid(),name:n,side1:r.side1});say("선로를 추가했습니다.");refresh();
+};
+$("addTowerBtn").onclick=async()=>{
+  if(!lineId)return;
+  const r=await formDlg("철탑 이름을 입력하세요.","예: 6호 철탑",[CIRC()]);
+  const n=((r&&r.text)||"").trim();
+  if(!n)return;
+  if(towers.some(t=>t.lineId===lineId&&t.name===n))return say("같은 이름의 철탑이 있습니다.");
+  await put("towers",{id:uid(),lineId,name:n,type:"현수",circuits:+r.circ});say("철탑을 추가했습니다.");refresh();
+};
+
+$("addRangeBtn").onclick=async()=>{
+  if(!lineId)return;
+  const r=await formDlg("추가할 호수를 입력하세요. 범위는 ~, 여러 개는 쉼표로 구분 (최대 300기)","예: 1~100, 22-1, 45-1",[CIRC()]);
+  const v=((r&&r.text)||"").trim();
+  if(!v)return;
+  const names=[];
+  for(const tok of v.split(/[,\s]+/).filter(Boolean)){
+    const r=tok.match(/^(\d+)~(\d+)$/),s=tok.match(/^\d+(-\d+)?$/);
+    if(r){let a=+r[1],b=+r[2];if(a>b)[a,b]=[b,a];for(let k=a;k<=b;k++)names.push(String(k))}
+    else if(s)names.push(tok);
+    else return say("형식이 맞지 않습니다: "+tok);
+  }
+  if(!names.length)return;
+  if(names.length>300)return say("한 번에 최대 300기까지 추가할 수 있습니다.");
+  const have=new Set(towers.filter(t=>t.lineId===lineId).map(t=>t.name));
+  let n=0;
+  for(const [i,k] of names.entries()){
+    if(have.has(k+"호")||have.has(k+"호 철탑"))continue;
+    have.add(k+"호");
+    await put("towers",{id:uid()+i,lineId,name:k+"호",type:"현수",circuits:+r.circ});n++;
+  }
+  say(n?`${n}기를 추가했습니다.`:"이미 모두 추가되어 있습니다.");
+  refresh();
+};
+
+$("side1Btn").onclick=async()=>{
+  const L=lines.find(x=>x.id===lineId);if(!L)return;
+  L.side1=L.side1==="right"?"left":"right";await put("lines",L);
+  say("#1 측을 "+(L.side1==="right"?"우측":"좌측")+"으로 바꿨습니다.");refresh();
+};
+
+async function openTower(id){
+  towerId=id;sel=null;await signFor(id);
+  const t=towers.find(x=>x.id===id),l=lines.find(x=>x.id===lineId);
+  type=t.type||"현수";
+  $("photoHeading").textContent=t.name+" 사진 등록";
+  $("photoInfo").textContent=l.name+" · "+t.name;
+  setStep(3);updateTypeBtns();renderGrid();
+}
+function updateTypeBtns(){
+  document.querySelectorAll("[data-type]").forEach(b=>b.classList.toggle("active",b.dataset.type===type));
+  const t=towers.find(x=>x.id===towerId);
+  document.querySelectorAll("[data-circ]").forEach(b=>b.classList.toggle("active",+b.dataset.circ===((t&&t.circuits)||6)));
+}
+document.querySelectorAll("[data-circ]").forEach(b=>b.onclick=async()=>{
+  const t=towers.find(x=>x.id===towerId);if(!t)return;
+  t.circuits=+b.dataset.circ;await put("towers",t);updateTypeBtns();renderGrid();
+});
+document.querySelectorAll("[data-type]").forEach(b=>b.onclick=async()=>{
+  const t=towers.find(x=>x.id===towerId);if(!t)return;
+  t.type=b.dataset.type;type=t.type;await put("towers",t);updateTypeBtns();renderGrid();
+});
+
+/* 사진 화면 */
+function fileInput(slot,multi){
+  const f=document.createElement("input");
+  f.type="file";f.accept="image/*";f.setAttribute("capture","environment");f.hidden=true;
+  f.onchange=()=>addPhoto(slot,f,multi);
+  return f;
+}
+
+function singleCard(i){
+  const saved=photoOf(towerId,type,i.id);
+  const c=el("div","photo-card");
+  const pv=el("div","photo-preview");
+  if(saved&&saved.path){
+    const im=document.createElement("img");im.src=urlFor(saved);im.alt=i.label;
+    im.onclick=()=>zoom(im.src);
+    pv.append(im);
+  }else pv.textContent="📷 사진 미등록";
+  const f=fileInput(i,false);
+  const b=el("button","upload-btn",saved&&saved.path?"📷 사진 교체":"📸 사진 촬영 / 선택");
+  b.onclick=()=>f.click();
+  c.append(el("div","photo-label",i.label),pv,b,f);
+  if(i.input){
+    const x=document.createElement("input");
+    x.className="extra-input";x.placeholder=i.input;x.value=(saved&&saved.extra)||"";
+    x.onblur=()=>saveExtra(i,x.value.trim());
+    c.append(x);
+  }
+  if(saved&&saved.path){
+    const d=el("button","btn danger small","사진 삭제");
+    d.style.cssText="width:100%;margin-top:7px";
+    d.onclick=async()=>{
+      if(!await askYes(`"${i.label}" 사진을 삭제할까요?`))return;
+      if(saved.path)await sb.storage.from(BUCKET).remove([saved.path]);saved.path=null;await put("photos",saved);say("사진을 삭제했습니다.");refresh();
+    };
+    c.append(d);
+  }
+  return c;
+}
+
+const openGroups=new Set();
+function groupCard(g){
+  const c=el("div","photo-card group");
+  const gk=towerId+"|"+type+"|"+g.id,isOpen=openGroups.has(gk);
+  const T1=towers.find(x=>x.id===towerId),vis=tiersFor((T1&&T1.circuits)||6);
+  const ids=g.sides.filter(x=>!x[2]||vis.includes(x[2])).map(([s])=>g.id+"_"+s);
+  const done=ids.filter(s=>photosOf(towerId,type,s).length).length;
+  const head=el("button","group-head");
+  head.append(el("span",null,(isOpen?"▾ ":"▸ ")+g.label),el("small",null,`${done}/${ids.length}측 등록`));
+  head.onclick=()=>{if(openGroups.has(gk))openGroups.delete(gk);else openGroups.add(gk);renderGrid()};
+  c.append(head);
+  if(!isOpen)return c;
+  const cur=g.nums?(numSel[gk]||"1"):null;
+  const curT=g.nums?(tierSel[gk]&&vis.includes(tierSel[gk])?tierSel[gk]:vis[0]):null;
+  const inNo=([s,n,tr])=>!g.nums||((s.includes("2_")?"2":"1")===cur&&(!tr||tr===curT));
+  if(g.nums){
+    const mk=(arr,curv,set)=>{const bar=el("div","type-selector");bar.style.margin="8px 0";arr.forEach(([v,l])=>{const b=el("button",curv===v?"active":null,l);b.onclick=()=>{set(v);renderGrid()};bar.append(b)});c.append(bar)};
+    mk([["1","#1"],["2","#2"]],cur,v=>{numSel[gk]=v});
+    mk(TIERS.filter(x=>vis.includes(x[0])),curT,v=>{tierSel[gk]=v});
+  }
+  const renderSide=([sfx,nm])=>{
+    const slot={id:g.id+"_"+sfx,label:g.label+" ("+nm+")"};
+    const list=photosOf(towerId,type,slot.id);
+    const sec=el("div","side");
+    const tw=towers.find(x=>x.id===towerId),cl=(g.legs&&tw&&tw.vleg&&tw.vleg[sfx])||"";
+    sec.append(el("div","side-head",`${nm}${cl?" · "+cl+"각":""} · ${list.length}장`));
+    if(g.legs&&g.legs[sfx]){
+      const bar=el("div","type-selector");bar.style.margin="6px 0 8px";
+      g.legs[sfx].forEach(Lg=>{const lb2=el("button",cl===Lg?"active":null,Lg+"각");lb2.onclick=async()=>{if(!tw)return;tw.vleg=tw.vleg||{};tw.vleg[sfx]=cl===Lg?"":Lg;await put("towers",tw);renderGrid()};bar.append(lb2)});
+      sec.append(bar);
+    }
+    const th=el("div","thumbs");
+    list.forEach(p=>{
+      const w=el("div","thumb");
+      const im=document.createElement("img");im.src=urlFor(p);im.alt=slot.label;
+      im.onclick=()=>zoom(im.src);
+      const x=el("button","thumb-x","✕");
+      x.onclick=async()=>{
+        if(!await askYes(`"${slot.label}" 사진을 삭제할까요?`))return;
+        await del("photos",p.id);say("사진을 삭제했습니다.");refresh();
+      };
+      w.append(im,x);th.append(w);
+    });
+    const f=fileInput(slot,true);
+    const b=el("button","upload-btn","＋ "+nm+" 사진 추가");
+    b.style.marginTop="8px";
+    b.onclick=()=>f.click();
+    sec.append(th,b,f);c.append(sec);
+  };
+  g.sides.filter(inNo).forEach(renderSide);
+  if(g.optSides){
+    const t=towers.find(x=>x.id===towerId);
+    const has=g.optSides.some(([s])=>photosOf(towerId,type,g.id+"_"+s).length>0);
+    const on=has||!!(t&&t.sup&&t.sup[g.id]);
+    const lb=el("label","side");
+    lb.style.cssText="display:flex;align-items:center;gap:8px;font-weight:bold;font-size:14px";
+    const cb=document.createElement("input");
+    cb.type="checkbox";cb.checked=on;cb.disabled=has;cb.style.cssText="width:20px;height:20px";
+    cb.onchange=async()=>{if(!t)return;t.sup=t.sup||{};t.sup[g.id]=cb.checked;await put("towers",t);renderGrid()};
+    lb.append(cb,document.createTextNode("지지애자 추가 (선택)"));
+    c.append(lb);
+    if(on)g.optSides.filter(inNo).forEach(renderSide);
+  }
+  return c;
+}
+
+function singleFolder(i){
+  const c=el("div","photo-card group");
+  const gk=towerId+"|"+type+"|"+i.id,isOpen=openGroups.has(gk);
+  const has=photosOf(towerId,type,i.id).length>0;
+  const head=el("button","group-head");
+  head.append(el("span",null,(isOpen?"▾ ":"▸ ")+i.label),el("small",null,has?"✅ 등록":"미등록"));
+  head.onclick=()=>{if(openGroups.has(gk))openGroups.delete(gk);else openGroups.add(gk);renderGrid()};
+  c.append(head);
+  if(!isOpen)return c;
+  const inner=singleCard(i);
+  inner.firstChild.remove();
+  inner.style.cssText="border:0;padding:0;margin-top:8px;background:none";
+  c.append(inner);
+  return c;
+}
+
+let sel=null;const numSel={},tierSel={};
+const itemOf=id=>items.find(x=>x.id===id);
+const isDone=i=>slotsOf(i).some(s=>photosOf(towerId,type,s.id).length>0);
+const isDoneNo=(i,no)=>slotsOf(i).some(s=>s.id.includes("2_")===(no==="2")&&photosOf(towerId,type,s.id).length>0);
+const isDoneNT=(i,no,tr)=>slotsOf(i).some(s=>s.tier===tr&&s.id.includes("2_")===(no==="2")&&photosOf(towerId,type,s.id).length>0);
+function diagramHTML(){
+  const hs=(id,inner,tx,ty,lb,no,tier)=>{const i=itemOf(id);if(!i||!inType(i,type))return"";
+    return `<g class="hot" data-id="${id}" data-no="${no||""}" data-tier="${tier||""}" style="cursor:pointer"><g style="fill:${(tier?isDoneNT(i,no,tier):no?isDoneNo(i,no):isDone(i))?"#168653":"var(--soft)"};stroke:var(--text);stroke-width:1.2">${inner}</g><text x="${tx}" y="${ty}" text-anchor="middle" font-size="11" style="fill:var(--text);stroke:none">${lb||i.label}</text></g>`};
+  const ln="stroke:var(--text);stroke-width:2;fill:none";
+  const str=(x,y)=>`<rect x="${x-4}" y="${y}" width="8" height="34" rx="3"/>`;
+  const L=lines.find(x=>x.id===lineId),T=towers.find(x=>x.id===towerId);
+  const rf=!!(L&&L.side1==="right"),cc=(T&&T.circuits)||6,lv=3;
+  const AY=[150,215,280].slice(0,lv),LX=[40,35,30],RX=[260,265,270];
+  const arms=AY.map((y,k)=>`M${[133,128,120][k]} ${y} L${LX[k]} ${y} M${[167,172,180][k]} ${y} L${RX[k]} ${y}`).join(" ")+" M135 100 L100 100 M165 100 L200 100";
+  const tv=tiersFor(cc),TN=Object.fromEntries(TIERS);
+  const noL=rf?"2":"1",noR=rf?"1":"2";
+  return `<svg viewBox="0 0 300 430" style="width:100%;max-width:420px;display:block;margin:auto">
+${AY.map((y,k)=>`<rect x="2" y="${y-14}" width="296" height="66" rx="6" style="fill:var(--soft);opacity:${k%2?.35:.6};stroke:none"/><text x="8" y="${y+8}" font-size="12" font-weight="bold" style="fill:var(--muted);stroke:none">${TN[tv[k]]}단</text><text x="292" y="${y+8}" text-anchor="end" font-size="12" font-weight="bold" style="fill:var(--muted);stroke:none">${TN[tv[k]]}단</text>`).join("")}
+<path d="M95 385 L135 120 M205 385 L165 120 M135 120 L150 70 L165 120" style="${ln}"/>
+<path d="M103 335 L197 335 M110 285 L190 285 M118 235 L182 235 M126 185 L174 185 M95 385 L197 335 M205 385 L103 335 M103 335 L190 285 M197 335 L110 285 M110 285 L182 235 M190 285 L118 235 M118 235 L174 185 M182 235 L126 185" style="stroke:var(--muted);stroke-width:1;fill:none"/>
+<path d="${arms}" style="${ln}"/>
+${hs("top",'<circle cx="150" cy="62" r="8"/>',150,46)}
+${hs("air_light",'<circle cx="186" cy="62" r="6"/>',225,66)}
+${hs("gw",'<circle cx="100" cy="100" r="7"/>',100,88)}
+${hs("opgw",'<circle cx="200" cy="100" r="7"/>',200,88)}
+${AY.map((y,k)=>{const t=tv[k],n=TN[t];return [
+ hs("insulator",str(LX[k],y),LX[k],y+46,"애자련 "+n,noL,t),
+ hs("insulator",str(RX[k],y),RX[k],y+46,"애자련 "+n,noR,t),
+ hs("insulator_year",`<rect x="62" y="${y+8}" width="22" height="11"/>`,73,y+34,"년도 "+n,noL,t),
+ hs("insulator_year",`<rect x="216" y="${y+8}" width="22" height="11"/>`,227,y+34,"년도 "+n,noR,t)].join("")}).join("")}
+<text x="40" y="138" text-anchor="middle" font-size="12" font-weight="bold" style="fill:var(--primary);stroke:none">#${noL}</text>
+<text x="260" y="138" text-anchor="middle" font-size="12" font-weight="bold" style="fill:var(--primary);stroke:none">#${noR}</text>
+${hs("h_line",'<rect x="24" y="350" width="40" height="8"/>',44,374)}
+${hs("v_line",'<rect x="228" y="346" width="8" height="34"/>',268,364)}
+${hs("num_plate",'<rect x="140" y="300" width="20" height="12"/>',150,325)}
+${hs("nat_plate",'<rect x="140" y="340" width="20" height="12"/>',150,366)}
+${hs("base",'<rect x="70" y="390" width="160" height="22"/>',150,405)}
+${hs("view",'<rect x="10" y="12" width="40" height="22" rx="4"/>',30,50)}
+</svg>
+<div class="muted" style="margin:10px 0 6px">도면의 부품을 누르거나 아래 목록에서 항목을 선택하세요. (초록색 = 등록됨)</div>
+<div class="toolbar">${items.filter(i=>inType(i,type)).map(i=>`<button class="btn secondary small" data-pick="${i.id}">${isDone(i)?"✅ ":""}${i.label}</button>`).join("")}</div>`;
+}
+function pick(id,no,tr){sel=id;if(no)numSel[towerId+"|"+type+"|"+id]=no;if(tr)tierSel[towerId+"|"+type+"|"+id]=tr;openGroups.add(towerId+"|"+type+"|"+id);renderGrid();scrollTo(0,0)}
+function renderGrid(){
+  const g=$("photoGrid"),d=$("diagram");g.innerHTML="";
+  const T0=towers.find(x=>x.id===towerId);const sl=slotsFor(type,T0&&T0.circuits).filter(s=>!s.opt);
+  const done=sl.filter(s=>photosOf(towerId,type,s.id).length).length;
+  $("photoProgress").textContent=`${done}/${sl.length}개 등록 (${Math.round(done/sl.length*100)}%)`;
+  if(!sel||!itemOf(sel)||!inType(itemOf(sel),type)){
+    sel=null;g.style.display="none";d.style.display="block";d.innerHTML=diagramHTML();
+    d.querySelectorAll(".hot").forEach(e=>e.onclick=()=>pick(e.dataset.id,e.dataset.no,e.dataset.tier));
+    d.querySelectorAll("[data-pick]").forEach(e=>e.onclick=()=>pick(e.dataset.pick));
+    return;
+  }
+  d.style.display="none";g.style.display="grid";
+  const back=el("button","btn secondary","← 도면으로");back.style.gridColumn="1/-1";
+  back.onclick=()=>{sel=null;renderGrid()};
+  const i=itemOf(sel);g.append(back,i.sides?groupCard(i):singleFolder(i));
+}
+
+async function shrink(file){
+  try{
+    const bmp=await createImageBitmap(file);
+    const s=Math.min(1,1600/Math.max(bmp.width,bmp.height));
+    const cv=document.createElement("canvas");
+    cv.width=Math.round(bmp.width*s);cv.height=Math.round(bmp.height*s);
+    cv.getContext("2d").drawImage(bmp,0,0,cv.width,cv.height);
+    return await new Promise(r=>cv.toBlob(r,"image/jpeg",.8))||file;
+  }catch(e){return file}
+}
+async function addPhoto(slot,f,multi){
+  const file=f.files&&f.files[0];if(!file)return;
+  if(!file.type.startsWith("image/")){say("이미지 파일만 등록할 수 있습니다.");f.value="";return}
+  say("사진을 저장하는 중...");
+  try{
+    const blob=await shrink(file);
+    const b=baseId(towerId,type,slot.id);
+    let id=b,extra="";
+    if(multi){
+      const ids=new Set(photos.filter(p=>p.id===b||p.id.startsWith(b+"#")).map(p=>p.id));
+      if(ids.has(b)){let k=2;while(ids.has(b+"#"+k))k++;id=b+"#"+k}
+    }else{
+      const old=photoOf(towerId,type,slot.id);if(old)extra=old.extra||"";
+    }
+    const path=towerId+"/"+uid()+".jpg";
+    const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:"image/jpeg"});
+    if(up.error)throw up.error;
+    const oldP=multi?null:photoOf(towerId,type,slot.id);
+    if(oldP&&oldP.path)await sb.storage.from(BUCKET).remove([oldP.path]);
+    await put("photos",{id,towerId,lineId,path,extra,name:file.name,at:Date.now()});
+    say("사진을 저장했습니다.");await refresh();
+  }catch(e){console.error(e);say("저장 실패: 인터넷 연결을 확인하세요.")}
+  f.value="";
+}
+async function saveExtra(i,v){
+  const old=photoOf(towerId,type,i.id)||{id:baseId(towerId,type,i.id),towerId,lineId,path:null};
+  if((old.extra||"")===v)return;
+  old.extra=v;await put("photos",old);say("저장했습니다.");await load();
+}
+
+/* 백업: 부산경남 기술팀/선로명/철탑명/사진.jpg 구조의 ZIP */
+const crcT=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=crcT[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+function makeZip(files){
+  const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+  const n=new Date(),dt=((n.getFullYear()-1980)<<9)|((n.getMonth()+1)<<5)|n.getDate(),tm=(n.getHours()<<11)|(n.getMinutes()<<5)|(n.getSeconds()>>1);
+  for(const f of files){
+    const nm=enc.encode(f.name),crc=crc32(f.data),sz=f.data.length;
+    const lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(10,tm,true);lh.setUint16(12,dt,true);
+    lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nm.length,true);
+    parts.push(lh.buffer,nm,f.data);
+    const ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(12,tm,true);ch.setUint16(14,dt,true);
+    ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+    cen.push(ch.buffer,nm);
+    off+=30+nm.length+sz;
+  }
+  let cs=0;cen.forEach(b=>cs+=b.byteLength);
+  const end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true);end.setUint16(8,files.length,true);end.setUint16(10,files.length,true);end.setUint32(12,cs,true);end.setUint32(16,off,true);
+  return new Blob([...parts,...cen,end.buffer],{type:"application/zip"});
+}
+/* ZIP 저장: 앱(Capacitor)에서는 공유창, 브라우저에서는 다운로드 */
+async function saveZip(blob,filename){
+  const dl=window.claude&&claude.use?await claude.use("downloads"):null;
+  if(dl){await dl.save({filename,data:blob});return}
+  const C=window.Capacitor;
+  if(C&&C.isNativePlatform&&C.isNativePlatform()&&C.Plugins&&C.Plugins.Filesystem&&C.Plugins.Share){
+    const b64=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result.split(",")[1]);r.onerror=no;r.readAsDataURL(blob)});
+    const w=await C.Plugins.Filesystem.writeFile({path:filename,data:b64,directory:"CACHE"});
+    await C.Plugins.Share.share({title:filename,url:w.uri});
+    return;
+  }
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.append(a);a.click();a.remove();
+}
+const safe=s=>(s||"").replace(/[\\/:*?"<>|]/g,"_").trim()||"이름없음";
+$("backupBtn").onclick=async()=>{
+  try{
+    say("ZIP 파일을 만드는 중...");
+    const files=[],used={};
+    for(const p of photos){
+      if(!p.path)continue;
+      const t=towers.find(x=>x.id===p.towerId),l=t&&lines.find(x=>x.id===t.lineId);
+      if(!t||!l)continue;
+      const key=p.id.split("|")[1]||"",bs=key.split("#"),tp=bs[0].split("_")[0],sid=bs[0].slice(tp.length+1);
+      const sl=allSlots.find(s=>s.id===sid);
+      const lg=(sid==="v_line_src"||sid==="v_line_load")&&t.vleg&&t.vleg[sid.endsWith("src")?"src":"load"];
+      const nm=safe(sl?sl.label:sid)+(lg?" ("+lg+"각)":"")+(tp!==(t.type||"현수")?" ("+tp+")":"")+(bs[1]?"_"+bs[1]:"")+(p.extra?" - "+safe(p.extra):"");
+      let path=`부산경남 기술팀/${safe(l.name)}/${safe(t.name)}/${nm}.jpg`;
+      if(used[path]){path=path.replace(/\.jpg$/,"_"+(++used[path])+".jpg")}else used[path]=1;
+      const got=await sb.storage.from(BUCKET).download(p.path);if(got.error)throw got.error;
+      files.push({name:path,data:new Uint8Array(await got.data.arrayBuffer())});
+    }
+    if(!files.length)return say("백업할 사진이 없습니다.");
+    const d=new Date(),p2=x=>String(x).padStart(2,"0");
+    const stamp=d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate());
+    await saveZip(makeZip(files),`부산경남 기술팀_${stamp}.zip`);
+    say(`사진 ${files.length}장을 백업했습니다.`);
+  }catch(e){
+    if(e&&e.code==="declined")return;
+    console.error(e);say("백업 실패: "+((e&&e.message)||"오류"));
+  }
+};
+
+$("backToLines").onclick=()=>{lineId=null;towerId=null;setStep(1);render()};
+$("backToTowers").onclick=()=>{towerId=null;setStep(2);render()};
+const closeLb=()=>{$("lightbox").style.display="none";$("lightboxImg").src=""};
+$("closeLightbox").onclick=closeLb;
+$("lightbox").onclick=e=>{if(e.target===$("lightbox"))closeLb()};
+
+async function gate(){
+  const {data}=await sb.auth.getSession();const on=!!data.session;
+  $("loginBox").style.display=on?"none":"block";
+  $("appBody").style.display=on?"block":"none";
+  $("logoutBtn").hidden=!on;
+  if(on){try{await load();render()}catch(e){console.error(e);say("불러오기 실패: "+((e&&e.message)||"오류"))}}
+}
+$("loginUrl").textContent="접속 주소: "+SUPABASE_URL;
+const loginErr=m=>{const e=$("loginMsg");e.textContent=m;e.style.display="block"};
+$("loginBtn").onclick=async()=>{
+  $("loginMsg").style.display="none";
+  try{
+    const {error}=await sb.auth.signInWithPassword({email:$("loginEmail").value.trim(),password:$("loginPw").value});
+    if(error)return loginErr("로그인 실패: "+error.message+(error.status?" ("+error.status+")":""));
+  }catch(e){return loginErr("서버에 접속하지 못했습니다: "+((e&&e.message)||"알 수 없는 오류")+" — 접속 주소나 인터넷 연결을 확인하세요.")}
+  gate();
+};
+$("loginPw").onkeydown=e=>{if(e.key==="Enter")$("loginBtn").click()};
+$("logoutBtn").onclick=async()=>{await sb.auth.signOut();lines=[];towers=[];photos=[];towerId=null;lineId=null;setStep(1);gate()};
+gate();
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
