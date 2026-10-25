@@ -85,6 +85,7 @@ button{font:inherit;cursor:pointer}
 <section id="step0" class="panel active">
 <h2>🏢 전력지사 선택</h2>
 <div class="toolbar"><button class="btn" id="addBranchBtn">＋ 전력지사 추가</button><button class="btn secondary" id="backupBtn">💾 백업 (ZIP)</button></div>
+<p class="muted" style="margin:0 0 10px">💡 전력지사를 꾹 누르면 이름을 수정할 수 있습니다. "(지사 미지정)"을 꾹 누르면 이름을 정해 선로를 한 번에 연결합니다.</p>
 <div id="branchList"></div>
 </section>
 
@@ -203,10 +204,11 @@ async function signFor(tid){
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* 화면 안 입력/확인 창 */
-function dlg(msg,withInput,ph){return new Promise(res=>{
+function dlg(msg,withInput,ph,init){return new Promise(res=>{
   const m=$("modal"),i=$("modalInput");
-  $("modalMsg").textContent=msg;i.hidden=!withInput;i.value="";i.placeholder=ph||"";
-  m.style.display="flex";if(withInput)setTimeout(()=>i.focus(),50);
+  $("modalMsg").textContent=msg;i.hidden=!withInput;i.value=init||"";
+  $("modalOk").textContent=withInput?"확인":"예";$("modalCancel").textContent=withInput?"취소":"아니요";$("modalOk").classList.toggle("danger",!withInput);i.placeholder=ph||"";
+  m.style.display="flex";if(withInput)setTimeout(()=>{i.focus();i.select()},50);
   const done=v=>{m.style.display="none";$("modalOk").onclick=null;$("modalCancel").onclick=null;i.onkeydown=null;res(v)};
   $("modalOk").onclick=()=>done(withInput?i.value:true);
   $("modalCancel").onclick=()=>done(withInput?null:false);
@@ -216,7 +218,8 @@ let lastCirc="4";
 const CIRC=()=>({key:"circ",title:"회선 수",def:lastCirc,opts:[["2","2회선"],["4","4회선"],["6","6회선"]]});
 function formDlg(msg,ph,groups){return new Promise(res=>{
   const m=$("modal"),i=$("modalInput"),o=$("modalOpts");
-  $("modalMsg").textContent=msg;i.hidden=false;i.value="";i.placeholder=ph||"";
+  $("modalMsg").textContent=msg;i.hidden=false;i.value="";
+  $("modalOk").textContent="확인";$("modalCancel").textContent="취소";$("modalOk").classList.remove("danger");i.placeholder=ph||"";
   const val={};o.innerHTML="";o.hidden=false;
   groups.forEach(g=>{
     val[g.key]=g.def;
@@ -231,7 +234,7 @@ function formDlg(msg,ph,groups){return new Promise(res=>{
   $("modalCancel").onclick=()=>done(null);
   i.onkeydown=e=>{if(e.key==="Enter")$("modalOk").click()};
 })}
-const askText=(m,p)=>dlg(m,true,p);
+const askText=(m,p,v)=>dlg(m,true,p,v);
 const askYes=m=>dlg(m,false);
 
 function say(m){const e=$("status");e.textContent=m;e.style.display="block";clearTimeout(timer);timer=setTimeout(()=>e.style.display="none",2500)}
@@ -301,9 +304,9 @@ function render(){
   else if(!branches.length&&!orphans)bl.append(el("p","muted","전력지사가 없습니다. 위의 '전력지사 추가'를 눌러 만드세요."));
   branches.forEach(b=>{
     const n=lines.filter(l=>l.branchId===b.id).length;
-    bl.append(row(b.name,"선로 "+n+"개",()=>{branchId=b.id;lineId=null;towerId=null;$("lineHeading").textContent=b.name+" - 선로 선택";setStep(1);render()},()=>delBranch(b)));
+    bl.append(longPress(row(b.name,"선로 "+n+"개",()=>{branchId=b.id;lineId=null;towerId=null;$("lineHeading").textContent=b.name+" - 선로 선택";setStep(1);render()},()=>delBranch(b)),()=>renameBranch(b)));
   });
-  if(orphans)bl.append(row("(지사 미지정)","선로 "+orphans+"개",()=>{branchId="none";lineId=null;towerId=null;$("lineHeading").textContent="지사 미지정 - 선로 선택";setStep(1);render()},()=>say("미지정 선로는 열어서 개별 삭제하세요.")));
+  if(orphans)bl.append(longPress(row("(지사 미지정)","선로 "+orphans+"개",()=>{branchId="none";lineId=null;towerId=null;$("lineHeading").textContent="지사 미지정 - 선로 선택";setStep(1);render()},()=>say("미지정 선로는 열어서 개별 삭제하거나, 꾹 눌러 지사를 지정하세요.")),nameOrphans));
   const shown=lines.filter(l=>branchId==="none"?!l.branchId:l.branchId===branchId);
   if(!shown.length)ll.append(el("p","muted","선로가 없습니다. 위의 '선로 추가'를 눌러 만드세요."));
   shown.forEach(l=>{
@@ -326,8 +329,41 @@ function render(){
   if(towerId)renderGrid();
 }
 
+function longPress(r,fn){
+  let t=null,fired=false,sx=0,sy=0;
+  const cancel=()=>{if(t){clearTimeout(t);t=null}};
+  const start=e=>{cancel();fired=false;const p=e.touches?e.touches[0]:e;sx=p.clientX;sy=p.clientY;t=setTimeout(()=>{t=null;fired=true;if(navigator.vibrate)navigator.vibrate(30);fn()},600)};
+  const move=e=>{const p=e.touches?e.touches[0]:e;if(Math.abs(p.clientX-sx)>10||Math.abs(p.clientY-sy)>10)cancel()};
+  r.style.userSelect="none";r.style.webkitUserSelect="none";r.style.webkitTouchCallout="none";
+  r.addEventListener("touchstart",start,{passive:true});r.addEventListener("touchmove",move,{passive:true});
+  r.addEventListener("touchend",cancel);r.addEventListener("touchcancel",cancel);
+  r.addEventListener("mousedown",start);r.addEventListener("mouseup",cancel);r.addEventListener("mouseleave",cancel);
+  r.addEventListener("contextmenu",e=>e.preventDefault());
+  const open=r.onclick;
+  r.onclick=e=>{if(fired){fired=false;return}open&&open(e)};
+  return r;
+}
+async function renameBranch(b){
+  const n=((await askText("전력지사 이름을 수정하세요.","예: 부산전력지사",b.name))||"").trim();
+  if(!n||n===b.name)return;
+  if(branches.some(x=>x.id!==b.id&&x.name===n))return say("같은 이름의 전력지사가 있습니다.");
+  try{await put("branches",{...b,name:n});say("이름을 수정했습니다.");refresh()}
+  catch(e){console.error(e);say("저장 실패: "+((e&&e.message)||"오류"))}
+}
+async function nameOrphans(){
+  const list=lines.filter(l=>!l.branchId);
+  if(!list.length)return;
+  const n=((await askText(`미지정 선로 ${list.length}개를 묶을 전력지사 이름을 입력하세요.`,"예: 부산전력지사"))||"").trim();
+  if(!n)return;
+  try{
+    let b=branches.find(x=>x.name===n);
+    if(!b){b={id:uid(),name:n};await put("branches",b)}
+    for(const l of list)await put("lines",{...l,branchId:b.id});
+    say(`선로 ${list.length}개를 '${n}'에 연결했습니다.`);refresh();
+  }catch(e){console.error(e);say("저장 실패: "+((e&&e.message)||"오류"))}
+}
 async function delBranch(b){
-  if(!await askYes(`"${b.name}" 전력지사와 모든 선로·철탑·사진을 삭제할까요?`))return;
+  if(!await askYes(`정말 삭제하시겠습니까? "${b.name}" 전력지사와 모든 선로·철탑·사진이 함께 삭제됩니다.`))return;
   for(const l of lines.filter(l=>l.branchId===b.id)){
     for(const t of towers.filter(t=>t.lineId===l.id))await removeTower(t);
     await del("lines",l.id);
@@ -335,7 +371,7 @@ async function delBranch(b){
   await del("branches",b.id);refresh();
 }
 async function delLine(l){
-  if(!await askYes(`"${l.name}" 선로와 모든 철탑·사진을 삭제할까요?`))return;
+  if(!await askYes(`정말 삭제하시겠습니까? "${l.name}" 선로와 모든 철탑·사진이 함께 삭제됩니다.`))return;
   for(const t of towers.filter(t=>t.lineId===l.id))await removeTower(t);
   await del("lines",l.id);refresh();
 }
@@ -344,7 +380,7 @@ async function removeTower(t){
   await del("towers",t.id);
 }
 async function delTower(t){
-  if(!await askYes(`"${t.name}"와 사진을 삭제할까요?`))return;
+  if(!await askYes(`정말 삭제하시겠습니까? "${t.name}" 철탑과 사진이 함께 삭제됩니다.`))return;
   await removeTower(t);refresh();
 }
 
@@ -455,7 +491,7 @@ function singleCard(i){
     const d=el("button","btn danger small","사진 삭제");
     d.style.cssText="width:100%;margin-top:7px";
     d.onclick=async()=>{
-      if(!await askYes(`"${i.label}" 사진을 삭제할까요?`))return;
+      if(!await askYes(`정말 삭제하시겠습니까? "${i.label}" 사진이 삭제됩니다.`))return;
       if(saved.path)await sb.storage.from(BUCKET).remove([saved.path]);saved.path=null;await put("photos",saved);say("사진을 삭제했습니다.");refresh();
     };
     c.append(d);
@@ -501,7 +537,7 @@ function groupCard(g){
       im.onclick=()=>zoom(im.src);
       const x=el("button","thumb-x","✕");
       x.onclick=async()=>{
-        if(!await askYes(`"${slot.label}" 사진을 삭제할까요?`))return;
+        if(!await askYes(`정말 삭제하시겠습니까? "${slot.label}" 사진이 삭제됩니다.`))return;
         await del("photos",p.id);say("사진을 삭제했습니다.");refresh();
       };
       w.append(im,x);th.append(w);
