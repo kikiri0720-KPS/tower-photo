@@ -165,7 +165,7 @@ const slotsFor=(t,c)=>items.filter(i=>inType(i,t)).flatMap(slotsOf).filter(s=>!s
 const allSlots=items.flatMap(slotsOf);
 
 const $=id=>document.getElementById(id);
-let branches=[],branchId=null,branchErr=false,lines=[],towers=[],photos=[],lineId=null,towerId=null,type="현수",timer,urls={};
+let curStep=0,branches=[],branchId=null,branchErr=false,lines=[],towers=[],photos=[],lineId=null,towerId=null,type="현수",timer,urls={};
 
 /* 저장소: Supabase (DB + Storage) */
 const SUPABASE_URL="https://cyctshvdqhgdglkdehba.supabase.co";
@@ -261,11 +261,16 @@ async function migrate(){
   if(moved)await load();
 }
 
-function setStep(n){
+function showStep(n){
   document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
   $("step"+n).classList.add("active");
   $("headerTitle").textContent=n==0?"전력지사 선택":n==1?"선로 선택":n==2?"철탑 선택":"현장 사진 등록";
   scrollTo(0,0);
+}
+function setStep(n){
+  showStep(n);
+  if(n>curStep)history.pushState({s:n},"");else history.replaceState({s:n},"");
+  curStep=n;
 }
 
 /* 사진 조회 */
@@ -282,7 +287,7 @@ function progress(t){
 }
 function urlFor(p){return urlCache[p.path]||""}
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
-const zoom=src=>{$("lightboxImg").src=src;$("lightbox").style.display="flex"};
+const zoom=src=>{$("lightboxImg").src=src;$("lightbox").style.display="flex";history.pushState({s:curStep,lb:1},"")};
 
 function row(title,desc,onOpen,onDelete,pct){
   const r=el("div","list-item");
@@ -747,13 +752,23 @@ $("backupBtn").onclick=async()=>{
   }
 };
 
-$("backToBranches").onclick=()=>{branchId=null;lineId=null;towerId=null;setStep(0);render()};
-$("backToLines").onclick=()=>{lineId=null;towerId=null;setStep(1);render()};
-$("backToTowers").onclick=()=>{towerId=null;setStep(2);render()};
-const closeLb=()=>{$("lightbox").style.display="none";$("lightboxImg").src=""};
+$("backToBranches").onclick=()=>history.back();
+$("backToLines").onclick=()=>history.back();
+$("backToTowers").onclick=()=>history.back();
+const closeLb=()=>{if(history.state&&history.state.lb){history.back()}else{$("lightbox").style.display="none";$("lightboxImg").src=""}};
 $("closeLightbox").onclick=closeLb;
 $("lightbox").onclick=e=>{if(e.target===$("lightbox"))closeLb()};
 
+history.replaceState({s:0},"");
+window.addEventListener("popstate",e=>{
+  if($("lightbox").style.display==="flex"){$("lightbox").style.display="none";$("lightboxImg").src="";return}
+  const n=(e.state&&e.state.s)||0;
+  if(n>curStep){history.go(-(n-curStep));return}
+  if(n<=2)towerId=null;
+  if(n<=1)lineId=null;
+  if(n<=0)branchId=null;
+  curStep=n;showStep(n);render();
+});
 async function gate(){
   const {data}=await sb.auth.getSession();const on=!!data.session;
   $("loginBox").style.display=on?"none":"block";
