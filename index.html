@@ -65,6 +65,7 @@ button{font:inherit;cursor:pointer}
 .modal-box p{margin:0 0 12px;font-weight:bold;overflow-wrap:anywhere}
 .modal-box input{width:100%;padding:11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;margin-bottom:12px}
 .modal-btns{display:flex;gap:8px}.modal-btns button{flex:1}
+.chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px}.chk input{width:20px;height:20px;margin:0}
 </style>
 </head>
 <body>
@@ -73,6 +74,8 @@ button{font:inherit;cursor:pointer}
 <section id="loginBox" style="display:none"><h2>🔐 직원 로그인</h2>
 <input id="loginEmail" class="extra-input" type="email" placeholder="이메일" autocomplete="username">
 <input id="loginPw" class="extra-input" type="password" placeholder="비밀번호" autocomplete="current-password">
+<label class="chk"><input type="checkbox" id="saveId"> 아이디 저장</label>
+<label class="chk"><input type="checkbox" id="autoLogin"> 자동 로그인</label>
 <button class="btn" id="loginBtn" style="width:100%;margin-top:10px">로그인</button>
 <div id="loginMsg" class="info" style="margin-top:12px;display:none"></div>
 <div class="muted" id="loginUrl" style="margin-top:10px;overflow-wrap:anywhere"></div></section>
@@ -161,7 +164,13 @@ let lines=[],towers=[],photos=[],lineId=null,towerId=null,type="현수",timer,ur
 const SUPABASE_URL="https://cyctshvdqhgdglkdehba.supabase.co";
 const SUPABASE_KEY="sb_publishable_AyUXHnUPDy26XSHCINLZJg_h9EKL6Dx";
 const BUCKET="tower-photos";
-const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const AUTO=()=>localStorage.getItem("tp_auto")==="1";
+const authStore={
+  getItem:k=>localStorage.getItem(k)??sessionStorage.getItem(k),
+  setItem:(k,v)=>{const a=AUTO()?localStorage:sessionStorage,b=AUTO()?sessionStorage:localStorage;b.removeItem(k);a.setItem(k,v)},
+  removeItem:k=>{localStorage.removeItem(k);sessionStorage.removeItem(k)}
+};
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{storage:authStore,persistSession:true,autoRefreshToken:true}});
 const urlCache={};
 const clean=v=>{const o={...v};delete o.blob;delete o.url;return o};
 async function getAll(s){
@@ -681,10 +690,19 @@ async function gate(){
   $("logoutBtn").hidden=!on;
   if(on){try{await load();render()}catch(e){console.error(e);say("불러오기 실패: "+((e&&e.message)||"오류"))}}
 }
+try{
+  const sid=localStorage.getItem("tp_id");
+  if(sid){$("loginEmail").value=sid;$("saveId").checked=true}
+  $("autoLogin").checked=AUTO();
+}catch(e){}
 $("loginUrl").textContent="접속 주소: "+SUPABASE_URL;
 const loginErr=m=>{const e=$("loginMsg");e.textContent=m;e.style.display="block"};
 $("loginBtn").onclick=async()=>{
   $("loginMsg").style.display="none";
+  try{
+    localStorage.setItem("tp_auto",$("autoLogin").checked?"1":"0");
+    if($("saveId").checked)localStorage.setItem("tp_id",$("loginEmail").value.trim());else localStorage.removeItem("tp_id");
+  }catch(e){}
   try{
     const {error}=await sb.auth.signInWithPassword({email:$("loginEmail").value.trim(),password:$("loginPw").value});
     if(error)return loginErr("로그인 실패: "+error.message+(error.status?" ("+error.status+")":""));
