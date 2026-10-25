@@ -82,9 +82,15 @@ button{font:inherit;cursor:pointer}
 <div id="appBody" style="display:none">
 <div class="info">로그인한 직원끼리 사진이 공유됩니다. <button class="btn secondary small" id="logoutBtn" hidden>로그아웃</button></div>
 
-<section id="step1" class="panel active">
-<h2>⚡ 선로 선택</h2>
-<div class="toolbar"><button class="btn" id="addLineBtn">＋ 선로 추가</button><button class="btn secondary" id="backupBtn">💾 백업 (ZIP)</button></div>
+<section id="step0" class="panel active">
+<h2>🏢 전력지사 선택</h2>
+<div class="toolbar"><button class="btn" id="addBranchBtn">＋ 전력지사 추가</button><button class="btn secondary" id="backupBtn">💾 백업 (ZIP)</button></div>
+<div id="branchList"></div>
+</section>
+
+<section id="step1" class="panel">
+<div class="toolbar"><button class="btn secondary" id="backToBranches">← 전력지사 목록</button><button class="btn" id="addLineBtn">＋ 선로 추가</button></div>
+<h2 id="lineHeading">⚡ 선로 선택</h2>
 <div id="lineList"></div>
 </section>
 
@@ -158,7 +164,7 @@ const slotsFor=(t,c)=>items.filter(i=>inType(i,t)).flatMap(slotsOf).filter(s=>!s
 const allSlots=items.flatMap(slotsOf);
 
 const $=id=>document.getElementById(id);
-let lines=[],towers=[],photos=[],lineId=null,towerId=null,type="현수",timer,urls={};
+let branches=[],branchId=null,branchErr=false,lines=[],towers=[],photos=[],lineId=null,towerId=null,type="현수",timer,urls={};
 
 /* 저장소: Supabase (DB + Storage) */
 const SUPABASE_URL="https://cyctshvdqhgdglkdehba.supabase.co";
@@ -232,6 +238,8 @@ function say(m){const e=$("status");e.textContent=m;e.style.display="block";clea
 
 async function load(){
   [lines,towers,photos]=await Promise.all([getAll("lines"),getAll("towers"),getAll("photos")]);
+  try{branches=await getAll("branches");branchErr=false}catch(e){console.error(e);branches=[];branchErr=true}
+  branches.sort((a,b)=>a.name.localeCompare(b.name,"ko",{numeric:true}));
   lines.sort((a,b)=>a.name.localeCompare(b.name,"ko",{numeric:true}));
   const nums=s=>((s||"").match(/\d+/g)||[]).map(Number);
   const cmp=(a,b)=>{const x=nums(a.name),y=nums(b.name);if(!x.length||!y.length)return x.length?-1:y.length?1:a.name.localeCompare(b.name,"ko");for(let i=0;i<Math.max(x.length,y.length);i++){if(x[i]===undefined)return -1;if(y[i]===undefined)return 1;if(x[i]!==y[i])return x[i]-y[i]}return a.name.localeCompare(b.name,"ko",{numeric:true})};
@@ -253,7 +261,7 @@ async function migrate(){
 function setStep(n){
   document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
   $("step"+n).classList.add("active");
-  $("headerTitle").textContent=n==1?"선로 선택":n==2?"철탑 선택":"현장 사진 등록";
+  $("headerTitle").textContent=n==0?"전력지사 선택":n==1?"선로 선택":n==2?"철탑 선택":"현장 사진 등록";
   scrollTo(0,0);
 }
 
@@ -287,8 +295,18 @@ function row(title,desc,onOpen,onDelete,pct){
 
 function render(){
   const ll=$("lineList");ll.innerHTML="";
-  if(!lines.length)ll.append(el("p","muted","선로가 없습니다. 위의 '선로 추가'를 눌러 만드세요."));
-  lines.forEach(l=>{
+  const bl=$("branchList");bl.innerHTML="";
+  const orphans=lines.filter(l=>!l.branchId).length;
+  if(branchErr)bl.append(el("p","muted","전력지사 저장 테이블이 없습니다. 안내받은 SQL을 Supabase에서 먼저 실행하세요."));
+  else if(!branches.length&&!orphans)bl.append(el("p","muted","전력지사가 없습니다. 위의 '전력지사 추가'를 눌러 만드세요."));
+  branches.forEach(b=>{
+    const n=lines.filter(l=>l.branchId===b.id).length;
+    bl.append(row(b.name,"선로 "+n+"개",()=>{branchId=b.id;lineId=null;towerId=null;$("lineHeading").textContent=b.name+" - 선로 선택";setStep(1);render()},()=>delBranch(b)));
+  });
+  if(orphans)bl.append(row("(지사 미지정)","선로 "+orphans+"개",()=>{branchId="none";lineId=null;towerId=null;$("lineHeading").textContent="지사 미지정 - 선로 선택";setStep(1);render()},()=>say("미지정 선로는 열어서 개별 삭제하세요.")));
+  const shown=lines.filter(l=>branchId==="none"?!l.branchId:l.branchId===branchId);
+  if(!shown.length)ll.append(el("p","muted","선로가 없습니다. 위의 '선로 추가'를 눌러 만드세요."));
+  shown.forEach(l=>{
     const n=towers.filter(t=>t.lineId===l.id).length;
     ll.append(row(l.name,"철탑 "+n+"기",()=>{lineId=l.id;towerId=null;$("towerHeading").textContent=l.name+" - 철탑 목록";setStep(2);render()},()=>delLine(l)));
   });
@@ -308,6 +326,14 @@ function render(){
   if(towerId)renderGrid();
 }
 
+async function delBranch(b){
+  if(!await askYes(`"${b.name}" 전력지사와 모든 선로·철탑·사진을 삭제할까요?`))return;
+  for(const l of lines.filter(l=>l.branchId===b.id)){
+    for(const t of towers.filter(t=>t.lineId===l.id))await removeTower(t);
+    await del("lines",l.id);
+  }
+  await del("branches",b.id);refresh();
+}
 async function delLine(l){
   if(!await askYes(`"${l.name}" 선로와 모든 철탑·사진을 삭제할까요?`))return;
   for(const t of towers.filter(t=>t.lineId===l.id))await removeTower(t);
@@ -322,12 +348,19 @@ async function delTower(t){
   await removeTower(t);refresh();
 }
 
+$("addBranchBtn").onclick=async()=>{
+  const n=((await askText("추가할 전력지사 이름을 입력하세요.","예: 부산전력지사"))||"").trim();
+  if(!n)return;
+  if(branches.some(b=>b.name===n))return say("같은 이름의 전력지사가 있습니다.");
+  try{await put("branches",{id:uid(),name:n});say("전력지사를 추가했습니다.");refresh()}
+  catch(e){console.error(e);say("저장 실패: 전력지사 테이블 SQL을 먼저 실행하세요.")}
+};
 $("addLineBtn").onclick=async()=>{
   const r=await formDlg("추가할 선로 이름을 입력하세요.","예: 154kV 울산-경주선",[{key:"side1",title:"#1 측 위치",def:"left",opts:[["left","좌측이 #1"],["right","우측이 #1"]]}]);
   const n=((r&&r.text)||"").trim();
   if(!n)return;
-  if(lines.some(l=>l.name===n))return say("같은 이름의 선로가 있습니다.");
-  await put("lines",{id:uid(),name:n,side1:r.side1});say("선로를 추가했습니다.");refresh();
+  if(lines.some(l=>l.name===n&&(l.branchId||"none")===branchId))return say("같은 이름의 선로가 있습니다.");
+  await put("lines",{id:uid(),name:n,side1:r.side1,branchId:branchId==="none"?undefined:branchId});say("선로를 추가했습니다.");refresh();
 };
 $("addTowerBtn").onclick=async()=>{
   if(!lineId)return;
@@ -657,11 +690,12 @@ $("backupBtn").onclick=async()=>{
       if(!p.path)continue;
       const t=towers.find(x=>x.id===p.towerId),l=t&&lines.find(x=>x.id===t.lineId);
       if(!t||!l)continue;
+      const br=branches.find(x=>x.id===l.branchId);
       const key=p.id.split("|")[1]||"",bs=key.split("#"),tp=bs[0].split("_")[0],sid=bs[0].slice(tp.length+1);
       const sl=allSlots.find(s=>s.id===sid);
       const lg=(sid==="v_line_src"||sid==="v_line_load")&&t.vleg&&t.vleg[sid.endsWith("src")?"src":"load"];
       const nm=safe(sl?sl.label:sid)+(lg?" ("+lg+"각)":"")+(tp!==(t.type||"현수")?" ("+tp+")":"")+(bs[1]?"_"+bs[1]:"")+(p.extra?" - "+safe(p.extra):"");
-      let path=`부산경남 기술팀/${safe(l.name)}/${safe(t.name)}/${nm}.jpg`;
+      let path=`부산경남 기술팀/${safe(br?br.name:"지사 미지정")}/${safe(l.name)}/${safe(t.name)}/${nm}.jpg`;
       if(used[path]){path=path.replace(/\.jpg$/,"_"+(++used[path])+".jpg")}else used[path]=1;
       const got=await sb.storage.from(BUCKET).download(p.path);if(got.error)throw got.error;
       files.push({name:path,data:new Uint8Array(await got.data.arrayBuffer())});
@@ -677,6 +711,7 @@ $("backupBtn").onclick=async()=>{
   }
 };
 
+$("backToBranches").onclick=()=>{branchId=null;lineId=null;towerId=null;setStep(0);render()};
 $("backToLines").onclick=()=>{lineId=null;towerId=null;setStep(1);render()};
 $("backToTowers").onclick=()=>{towerId=null;setStep(2);render()};
 const closeLb=()=>{$("lightbox").style.display="none";$("lightboxImg").src=""};
@@ -688,7 +723,7 @@ async function gate(){
   $("loginBox").style.display=on?"none":"block";
   $("appBody").style.display=on?"block":"none";
   $("logoutBtn").hidden=!on;
-  if(on){try{await load();render()}catch(e){console.error(e);say("불러오기 실패: "+((e&&e.message)||"오류"))}}
+  if(on){try{await load();setStep(0);render()}catch(e){console.error(e);say("불러오기 실패: "+((e&&e.message)||"오류"))}}
 }
 try{
   const sid=localStorage.getItem("tp_id");
@@ -710,7 +745,7 @@ $("loginBtn").onclick=async()=>{
   gate();
 };
 $("loginPw").onkeydown=e=>{if(e.key==="Enter")$("loginBtn").click()};
-$("logoutBtn").onclick=async()=>{await sb.auth.signOut();lines=[];towers=[];photos=[];towerId=null;lineId=null;setStep(1);gate()};
+$("logoutBtn").onclick=async()=>{await sb.auth.signOut();lines=[];towers=[];photos=[];branches=[];towerId=null;lineId=null;branchId=null;setStep(0);gate()};
 gate();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
