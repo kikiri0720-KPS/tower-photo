@@ -1148,7 +1148,7 @@ function progress(t){
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
 
 let toastT=null;
-function say(m,stay){const e=gid('toast');e.textContent=m;e.hidden=false;clearTimeout(toastT);if(!stay)toastT=setTimeout(()=>e.hidden=true,2600);}
+function say(m,stay){const e=gid('toast');e.textContent=m;e.hidden=false;clearTimeout(toastT);if(!stay)toastT=setTimeout(()=>e.hidden=true,2600);else toastT=setTimeout(()=>e.hidden=true,12000);}
 function askYes(msg,okText){return new Promise(res=>{
   const ov=el('div','lg-modal'), bx=el('div','lg-modal-box panel');
   const p=el('p',null,msg), row=el('div','row2');
@@ -1251,21 +1251,25 @@ ${hs("view",'<rect x="10" y="12" width="40" height="22" rx="4"/>',30,50)}
 <div class="lg-picks">${ITEMS.filter(i=>inType(i,tp)).map(i=>`<button class="ghost" type="button" data-pick="${i.id}">${isDone(i)?"✓ ":""}${i.label}</button>`).join("")}</div>`;
 }
 
-function fileInput(slot,multi){
-  const f=document.createElement("input");
-  f.type="file";f.accept="image/*";f.setAttribute("capture","environment");f.hidden=true;
-  f.onchange=()=>addPhoto(slot,f,multi);
-  const g=document.createElement("input");
-  g.type="file";g.accept="image/*";g.hidden=true;if(multi)g.multiple=true;
-  g.onchange=()=>addPhoto(slot,g,multi);
-  f._g=g; return f;
-}
+// 사진 입력칸은 화면이 다시 그려져도 사라지지 않게 하나만 만들어 둠
+const camIn=document.createElement('input'); camIn.type='file'; camIn.accept='image/*'; camIn.setAttribute('capture','environment');
+const galIn=document.createElement('input'); galIn.type='file'; galIn.accept='image/*';
+[camIn,galIn].forEach(x=>{x.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;opacity:0';x.tabIndex=-1;document.body.append(x);});
+let pending=null;
+camIn.addEventListener('change',()=>addPhoto(camIn));
+galIn.addEventListener('change',()=>addPhoto(galIn));
+function fileInput(slot,multi){return {slot,multi};}
 function choosePhoto(f){
-  if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요.');
+  if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요. 왼쪽 위 상태 표시를 확인하세요.');
+  const t=LT(); if(!t) return;
+  pending={slot:f.slot,multi:f.multi,tid:t.d.id,lineId:curId};
   const ov=el('div','lg-modal'), bx=el('div','lg-modal-box panel');
   const close=()=>ov.remove();
-  const mk=(t,fn,cls)=>{const b=el('button',cls||'primary',t);b.type='button';b.onclick=()=>{close();fn&&fn();};return b;};
-  bx.append(el('p',null,'사진 등록 방법'),mk('📸 카메라로 촬영',()=>f.click()),mk('🖼️ 갤러리에서 선택',()=>f._g.click()),mk('취소',null,'ghost'));
+  const mk=(txt,fn,cls)=>{const b=el('button',cls||'primary',txt);b.type='button';b.onclick=()=>{close();fn&&fn();};return b;};
+  bx.append(el('p',null,'사진 등록 방법'),
+    mk('📸 카메라로 촬영',()=>{camIn.value='';camIn.click();}),
+    mk('🖼️ 갤러리에서 선택',()=>{galIn.value='';galIn.multiple=!!pending.multi;galIn.click();}),
+    mk('취소',null,'ghost'));
   ov.append(bx); ov.onclick=e=>{if(e.target===ov)close();};
   document.body.append(ov);
 }
@@ -1290,7 +1294,7 @@ function singleFolder(t,tp,i){
   else pv.textContent='📷 사진 미등록';
   const f=fileInput(i,false);
   const b=el('button','upload-btn',saved?'📷 사진 교체':'📸 사진 촬영 / 선택');b.type='button';b.onclick=()=>choosePhoto(f);
-  c.append(pv,b,f);
+  c.append(pv,b);
   if(i.input){
     const x=document.createElement('input');x.type='text';x.className='lg-input';x.id='memo_'+i.id;x.placeholder=i.input;
     x.value=(t.d.memo&&t.d.memo[i.id])||'';
@@ -1333,7 +1337,7 @@ function groupCard(t,tp,g){
     }
     const f=fileInput({id:sid,label},true);
     const b=el('button','upload-btn','＋ '+nm+' 사진 추가');b.type='button';b.onclick=()=>choosePhoto(f);
-    sec.append(thumbs(list,label),b,f); c.append(sec);
+    sec.append(thumbs(list,label),b); c.append(sec);
   };
   g.sides.filter(inNo).forEach(renderSide);
   if(g.optSides){
@@ -1357,30 +1361,38 @@ async function shrink(file){
     return await new Promise(r=>cv.toBlob(r,'image/jpeg',.8))||file;
   }catch(e){return file;}
 }
-async function addPhoto(slot,f,multi){
-  let files=[...(f.files||[])].filter(x=>x.type.startsWith('image/')); f.value='';
-  if(!files.length) return;
+async function addPhoto(f){
+  let files=[...(f.files||[])].filter(x=>!x.type||x.type.startsWith('image/'));
+  const job=pending; f.value='';
+  if(!files.length||!job) return;
   if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요.');
-  const t=LT(); if(!t) return;
-  if(!multi) files=files.slice(0,1);
-  const old=multi?[]:photosOf(t.d.id,slot.id);
+  if(!job.multi) files=files.slice(0,1);
+  const old=job.multi?[]:photosOf(job.tid,job.slot.id);
   say('사진을 저장하는 중…',true);
+  let step='사진 줄이기';
   try{
     let n=0;
     for(const file of files){
-      const blob=await shrink(file);
+      step='사진 줄이기'; const blob=await shrink(file);
       const pid='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-      const path=t.d.id+'/'+pid+'.jpg';
-      const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:'image/jpeg'});
+      const path=job.tid+'/'+pid+'.jpg';
+      step='사진 올리기';
+      const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:'image/jpeg',upsert:true});
       if(up.error) throw up.error;
-      const ins=await sb.from(T_PHOTOS).insert({id:pid,data:{towerId:t.d.id,lineId:curId,slot:slot.id,path,name:file.name||'',at:Date.now()+n}});
+      step='사진 기록';
+      const ins=await sb.from(T_PHOTOS).insert({id:pid,data:{towerId:job.tid,lineId:job.lineId,slot:job.slot.id,path,name:file.name||'',at:Date.now()+n}});
       if(ins.error) throw ins.error;
       n++;
     }
-    for(const p of old) await deletePhoto(p,true);
+    for(const p of old){try{await deletePhoto(p,true);}catch(e){console.warn(e);}}
     await pullPhotos(true);
     say(n>1?n+'장을 저장했어요.':'사진을 저장했어요.');
-  }catch(e){console.error(e);say('저장하지 못했어요: '+((e&&e.message)||'인터넷 연결을 확인하세요.'));}
+  }catch(e){
+    console.error(e);
+    const m=((e&&(e.message||e.error))||String(e));
+    const hint=/row-level|policy|permission|Unauthorized|403|42501/i.test(m)?' → Supabase에서 SQL을 다시 실행하세요.':/bucket/i.test(m)?' → 사진 보관함이 없어요. SQL을 다시 실행하세요.':/fetch|network/i.test(m)?' → 인터넷 연결을 확인하세요.':'';
+    say(`저장 실패 (${step}): ${m}${hint}`,true);
+  }
 }
 async function deletePhoto(p,noPull){
   const {error}=await sb.from(T_PHOTOS).delete().eq('id',p.id); if(error) throw error;
@@ -1494,6 +1506,7 @@ function show(el,on){if(el._on!==on){el._on=on;el.style.visibility=on?'visible':
 function proj(x,y,z,w,h){v.set(x,y,z).project(camera);if(!(v.z<1&&v.x>-1.1&&v.x<1.1&&v.y>-1.1&&v.y<1.1))return null;return [Math.round((v.x+1)/2*w),Math.round((1-v.y)/2*h)];}
 function put(el,p,dy){el.style.transform=`translate3d(${p[0]}px,${p[1]+(dy||0)}px,0) translate(-50%,-100%)`;}
 function loop(now){
+  if(!ledgerEl.hidden){last=now;requestAnimationFrame(loop);return;}
   const dt=Math.min(.05,(now-last)/1000); last=now;
   if(anim){
     const u=Math.min(1,(now-anim.start)/anim.dur), e=u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
