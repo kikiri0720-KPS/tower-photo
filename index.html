@@ -245,7 +245,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 
   <header class="head panel">
     <div class="eyebrow" id="eyebrow">154kV · 2회선</div>
-    <span class="sync busy" id="sync">연결 중…</span>
+    <span class="sync busy" id="sync" role="button" title="눌러서 서버와 다시 맞추기" style="cursor:pointer">연결 중…</span>
     <h1 id="title">선로</h1>
     <p class="stats" id="stats"></p>
     <div class="legend">
@@ -417,7 +417,7 @@ async function pull(){
     writeCache();
     if(touchCur) rebuildSoon(); else if(touched) renderHead();
     await pullPhotos();
-    if(!flushT&&!flushing) syncState('ok','저장됨 · 공유 중');
+    if(!flushT&&!flushing){const d=new Date();syncState('ok','공유 중 · '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')+' 확인');}
   }catch(e){console.error(e);syncState('err','연결 끊김 · 다시 시도 중');}
   finally{pulling=false;}
 }
@@ -1465,6 +1465,7 @@ gid('zipBtn').addEventListener('click',async()=>{
 card.addEventListener('focusout',()=>setTimeout(()=>{if(pendingRebuild) rebuildSoon();},0));
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'&&flushT) flush();});
 window.addEventListener('pagehide',()=>{if(flushT) flush();});
+gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syncState('busy','서버와 맞추는 중…');flush().then(()=>{for(const k in serverStamp)delete serverStamp[k];return pull();});});
 (async function start(){
   let c=null; try{c=JSON.parse(lsGet(CACHE)||'null');}catch(e){}
   if(c&&Array.isArray(c.lines)&&c.lines.length){lines=c.lines.map(normalize); if(c.cur&&lines.find(l=>l.id===c.cur)) curId=c.cur;}
@@ -1474,15 +1475,19 @@ window.addEventListener('pagehide',()=>{if(flushT) flush();});
   try{
     const {data:rows,error}=await sb.from(T_LINES).select('id,data,updated_at');
     if(error) throw error;
+    const localOnly=(lsGet('tower3d-mig')==='1')?[]:lines.filter(l=>!['a','b','c'].includes(l.id)&&!rows.some(r=>r.id===l.id));
     if(rows.length){
       lines=rows.map(r=>{const d=normalize(r.data);d.id=r.id;serverHash[r.id]=JSON.stringify(d);serverStamp[r.id]=r.updated_at;return d;});
       lines.sort((a,b)=>String(a.name).localeCompare(String(b.name),'ko',{numeric:true}));
       const lastCur=lsGet('tower3d-cur'); if(lastCur&&lines.find(l=>l.id===lastCur)) curId=lastCur;
     }else{
-      lines.forEach(l=>serverHash[l.id]=JSON.stringify(l));   // 서버가 비어 있으면 고친 선로만 올림
+      // 서버가 비어 있으면 이 기기의 선로를 전부 올려서 다른 사람도 보게 함 (아래 flush에서 업로드)
     }
     if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
     AS=true; cloudReady=true; selT=null; card.hidden=true; build(); refit(true); writeCache();
+    if(localOnly.length&&rows.length){localOnly.forEach(l=>{if(!lines.find(x=>x.id===l.id))lines.push(l);});build();}
+    if(!rows.length||localOnly.length) await flush();
+    lsSet('tower3d-mig','1');
     gid('zipBtn').hidden=false;
     await pullPhotos(true);
     syncState('ok','저장됨 · 공유 중');
