@@ -1253,7 +1253,7 @@ ${hs("view",'<rect x="10" y="12" width="40" height="22" rx="4"/>',30,50)}
 
 // 사진 입력칸은 화면이 다시 그려져도 사라지지 않게 하나만 만들어 둠
 const camIn=document.createElement('input'); camIn.type='file'; camIn.accept='image/*'; camIn.setAttribute('capture','environment');
-const galIn=document.createElement('input'); galIn.type='file'; galIn.accept='image/*';
+const galIn=document.createElement('input'); galIn.type='file'; galIn.accept='image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic';  // 카메라 없이 갤러리(사진 선택)로 바로 열림
 [camIn,galIn].forEach(x=>{x.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;opacity:0';x.tabIndex=-1;document.body.append(x);});
 let pending=null;
 camIn.addEventListener('change',()=>addPhoto(camIn));
