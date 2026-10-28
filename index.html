@@ -1039,11 +1039,26 @@ delBtn.addEventListener('click',()=>{
 
 // 백업: 이 기기 저장 내용을 복사해 두고, 다른 기기에서 붙여넣어 불러옴
 let bkConfirm=false;
+let pushConfirm=false;
+async function pushAll(){
+  clearTimeout(flushT); flushT=null;
+  while(flushing) await new Promise(ok=>setTimeout(ok,200));
+  const now={}; lines.forEach(l=>now[l.id]=JSON.stringify(l));
+  const up=lines.map(l=>({id:l.id,data:JSON.parse(now[l.id]),updated_by:CLIENT}));
+  const {data,error}=await sb.from(T_LINES).upsert(up).select('id,updated_at'); if(error) throw error;
+  up.forEach(x=>serverHash[x.id]=now[x.id]); (data||[]).forEach(x=>serverStamp[x.id]=x.updated_at);
+  const {data:all,error:e2}=await sb.from(T_LINES).select('id'); if(e2) throw e2;
+  const gone=all.map(x=>x.id).filter(id=>!(id in now));
+  if(gone.length){const {error:e3}=await sb.from(T_LINES).delete().in('id',gone); if(e3) throw e3; gone.forEach(id=>{delete serverHash[id];delete serverStamp[id];});}
+  writeCache(); return {n:up.length,gone:gone.length};
+}
 function renderBackup(){
   const data=JSON.stringify({app:'tower3d',v:2,lines});
   card.innerHTML=`
     <div class="card-top"><h2>백업·불러오기</h2><button class="close" type="button" aria-label="닫기">×</button></div>
-    <p class="note" style="border:0;padding:0">수정 내용은 자동 저장돼요. 따로 보관하거나 예전 3D 뷰어에서 옮겨올 때 이 화면을 쓰세요. (사진은 포함되지 않아요)</p>
+    <button class="primary" type="button" id="bkPush" style="font-size:15px;padding:13px 12px">${pushConfirm?'한 번 더 누르면 모두에게 적용돼요':'📤 내 화면 그대로 모두에게 적용'}</button>
+    <p class="note" style="border:0;padding:0" id="bkPushMsg">수정을 마친 뒤 누르면, 지금 내 화면의 선로 ${lines.length}개가 서버에 그대로 올라가 다른 사람 화면도 10초 안에 똑같이 바뀌어요. 서버에만 있고 내 화면에 없는 선로는 지워져요. (사진은 그대로 유지)</p>
+    <p class="note" style="border:0;padding:0">아래는 따로 보관하거나 예전 3D 뷰어에서 옮겨올 때 쓰는 기능이에요.</p>
     <div class="field"><label for="bkOut">백업 내용 · 선로 ${lines.length}개, 철탑 ${lines.reduce((a,l)=>a+l.towers.length,0)}기</label><textarea id="bkOut" readonly rows="3">${esc(data)}</textarea></div>
     <button class="primary" type="button" id="bkCopy">백업 내용 복사</button>
     <div class="field"><label for="bkIn">불러오기 · 복사해 둔 내용을 붙여넣으세요</label><textarea id="bkIn" rows="3" placeholder="여기에 붙여넣기"></textarea></div>
@@ -1051,6 +1066,18 @@ function renderBackup(){
     <div class="row2"><button class="ghost" type="button" id="bkAdd">선로로 추가</button><button class="ghost danger" type="button" id="bkRep">${bkConfirm?'한 번 더 누르면 전체 교체':'전체 바꾸기'}</button></div>
     <button class="ghost" type="button" data-close>닫기</button>`;
   const q=x=>card.querySelector(x), err=q('#bkErr'), bad=m=>{err.textContent=m;err.hidden=false;err.style.color='';};
+  q('#bkPush').addEventListener('click',async()=>{
+    const b=q('#bkPush'), msg=q('#bkPushMsg');
+    if(!cloudReady){msg.textContent='서버에 연결되지 않아 적용할 수 없어요. 왼쪽 위 상태를 확인하세요.';msg.style.color='var(--danger)';return;}
+    if(!pushConfirm){pushConfirm=true;b.textContent='한 번 더 누르면 모두에게 적용돼요';clearTimeout(b._t);b._t=setTimeout(()=>{pushConfirm=false;if(document.body.contains(b))b.textContent='📤 내 화면 그대로 모두에게 적용';},5000);return;}
+    pushConfirm=false; b.disabled=true; b.textContent='적용하는 중…'; syncState('busy','모두에게 적용 중…');
+    try{
+      const r=await pushAll(); const d=new Date(), hm=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');
+      b.textContent='✓ '+hm+' 모두에게 적용했어요'; msg.textContent=`선로 ${r.n}개를 올렸어요${r.gone?`, 서버에만 있던 선로 ${r.gone}개는 지웠어요`:''}. 다른 사람 화면은 10초 안에 바뀌어요.`; msg.style.color='var(--ink)';
+      syncState('ok','공유 중 · '+hm+' 적용');
+    }catch(e){console.error(e); b.textContent='📤 내 화면 그대로 모두에게 적용'; msg.textContent='적용 실패: '+((e&&e.message)||'인터넷 연결을 확인하세요'); msg.style.color='var(--danger)'; syncState('err','적용 실패');}
+    b.disabled=false;
+  });
   q('#bkCopy').addEventListener('click',()=>{
     const ta=q('#bkOut'), done=()=>{q('#bkCopy').textContent='복사했어요';};
     try{navigator.clipboard.writeText(ta.value).then(done,()=>{ta.focus();ta.select();q('#bkCopy').textContent='선택됨 · 길게 눌러 복사하세요';});}
