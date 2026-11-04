@@ -764,7 +764,7 @@ function renderHead(){
   const nT=towers.filter(t=>t.tension).length;
   const first=towers[0].label, last=towers[towers.length-1].label;
   document.getElementById('stats').textContent=`${first}호~${last}호 · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · 도색 ${towers.filter(t=>t.aviation).length} · 항공등 ${lampTxt(towers.filter(t=>t.lamp).reduce((a,t)=>({high:a.high+t.lampN.high,mid:a.mid+t.lampN.mid,low:a.low+t.lampN.low}),{high:0,mid:0,low:0}),true)} · 항공구 ${ballSum(l)}개 · `+CROSS.map(c=>`${c.name.replace('횡단','')} ${l.towers.filter(t=>t[c.k]).length}`).join(' · ')+'\n'+LAND.map(x=>`${x.name} ${l.towers.filter(t=>t.land===x.k).length}기`).join(' · ')+` · 칡넝쿨 ${l.towers.filter(t=>t.kudzu).length}기`;
-  lineSel.innerHTML=lines.map(x=>`<option value="${x.id}"${x.id===curId?' selected':''}>${esc(x.kv+'kV '+LN(x))}</option>`).join('');
+  lineSel.innerHTML=lines.slice().sort((a,b)=>(+b.kv||0)-(+a.kv||0)||String(LN(a)).localeCompare(String(LN(b)),'ko',{numeric:true})).map(x=>`<option value="${x.id}"${x.id===curId?' selected':''}>${esc(x.kv+'kV '+LN(x))}</option>`).join('');
 }
 function renderRail(){
   chipsEl.innerHTML='';
@@ -1154,13 +1154,13 @@ const ITEMS=[
 {id:"opgw_box",label:"OPGW 함체"},
 {id:"power_line",label:"전력선 종류"},
 {id:"sp_type",label:"SP 종류"},
-{id:"v_line",label:"수직구명줄",sides:SL,legs:{src:["A","B"],load:["C","D"]}},
+{id:"v_line",label:"수직구명줄",sides:SL,legs:{src:["A","D"],load:["B","C"]},sub:[["clamp","하부클램프"]]},
 {id:"h_line",label:"수평구명줄",sides:[["1_src","#1 전원측"],["1_load","#1 부하측"],["mid_src","중앙 전원측"],["mid_load","중앙 부하측"],["2_src","#2 전원측"],["2_load","#2 부하측"]]},
 {id:"air_light",label:"항공장애등",sides:SL,cat:AIR},
 {id:"air_light_box",label:"항공장애등 함체",cat:AIR,input:"제작사 입력"}
 ];
 const inType=(i,t)=>!i.cat||i.cat.includes(t);
-const slotsOf=i=>i.sides?[...i.sides.map(([s,n,tr])=>({id:i.id+"_"+s,label:i.label+" ("+n+")",tier:tr})),...(i.optSides||[]).map(([s,n])=>({id:i.id+"_"+s,label:i.label+" ("+n+")",opt:true}))]:[i];
+const slotsOf=i=>i.sides?[...i.sides.map(([s,n,tr])=>({id:i.id+"_"+s,label:i.label+" ("+n+")",tier:tr})),...(i.sub?i.sides.flatMap(([s,n])=>i.sub.map(([u,un])=>({id:i.id+"_"+s+"_"+u,label:i.label+" ("+n+" "+un+")",opt:true}))):[]),...(i.optSides||[]).map(([s,n])=>({id:i.id+"_"+s,label:i.label+" ("+n+")",opt:true}))]:[i];
 const slotsFor=tp=>ITEMS.filter(i=>inType(i,tp)).flatMap(slotsOf);
 const allSlots=ITEMS.flatMap(slotsOf);
 const itemOf=id=>ITEMS.find(x=>x.id===id);
@@ -1364,7 +1364,15 @@ function groupCard(t,tp,g){
     }
     const f=fileInput({id:sid,label},true);
     const b=el('button','upload-btn','＋ '+nm+' 사진 추가');b.type='button';b.onclick=()=>choosePhoto(f);
-    sec.append(thumbs(list,label),b); c.append(sec);
+    sec.append(thumbs(list,label),b);
+    (g.sub||[]).forEach(([u,un])=>{ // 하부클램프 등 보조 사진 (선택)
+      const sid2=sid+'_'+u, label2=g.label+' ('+nm+' '+un+')', l2=photosOf(tid,sid2);
+      sec.append(el('div','side-head',`${nm} ${un} · ${l2.length}장 (선택)`));
+      const f2=fileInput({id:sid2,label:label2},true);
+      const b2=el('button','upload-btn','＋ '+nm+' '+un+' 사진 추가');b2.type='button';b2.onclick=()=>choosePhoto(f2);
+      sec.append(thumbs(l2,label2),b2);
+    });
+    c.append(sec);
   };
   g.sides.filter(inNo).forEach(renderSide);
   if(g.optSides){
