@@ -67,6 +67,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   background:var(--surface);color:var(--ink);border:1px solid var(--line);white-space:nowrap;border-radius:99px}
 .tag.ten{border-radius:2px;border:1.5px solid var(--ink)}
 .tag.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.tag.danger-tag{border-color:var(--danger);box-shadow:0 0 0 1.5px var(--danger)}
+.tag.danger-tag.on{background:var(--danger);color:#fff;border-color:var(--danger)}
+.tag .warn{font-style:normal;font-size:11px;line-height:1}
+.danger-check{border:1px solid var(--danger);border-radius:8px;padding:8px 10px;margin-top:6px}
 .xtag{position:absolute;left:0;top:0;pointer-events:none;font:600 10.5px/1 var(--ui);padding:4px 7px;border-radius:4px;color:#fff;white-space:nowrap;will-change:transform}
 .xtag.road{background:var(--road);border:1px solid rgba(255,255,255,.35)}
 .xtag.river{background:var(--river)}
@@ -306,7 +310,7 @@ const MAX_TOWERS=300;
    type/h/span 이 null 이면 기본값. 횡단·항공구는 그 철탑 → 다음 철탑 경간 */
 const STORE='tower3d-lines-v2', OLD='tower3d-straight-v1';
 let uid=0; const rid=()=>'t'+Date.now().toString(36)+(uid++).toString(36);
-const newTower=label=>({id:rid(),label:String(label),form:'',type:null,av:null,h:null,span:null,road:false,river:false,rail:false,land:'',kudzu:false,valley:false,ball:false,ballN:0,lamp:null,lampN:null,pole:false});
+const newTower=label=>({id:rid(),label:String(label),form:'',type:null,av:null,h:null,span:null,road:false,river:false,rail:false,land:'',kudzu:false,valley:false,ball:false,ballN:0,lamp:null,lampN:null,danger:false,pole:false});
 const range=(a,b)=>{const r=[];for(let n=a;n<=b;n++)r.push(newTower(n));return r;};
 function defaults(){
   const a=range(1,14); a[3].road=true; a[7].valley=true;
@@ -329,7 +333,7 @@ if(!lines){ // 이전 버전 데이터 옮기기
       curId=o.cur;}}catch(e){}
 }
 if(!lines) lines=defaults();
-function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
+function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
 lines.forEach(normalize);
 if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
 /* ---------- 저장 (Supabase 서버 · 로그인 없이 주소만 알면 같이 씀) ---------- */
@@ -743,7 +747,7 @@ const lampTxt=(n,all)=>{const p=[];if(n.high)p.push('고'+n.high);if(n.mid)p.pus
 const stripForm=f=>String(f||'').replace(/\s*형\s*$/,'').trim();
 const FORM=d=>d.form?stripForm(d.form)+'형':'';
 const ballSum=l=>l.towers.reduce((a,d,i)=>a+(i<l.towers.length-1&&d.ball?(d.ballN||0):0),0);
-function updateTag(t){t.tag.className='tag'+(t.tension?' ten':'')+(t===selT?' on':'');t.tag.innerHTML=`<i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}`;}
+function updateTag(t){t.tag.className='tag'+(t.tension?' ten':'')+(t===selT?' on':'')+(t.d.danger?' danger-tag':'');t.tag.innerHTML=`${t.d.danger?'<i class="warn">⚠</i>':''}<i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}`;}
 
 /* ---------- 번호 ---------- */
 const baseNo=lb=>String(lb).split('-')[0];
@@ -844,10 +848,11 @@ function renderCard(){
     const br=nextBranch(l,t.label);
     card.innerHTML=`
       <div class="card-top"><span class="no">${esc(H_(t))}</span>
-        <span class="pill ${t.tension?'ten':''}"><i class="sym ${t.tension?'ten':'sus'}"></i>${t.tension?'내장형':'현수형'}</span>${t.pole?'<span class="pill">관형주</span>':''}
+        <span class="pill ${t.tension?'ten':''}"><i class="sym ${t.tension?'ten':'sus'}"></i>${t.tension?'내장형':'현수형'}</span>${t.pole?'<span class="pill">관형주</span>':''}${t.d.danger?'<span class="pill" style="background:var(--danger);color:#fff;border-color:var(--danger)">⚠ 위험</span>':''}
         <button class="close" type="button" aria-label="닫기">×</button></div>
       <div class="sub">${esc(l.kv+'kV '+LN(l))} · ${l.circuits}회선${t.d.form?' · '+esc(FORM(t.d)):''}</div>
       <button class="primary ledger-btn" type="button" id="openLedger">📸 기별사진 · ${progress(t).done}/${progress(t).total}</button>
+      <label class="check danger-check"><input type="checkbox" id="xDanger" ${t.d.danger?'checked':''}>⚠ 위험 철탑 (번호찰에 경고 표시)<i class="sw" style="background:var(--danger)"></i></label>
       <div class="row2">
         <div class="field"><label for="fLabel">철탑 번호</label><div class="unit" data-unit="호"><input id="fLabel" type="text" value="${esc(t.label)}"></div></div>
         <div class="field"><label for="fH">철탑 높이</label><div class="unit" data-unit="m"><input id="fH" type="number" inputmode="decimal" min="10" max="250" step="0.1" placeholder="${t.autoH}" value="${t.d.h>0?t.d.h:''}"></div></div>
@@ -906,6 +911,7 @@ function renderCard(){
   if(!t){card.hidden=false;return;}
   // 철탑
   q('#openLedger').addEventListener('click',()=>openLedger(t));
+  q('#xDanger').addEventListener('change',e=>{t.d.danger=e.target.checked;save();build();});
   const err=q('#tErr'), bad=m=>{err.textContent=m;err.hidden=false;};
   q('#fLabel').addEventListener('change',e=>{
     const v=e.target.value.trim().replace(/호$/,'');
@@ -1144,7 +1150,7 @@ const ITEMS=[
 {id:"top",label:"상부",sides:SL},
 {id:"view",label:"전경",sides:SL},
 {id:"base",label:"기초부지"},
-{id:"num_plate",label:"번호찰"},
+{id:"num_plate",label:"번호찰",extra:[["danger","⚠ 위험표시찰"]]},
 {id:"nat_plate",label:"국가지점 번호찰"},
 {id:"insulator",label:"애자련",sides:S12,optSides:SUP,nums:true},
 {id:"insulator_year",label:"애자년도",sides:S12,optSides:SUP,nums:true},
@@ -1192,22 +1198,28 @@ function LT(){return ledgerTid?towers.find(t=>t.d.id===ledgerTid)||null:null;}
 function openLedger(t){
   if(play) stopPatrol();
   ledgerTid=t.d.id; sel=null; ledgerEl.hidden=false; ledgerEl.scrollTop=0;
-  history.pushState({lg:1},''); renderLedger();
+  renderLedger();
 }
 function closeLedger(){ledgerEl.hidden=true;ledgerTid=null;sel=null;if(!card.hidden)renderCard();}
-gid('lgBack').addEventListener('click',()=>{
-  if(sel){sel=null;renderLedger();ledgerEl.scrollTop=0;return;}
-  if(history.state&&history.state.lg) history.back(); else closeLedger();
-});
-window.addEventListener('popstate',()=>{
-  if(!lbEl.hidden){lbEl.hidden=true;gid('lbImg').src='';history.pushState({lg:1},'');return;}
+// 휴대폰 뒤로가기 = 한 단계 뒤로 (앱이 통째로 닫히지 않도록)
+function closeTopLayer(){
+  if(!lbEl.hidden){lbEl.hidden=true;gid('lbImg').src='';return true;}
   if(!ledgerEl.hidden){
-    if(sel){sel=null;renderLedger();history.pushState({lg:1},'');return;}
-    closeLedger();
+    if(sel){sel=null;renderLedger();ledgerEl.scrollTop=0;return true;}
+    closeLedger();return true;
   }
+  if(!card.hidden){ if(selT) selectTower(null); else closeCard(); return true; }
+  return false;
+}
+window.addEventListener('popstate',()=>{
+  const closed=closeTopLayer();
+  try{history.pushState({nav:1},'');}catch(e){} // 항상 받을 수 있는 상태를 하나 유지
+  if(!closed) say('첫 화면이에요. 종료하려면 홈 버튼을 사용하세요.');
 });
+gid('lgBack').addEventListener('click',()=>{history.back();});
 const zoom=src=>{gid('lbImg').src=src;lbEl.hidden=false;};
 lbEl.addEventListener('click',()=>{lbEl.hidden=true;gid('lbImg').src='';});
+try{history.replaceState({nav:0},'');history.pushState({nav:1},'');}catch(e){}
 
 function renderLedger(){
   if(ledgerEl.hidden) return;
@@ -1333,6 +1345,24 @@ function singleFolder(t,tp,i){
     d.onclick=async()=>{if(!await askYes(`"${i.label}" 사진을 삭제할까요?`))return;for(const p of list)await deletePhoto(p);say('사진을 삭제했어요.');};
     c.append(d);
   }
+  // 같은 폴더 안의 추가 첨부란 (예: 번호찰 안의 위험표시찰)
+  (i.extra||[]).forEach(([sfx,nm])=>{
+    const sid=i.id+'_'+sfx, l2=photosOf(t.d.id,sid), sv2=l2[l2.length-1];
+    const sec=el('div','side');
+    sec.append(el('div','side-head',nm+' (선택)'));
+    const pv2=el('div','photo-preview');
+    if(sv2){const im=document.createElement('img');im.src=blobUrl(sv2);im.alt=nm;im.onclick=()=>zoom(im.src);pv2.append(im);}
+    else pv2.textContent='📷 사진 미등록';
+    const f2=fileInput({id:sid,label:nm},false);
+    const b2=el('button','upload-btn',sv2?'📷 사진 교체':'📸 사진 촬영 / 선택');b2.type='button';b2.onclick=()=>choosePhoto(f2);
+    sec.append(pv2,b2);
+    if(sv2&&AS){
+      const d2=el('button','ghost danger','사진 삭제');d2.type='button';
+      d2.onclick=async()=>{if(!await askYes(`"${nm}" 사진을 삭제할까요?`))return;for(const p of l2)await deletePhoto(p);say('사진을 삭제했어요.');};
+      sec.append(d2);
+    }
+    c.append(sec);
+  });
   return c;
 }
 function groupCard(t,tp,g){
