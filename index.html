@@ -310,7 +310,7 @@ const MAX_TOWERS=300;
    type/h/span 이 null 이면 기본값. 횡단·항공구는 그 철탑 → 다음 철탑 경간 */
 const STORE='tower3d-lines-v2', OLD='tower3d-straight-v1';
 let uid=0; const rid=()=>'t'+Date.now().toString(36)+(uid++).toString(36);
-const newTower=label=>({id:rid(),label:String(label),form:'',type:null,av:null,h:null,span:null,road:false,river:false,rail:false,land:'',kudzu:false,valley:false,ball:false,ballN:0,lamp:null,lampN:null,danger:false,pole:false});
+const newTower=label=>({id:rid(),label:String(label),form:'',type:null,av:null,h:null,span:null,road:false,river:false,rail:false,land:'',kudzu:false,valley:false,ball:false,ballN:0,ball1R:0,ball1W:0,ball2R:0,ball2W:0,lamp:null,lampN:null,danger:false,pole:false});
 const range=(a,b)=>{const r=[];for(let n=a;n<=b;n++)r.push(newTower(n));return r;};
 function defaults(){
   const a=range(1,14); a[3].road=true; a[7].valley=true;
@@ -333,7 +333,7 @@ if(!lines){ // 이전 버전 데이터 옮기기
       curId=o.cur;}}catch(e){}
 }
 if(!lines) lines=defaults();
-function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
+function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.ball1R==null&&d.ball1W==null&&d.ball2R==null&&d.ball2W==null){const r=d.ballR!=null?d.ballR:Math.ceil((d.ballN||0)/2),w=d.ballW!=null?d.ballW:Math.floor((d.ballN||0)/2);d.ball1R=r;d.ball1W=w;d.ball2R=0;d.ball2W=0;}['ball1R','ball1W','ball2R','ball2W'].forEach(k=>{if(d[k]==null)d[k]=0;});d.ballN=d.ball1R+d.ball1W+d.ball2R+d.ball2W;delete d.ballR;delete d.ballW;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
 lines.forEach(normalize);
 if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
 /* ---------- 저장 (Supabase 서버 · 로그인 없이 주소만 알면 같이 씀) ---------- */
@@ -698,16 +698,22 @@ function build(){
     const wires=new T.Group(); wires.add(mk(ph,wireC)); wires.add(mk(gw,steel)); wires.visible=showWires; world.add(wires); world.userData.wires=wires;
     // 항공장애표시구: 가공지선에 주황·백색 번갈아 설치
     const ballG=new T.SphereGeometry(1.4,12,10), mO=new T.MeshLambertMaterial({color:0xe2581b}), mW=new T.MeshLambertMaterial({color:0xf2f2ee});
+    const mkOrder=(R,W)=>{const o=[];while((R>0||W>0)&&o.length<60){if(R>0){o.push(true);R--;}if(W>0){o.push(false);W--;}}return o;};
     for(let i=0;i<n-1;i++){
-      const d=l.towers[i]; if(!d.ball||!(d.ballN>0)) continue;
-      const N=Math.min(60,d.ballN);
-      for(let k=0;k<N;k++){
-        const key=k%2?'g-1':'g1', A=towers[i].attach[key].fwd, Q=towers[i+1].attach[key].back;
-        const sp=Math.abs(Q[0]-A[0]), sag=sp*sp*.000075*.8, u=(k+1)/(N+1);
-        const m=new T.Mesh(ballG,k%2?mW:mO);
-        m.position.set(A[0]+(Q[0]-A[0])*u, A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u)-1.4, A[2]+(Q[2]-A[2])*u);
-        wires.add(m);
-      }
+      const d=l.towers[i]; if(!d.ball) continue;
+      // #1 가공지선(g1), #2 가공지선(g-1)에 각각 적색·백색 배치
+      [['g1',d.ball1R||0,d.ball1W||0],['g-1',d.ball2R||0,d.ball2W||0]].forEach(([key,R,W])=>{
+        const order=mkOrder(R,W), N=order.length; if(!N) return;
+        if(!towers[i].attach[key]||!towers[i+1].attach[key]) return;
+        const A=towers[i].attach[key].fwd, Q=towers[i+1].attach[key].back;
+        const sp=Math.abs(Q[0]-A[0]), sag=sp*sp*.000075*.8;
+        for(let k=0;k<N;k++){
+          const u=(k+1)/(N+1);
+          const m=new T.Mesh(ballG,order[k]?mO:mW);
+          m.position.set(A[0]+(Q[0]-A[0])*u, A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u)-1.4, A[2]+(Q[2]-A[2])*u);
+          wires.add(m);
+        }
+      });
     }
   }
 
@@ -736,7 +742,7 @@ function makeCrossTags(){
   spans.forEach(s=>{s.tags.forEach(el=>el.remove());s.tags=[];
     const d=towers[s.i].d;
     CROSS.forEach(c=>{if(d[c.k]){const el=document.createElement('div');el.className='xtag '+c.cls;el.textContent=c.name;labelsEl.appendChild(el);s.tags.push(el);}});
-    if(d.ball&&d.ballN>0){const el=document.createElement('div');el.className='xtag ball';el.textContent=`항공구 ${d.ballN}개`;labelsEl.appendChild(el);s.tags.push(el);}});
+    if(d.ball&&((d.ball1R||0)+(d.ball1W||0)+(d.ball2R||0)+(d.ball2W||0)>0)){const ps=[];if((d.ball1R||0)+(d.ball1W||0)>0)ps.push(`#1 적${d.ball1R||0}·백${d.ball1W||0}`);if((d.ball2R||0)+(d.ball2W||0)>0)ps.push(`#2 적${d.ball2R||0}·백${d.ball2W||0}`);const el=document.createElement('div');el.className='xtag ball';el.textContent='항공구 '+ps.join(' ');labelsEl.appendChild(el);s.tags.push(el);}});
 }
 const crossOf=d=>CROSS.filter(c=>d[c.k]);
 const H_=t=>t.label+'호';
@@ -789,7 +795,7 @@ function renderRail(){
 const segHTML=(attr,vals,curV,fmt)=>`<div class="seg">${vals.map(v=>`<button type="button" ${attr}="${v}" aria-pressed="${v===curV}">${fmt(v)}</button>`).join('')}</div>`;
 const kvField=v=>`<div class="field"><span class="lb">전압</span>${segHTML('data-kvq',KV_QUICK,v,x=>x+'kV')}</div>`;
 const nameField=v=>`<div class="field"><label for="fName">선로명 <span style="opacity:.8">(T/L은 자동으로 붙어요)</span></label><div class="unit" data-unit="T/L"><input id="fName" type="text" placeholder="예: 양산–김해" value="${esc(v)}" style="padding-right:42px"></div></div>`;
-let confirmDel=null, addMode=false, backupMode=false, draft=null, lampSel='low';
+let confirmDel=null, addMode=false, backupMode=false, draft=null, lampSel='low', ballSide='1';
 
 function renderAdd(){
   const d=draft;
@@ -883,8 +889,11 @@ function renderCard(){
         <div class="checks">${CROSS.map(c=>`<label class="check"><input type="checkbox" data-x="${c.k}" ${t.d[c.k]?'checked':''}>${c.name}<i class="sw" style="background:${c.c}"></i></label>`).join('')}</div></div>
       <div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 항공장애표시구</span>
         <label class="check"><input type="checkbox" id="xBall" ${t.d.ball?'checked':''}>항공구 설치<i class="sw" style="background:#e2581b;border-radius:50%;width:10px;height:10px"></i></label>
-        <div class="qty" aria-disabled="${!t.d.ball}"><span class="lb">수량</span>
-          <div class="stepper"><button type="button" id="bMinus" aria-label="항공구 줄이기">−</button><output>${t.d.ballN||0}개</output><button type="button" id="bPlus" aria-label="항공구 늘리기">+</button></div></div></div>`:''}
+        <div class="seg" style="margin-top:6px"><button type="button" data-ballside="1" aria-pressed="${ballSide==='1'}">#1</button><button type="button" data-ballside="2" aria-pressed="${ballSide==='2'}">#2</button></div>
+        <div class="qty" aria-disabled="${!t.d.ball}"><span class="lb">#${ballSide} 적색 <i class="sw" style="background:#e2581b;border-radius:50%;width:9px;height:9px;vertical-align:middle"></i></span>
+          <div class="stepper"><button type="button" id="bRMinus" aria-label="적색 줄이기">−</button><output>${t.d['ball'+ballSide+'R']||0}개</output><button type="button" id="bRPlus" aria-label="적색 늘리기">+</button></div></div>
+        <div class="qty" aria-disabled="${!t.d.ball}"><span class="lb">#${ballSide} 백색 <i class="sw" style="background:#f2f2ee;border:1px solid var(--muted);border-radius:50%;width:9px;height:9px;vertical-align:middle"></i></span>
+          <div class="stepper"><button type="button" id="bWMinus" aria-label="백색 줄이기">−</button><output>${t.d['ball'+ballSide+'W']||0}개</output><button type="button" id="bWPlus" aria-label="백색 늘리기">+</button></div></div></div>`:''}
       <div class="actions">
         ${next?`<button class="ghost" type="button" id="insAfter">+ ${esc(H_(t))} 다음에 ${esc(br)}호 끼워넣기</button>`:`<button class="ghost" type="button" id="addEnd">+ 끝에 ${nextAfterLast(l)}호 추가</button>`}
         <button class="ghost danger" type="button" id="delTower">${confirmDel===t.d.id?'한 번 더 누르면 삭제됩니다':esc(H_(t))+' 삭제'}</button>
@@ -941,9 +950,14 @@ function renderCard(){
   q('#fForm').addEventListener('change',e=>{const v=stripForm(e.target.value);t.d.form=v;e.target.value=v;save();renderHead();renderRail();renderCard();});
   const ballUpd=()=>{save();build();};
   if(q('#xBall')){
-    q('#xBall').addEventListener('change',e=>{t.d.ball=e.target.checked;if(t.d.ball&&!(t.d.ballN>0))t.d.ballN=Math.max(1,Math.round((spans[t.i]?spans[t.i].len:400)/150));ballUpd();});
-    q('#bMinus').addEventListener('click',()=>{t.d.ballN=Math.max(1,(t.d.ballN||1)-1);ballUpd();});
-    q('#bPlus').addEventListener('click',()=>{t.d.ballN=Math.min(60,(t.d.ballN||0)+1);ballUpd();});
+    const kR='ball'+ballSide+'R', kW='ball'+ballSide+'W';
+    const syncBall=()=>{t.d.ballN=(t.d.ball1R||0)+(t.d.ball1W||0)+(t.d.ball2R||0)+(t.d.ball2W||0);};
+    card.querySelectorAll('[data-ballside]').forEach(b=>b.addEventListener('click',()=>{ballSide=b.dataset.ballside;renderCard();}));
+    q('#xBall').addEventListener('change',e=>{t.d.ball=e.target.checked;if(t.d.ball&&t.d.ballN===0){const tot=Math.max(1,Math.round((spans[t.i]?spans[t.i].len:400)/150));t.d['ball'+ballSide+'R']=Math.ceil(tot/2);t.d['ball'+ballSide+'W']=Math.floor(tot/2);}syncBall();ballUpd();});
+    q('#bRMinus').addEventListener('click',()=>{t.d[kR]=Math.max(0,(t.d[kR]||0)-1);syncBall();ballUpd();});
+    q('#bRPlus').addEventListener('click',()=>{t.d[kR]=Math.min(60,(t.d[kR]||0)+1);syncBall();ballUpd();});
+    q('#bWMinus').addEventListener('click',()=>{t.d[kW]=Math.max(0,(t.d[kW]||0)-1);syncBall();ballUpd();});
+    q('#bWPlus').addEventListener('click',()=>{t.d[kW]=Math.min(60,(t.d[kW]||0)+1);syncBall();ballUpd();});
   }
   card.querySelectorAll('[data-lsel]').forEach(b=>b.addEventListener('click',()=>{lampSel=b.dataset.lsel;renderCard();}));
   const lampSet=n=>{const tot=n.high+n.mid+n.low;t.d.lampN=tot?n:null;t.d.lamp=tot>0;save();build();};
@@ -1226,7 +1240,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''}`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v4`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
@@ -1568,7 +1582,15 @@ gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syn
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible') pull();});
   window.addEventListener('online',()=>{flush();pull();});
 })();
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    reg.update();
+    // 새 버전이 설치되면 자동으로 새로고침해서 최신 화면을 보여줌
+    reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(!nw)return;nw.addEventListener('statechange',()=>{if(nw.state==='activated')location.reload();});});
+  }).catch(()=>{});
+  let reloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!reloaded){reloaded=true;location.reload();}});
+}
 
 /* ---------- 루프 ---------- */
 const v=new T.Vector3(); let last=performance.now();
