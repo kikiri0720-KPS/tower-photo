@@ -264,6 +264,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
       <span><i class="sw" style="background:var(--field)"></i>밭</span>
       <span><i class="sw" style="background:var(--kudzu)"></i>칡넝쿨</span>
       <span><i class="sw" style="background:var(--water)"></i>골짜기</span>
+      <span><i class="sw" style="background:#2b7bb9;height:3px"></i>OPGW</span>
+      <span><i class="sw" style="background:var(--steel);height:3px"></i>GW</span>
     </div>
   </header>
 
@@ -304,10 +306,14 @@ const baseH=kv=>kv<=30?22:kv<=80?32:kv<=200?46:kv<=450?62:92;
 const CIRC_MUL={2:1,4:1.32,6:1.45};
 const MAX_TOWERS=300;
 const defGW=kv=>kv===154?1:2;   // 154kV는 가공지선 1조(꼭대기 가운데), 345·765kV는 2조
-const gwTxt=l=>'가공지선 '+(l.gw===1?'1조':'2조');
+const WT=['OPGW','GW'];
+const gwTxt=l=>l.gw===1?`가공지선 1조(${l.gw1})`:`가공지선 2조(#1 ${l.gw1}·#2 ${l.gw2})`;
+const wireOfKey=(l,key)=>key==='g-1'?l.gw2:l.gw1;          // g1·g0 = #1(또는 가운데), g-1 = #2
+const lineHas=(l,w)=>l.gw===1?l.gw1===w:(l.gw1===w||l.gw2===w);
+const OPGW_C=new T.Color('#2b7bb9');   // 3D에서 OPGW는 파란빛으로 구분
 
 /* ---------- 데이터 (Supabase 서버에 저장 · 로그인한 직원끼리 공유) ----------
-   선로 = {id,name,kv,circuits,gw,seed,towers:[철탑]}   gw = 가공지선 조수(1 또는 2)
+   선로 = {id,name,kv,circuits,gw,gw1,gw2,seed,towers:[철탑]}   gw = 가공지선 조수(1 또는 2), gw1·gw2 = #1·#2 가공지선 종류('OPGW'/'GW', 1조면 gw1만)
    철탑 = {id,label,form,pole,type,h,span,land,kudzu,av,lamp,lampN,road,river,rail,valley,ball,ballN}
    type/h/span 이 null 이면 기본값. 횡단·항공구는 그 철탑 → 다음 철탑 경간 */
 const STORE='tower3d-lines-v2', OLD='tower3d-straight-v1';
@@ -335,7 +341,7 @@ if(!lines){ // 이전 버전 데이터 옮기기
       curId=o.cur;}}catch(e){}
 }
 if(!lines) lines=defaults();
-function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.ball1R==null&&d.ball1W==null&&d.ball2R==null&&d.ball2W==null){const r=d.ballR!=null?d.ballR:Math.ceil((d.ballN||0)/2),w=d.ballW!=null?d.ballW:Math.floor((d.ballN||0)/2);d.ball1R=r;d.ball1W=w;d.ball2R=0;d.ball2W=0;}['ball1R','ball1W','ball2R','ball2W'].forEach(k=>{if(d[k]==null)d[k]=0;});d.ballN=d.ball1R+d.ball1W+d.ball2R+d.ball2W;delete d.ballR;delete d.ballW;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(![1,2].includes(l.gw))l.gw=defGW(l.kv);if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
+function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.ball1R==null&&d.ball1W==null&&d.ball2R==null&&d.ball2W==null){const r=d.ballR!=null?d.ballR:Math.ceil((d.ballN||0)/2),w=d.ballW!=null?d.ballW:Math.floor((d.ballN||0)/2);d.ball1R=r;d.ball1W=w;d.ball2R=0;d.ball2W=0;}['ball1R','ball1W','ball2R','ball2W'].forEach(k=>{if(d[k]==null)d[k]=0;});d.ballN=d.ball1R+d.ball1W+d.ball2R+d.ball2W;delete d.ballR;delete d.ballW;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(![1,2].includes(l.gw))l.gw=defGW(l.kv);if(!WT.includes(l.gw1))l.gw1='GW';if(!WT.includes(l.gw2))l.gw2='OPGW';if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
 lines.forEach(normalize);
 if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
 /* ---------- 저장 (Supabase 서버 · 로그인 없이 주소만 알면 같이 씀) ---------- */
@@ -695,13 +701,13 @@ function build(){
   });
 
   // 전선
-  const ph=[],gw=[], keys=Object.keys(towers[0].attach);
+  const ph=[],gw=[],op=[], keys=Object.keys(towers[0].attach);
   spans=[];
   for(let i=0;i<n-1;i++){
     let midY=0,cnt=0;
     keys.forEach(key=>{
       const A=towers[i].attach[key].fwd, Q=towers[i+1].attach[key].back, isG=towers[i].attach[key].gw;
-      const span=Math.abs(Q[0]-A[0]), sag=span*span*.000075*(isG?.8:1), arr=isG?gw:ph;
+      const span=Math.abs(Q[0]-A[0]), sag=span*span*.000075*(isG?.8:1), arr=isG?(wireOfKey(l,key)==='OPGW'?op:gw):ph;
       let pv=null;for(let s=0;s<=24;s++){const u=s/24,p=[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];if(pv)arr.push(...pv,...p);pv=p;}
       if(!isG){midY+=(A[1]+Q[1])/2-sag;cnt++;}
     });
@@ -709,7 +715,7 @@ function build(){
   }
   if(n>1){
     const mk=(arr,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(arr,3));return new T.LineSegments(gg,new T.LineBasicMaterial({color}));};
-    const wires=new T.Group(); wires.add(mk(ph,wireC)); wires.add(mk(gw,steel)); wires.visible=showWires; world.add(wires); world.userData.wires=wires;
+    const wires=new T.Group(); wires.add(mk(ph,wireC)); if(gw.length)wires.add(mk(gw,steel)); if(op.length)wires.add(mk(op,OPGW_C)); wires.visible=showWires; world.add(wires); world.userData.wires=wires;
     // 항공장애표시구: 가공지선에 주황·백색 번갈아 설치
     const ballG=new T.SphereGeometry(1.4,12,10), mO=new T.MeshLambertMaterial({color:0xe2581b}), mW=new T.MeshLambertMaterial({color:0xf2f2ee});
     const mkOrder=(R,W)=>{const o=[];while((R>0||W>0)&&o.length<60){if(R>0){o.push(true);R--;}if(W>0){o.push(false);W--;}}return o;};
@@ -857,6 +863,9 @@ function renderCard(){
       ${kvField(l.kv)}
       <div class="field"><span class="lb">회선 수</span>${segHTML('data-circ',[2,4,6],l.circuits,v=>v+'회선')}</div>
       <div class="field"><span class="lb">가공지선 (꼭대기 지선 수)</span>${segHTML('data-gw',[1,2],l.gw,v=>v===1?'1조 · 가운데':'2조 · 양쪽')}</div>
+      <div class="field"><span class="lb">가공지선 종류 · OPGW / GW</span>
+        <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
+        ${l.gw===1?'':`<div class="row2" style="align-items:center;margin-top:6px"><span class="lb" style="min-width:44px">#2</span>${segHTML('data-wt2',WT,l.gw2,v=>v)}</div>`}</div>
       <dl>
         <dt>철탑</dt><dd>${towers[0].label}호~${towers[towers.length-1].label}호 · ${towers.length}기</dd>
         <dt>선로길이</dt><dd>${(G.L/1000).toFixed(2)} km</dd>
@@ -889,6 +898,9 @@ function renderCard(){
       </dl>
       <div class="field"><span class="lb">회선 수 (선로 전체 적용)</span>${segHTML('data-circ',[2,4,6],l.circuits,v=>v+'회선')}</div>
       <div class="field"><span class="lb">가공지선 (선로 전체 적용)</span>${segHTML('data-gw',[1,2],l.gw,v=>v===1?'1조 · 가운데':'2조 · 양쪽')}</div>
+      <div class="field"><span class="lb">가공지선 종류 · OPGW / GW</span>
+        <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
+        ${l.gw===1?'':`<div class="row2" style="align-items:center;margin-top:6px"><span class="lb" style="min-width:44px">#2</span>${segHTML('data-wt2',WT,l.gw2,v=>v)}</div>`}</div>
       <div class="field"><span class="lb">구조</span>${segHTML('data-pole',[0,1],t.pole?1:0,v=>v?'│ 관형주':'▲ 철탑(격자형)')}</div>
       <div class="field"><span class="lb">철탑 형식 · ${t.tension===t.auto?'기본값':'직접 지정함'}</span>
         ${segHTML('data-type',[0,1],t.tension?1:0,v=>v?'■ 내장형':'○ 현수형')}</div>
@@ -923,6 +935,8 @@ function renderCard(){
   // 선로
   card.querySelectorAll('[data-circ]').forEach(b=>b.addEventListener('click',()=>{l.circuits=+b.dataset.circ;save();build();}));
   card.querySelectorAll('[data-gw]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.gw;if(v!==l.gw){l.gw=v;save();build();}}));
+  card.querySelectorAll('[data-wt1]').forEach(b=>b.addEventListener('click',()=>{if(l.gw1!==b.dataset.wt1){l.gw1=b.dataset.wt1;save();build();}}));
+  card.querySelectorAll('[data-wt2]').forEach(b=>b.addEventListener('click',()=>{if(l.gw2!==b.dataset.wt2){l.gw2=b.dataset.wt2;save();build();}}));
   if(!t&&q('#fName')) q('#fName').addEventListener('change',e=>{const v=stripTL(e.target.value);if(v){l.name=v;e.target.value=v;save();renderHead();}});
   if(!t){const setKv=v=>{if(v>0&&v!==l.kv){l.kv=v;save();build();}};card.querySelectorAll('[data-kvq]').forEach(b=>b.addEventListener('click',()=>setKv(+b.dataset.kvq)));}
   if(q('#goPatrol')) q('#goPatrol').addEventListener('click',startPatrol);
@@ -1188,10 +1202,10 @@ const ITEMS=[
 {id:"nat_plate",label:"국가지점 번호찰"},
 {id:"insulator",label:"애자련",sides:S12,optSides:SUP,nums:true},
 {id:"insulator_year",label:"애자년도",sides:S12,optSides:SUP,nums:true},
-{id:"gw",label:"GW",sides:SML},
-{id:"opgw",label:"OPGW",sides:SML},
-{id:"opgw_extra",label:"OPGW 여장"},
-{id:"opgw_box",label:"OPGW 함체"},
+{id:"gw",label:"GW",sides:SML,wire:"GW"},
+{id:"opgw",label:"OPGW",sides:SML,wire:"OPGW"},
+{id:"opgw_extra",label:"OPGW 여장",wire:"OPGW"},
+{id:"opgw_box",label:"OPGW 함체",wire:"OPGW"},
 {id:"power_line",label:"전력선 종류"},
 {id:"sp_type",label:"SP 종류"},
 {id:"v_line",label:"수직구명줄",sides:SL,legs:{src:["A","D"],load:["B","C"]},sub:[["clamp","하부클램프"]]},
@@ -1202,13 +1216,15 @@ const ITEMS=[
 const inType=(i,t)=>!i.cat||i.cat.includes(t);
 const slotsOf=i=>i.sides?[...i.sides.map(([s,n,tr])=>({id:i.id+"_"+s,label:i.label+" ("+n+")",tier:tr})),...(i.sub?i.sides.flatMap(([s,n])=>i.sub.map(([u,un])=>({id:i.id+"_"+s+"_"+u,label:i.label+" ("+n+" "+un+")",opt:true}))):[]),...(i.optSides||[]).map(([s,n])=>({id:i.id+"_"+s,label:i.label+" ("+n+")",opt:true}))]:[i];
 const slotsFor=tp=>ITEMS.filter(i=>inType(i,tp)).flatMap(slotsOf);
+// 선로의 가공지선 종류에 맞는 항목만 (예전에 올린 사진이 있으면 계속 보여줌)
+const okItem=(i,t,tp)=>inType(i,tp)&&(!i.wire||lineHas(cur(),i.wire)||slotsOf(i).some(s=>photosOf(t.d.id,s.id).length));
 const allSlots=ITEMS.flatMap(slotsOf);
 const itemOf=id=>ITEMS.find(x=>x.id===id);
 const pType=t=>(t.aviation||t.lamp)?'항공':t.tension?'내장':'현수';
 const photosOf=(tid,sid)=>photos.filter(p=>p.towerId===tid&&p.slot===sid&&p.path).sort((a,b)=>(a.at||0)-(b.at||0));
 const blobUrl=p=>urlCache[p.path]||'';
 function progress(t){
-  const sl=slotsFor(pType(t)).filter(s=>!s.opt);
+  const sl=ITEMS.filter(i=>okItem(i,t,pType(t))).flatMap(slotsOf).filter(s=>!s.opt);
   const done=sl.filter(s=>photosOf(t.d.id,s.id).length).length;
   return {done,total:sl.length,pct:Math.round(done/sl.length*100)};
 }
@@ -1260,7 +1276,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v4`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v4`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
@@ -1268,7 +1284,7 @@ function renderLedger(){
   gid('lgRO').hidden=!!AS;
   gid('lgRO').textContent='서버에 연결되지 않아 사진을 올릴 수 없어요. 인터넷 연결을 확인하세요.';
   const g=gid('photoGrid'), d=gid('diagram'); g.innerHTML='';
-  if(!sel||!itemOf(sel)||!inType(itemOf(sel),tp)){
+  if(!sel||!itemOf(sel)||!okItem(itemOf(sel),t,tp)){
     sel=null; g.hidden=true; d.hidden=false; d.innerHTML=diagramHTML(t,tp);
     d.querySelectorAll('.hot').forEach(e=>e.addEventListener('click',()=>pick(e.dataset.id,e.dataset.no,e.dataset.tier)));
     d.querySelectorAll('[data-pick]').forEach(e=>e.addEventListener('click',()=>pick(e.dataset.pick)));
@@ -1288,24 +1304,27 @@ function diagramHTML(t,tp){
   const tid=t.d.id;
   const isDone=i=>slotsOf(i).some(s=>photosOf(tid,s.id).length>0);
   const isDoneNT=(i,no,tr)=>slotsOf(i).some(s=>s.tier===tr&&s.id.includes("2_")===(no==="2")&&photosOf(tid,s.id).length>0);
-  const hs=(id,inner,tx,ty,lb,no,tier)=>{const i=itemOf(id);if(!i||!inType(i,tp))return"";
+  const hs=(id,inner,tx,ty,lb,no,tier)=>{const i=itemOf(id);if(!i||!okItem(i,t,tp))return"";
     const on=tier?isDoneNT(i,no,tier):isDone(i);
     return `<g class="hot" data-id="${id}" data-no="${no||""}" data-tier="${tier||""}" role="button" tabindex="0" style="cursor:pointer"><g style="fill:${on?"var(--ok)":"var(--soft)"};stroke:var(--ink);stroke-width:1.2">${inner}</g><text x="${tx}" y="${ty}" text-anchor="middle" font-size="11" style="fill:var(--ink);stroke:none">${lb||i.label}</text></g>`;};
   const ln="stroke:var(--ink);stroke-width:2;fill:none";
   const str=(x,y)=>`<rect x="${x-4}" y="${y}" width="8" height="34" rx="3"/>`;
   const rf=cur().side1==="right";
   const AY=[150,215,280],LX=[40,35,30],RX=[260,265,270];
-  const arms=AY.map((y,k)=>`M${[133,128,120][k]} ${y} L${LX[k]} ${y} M${[167,172,180][k]} ${y} L${RX[k]} ${y}`).join(" ")+" M135 100 L100 100 M165 100 L200 100";
+  const L_=cur(), one=L_.gw===1;
+  const arms=AY.map((y,k)=>`M${[133,128,120][k]} ${y} L${LX[k]} ${y} M${[167,172,180][k]} ${y} L${RX[k]} ${y}`).join(" ")+(one?" M141 92 L150 40 L159 92":" M135 100 L100 100 M165 100 L200 100");
   const TN=Object.fromEntries(TIERS), noL=rf?"2":"1", noR=rf?"1":"2";
+  const wL=noL==="1"?L_.gw1:L_.gw2, wR=noR==="1"?L_.gw1:L_.gw2, wid=w=>w==="OPGW"?"opgw":"gw";
+  const wireHs=one?hs(wid(L_.gw1),'<circle cx="150" cy="38" r="7"/>',150,24)
+    :hs(wid(wL),'<circle cx="100" cy="100" r="7"/>',100,88)+hs(wid(wR),'<circle cx="200" cy="100" r="7"/>',200,88);
   return `<svg viewBox="0 0 300 430" style="width:100%;max-width:420px;display:block;margin:auto" aria-label="철탑 도면">
 ${AY.map((y,k)=>`<rect x="2" y="${y-14}" width="296" height="66" rx="6" style="fill:var(--soft);opacity:${k%2?.35:.6};stroke:none"/><text x="8" y="${y+8}" font-size="12" font-weight="bold" style="fill:var(--muted);stroke:none">${TN[TIER_KEYS[k]]}단</text><text x="292" y="${y+8}" text-anchor="end" font-size="12" font-weight="bold" style="fill:var(--muted);stroke:none">${TN[TIER_KEYS[k]]}단</text>`).join("")}
 <path d="M95 385 L135 120 M205 385 L165 120 M135 120 L150 70 L165 120" style="${ln}"/>
 <path d="M103 335 L197 335 M110 285 L190 285 M118 235 L182 235 M126 185 L174 185 M95 385 L197 335 M205 385 L103 335 M103 335 L190 285 M197 335 L110 285 M110 285 L182 235 M190 285 L118 235 M118 235 L174 185 M182 235 L126 185" style="stroke:var(--muted);stroke-width:1;fill:none"/>
 <path d="${arms}" style="${ln}"/>
-${hs("top",'<circle cx="150" cy="62" r="8"/>',150,46)}
+${one?hs("top",'<circle cx="112" cy="62" r="8"/>',112,46):hs("top",'<circle cx="150" cy="62" r="8"/>',150,46)}
 ${hs("air_light",'<circle cx="186" cy="62" r="6"/>',225,66)}
-${hs("gw",'<circle cx="100" cy="100" r="7"/>',100,88)}
-${hs("opgw",'<circle cx="200" cy="100" r="7"/>',200,88)}
+${wireHs}
 ${AY.map((y,k)=>{const tr=TIER_KEYS[k],n=TN[tr];return [
  hs("insulator",str(LX[k],y),LX[k],y+46,"애자련 "+n,noL,tr),
  hs("insulator",str(RX[k],y),RX[k],y+46,"애자련 "+n,noR,tr),
@@ -1321,7 +1340,7 @@ ${hs("base",'<rect x="70" y="390" width="160" height="22"/>',150,405)}
 ${hs("view",'<rect x="10" y="12" width="40" height="22" rx="4"/>',30,50)}
 </svg>
 <p class="note" style="border:0;padding:0">도면의 부품을 누르거나 아래에서 항목을 고르세요. 초록색은 사진이 등록된 곳이에요.</p>
-<div class="lg-picks">${ITEMS.filter(i=>inType(i,tp)).map(i=>`<button class="ghost" type="button" data-pick="${i.id}">${isDone(i)?"✓ ":""}${i.label}</button>`).join("")}</div>`;
+<div class="lg-picks">${ITEMS.filter(i=>okItem(i,t,tp)).map(i=>`<button class="ghost" type="button" data-pick="${i.id}">${isDone(i)?"✓ ":""}${i.label}</button>`).join("")}</div>`;
 }
 
 // 사진 입력칸은 화면이 다시 그려져도 사라지지 않게 하나만 만들어 둠
