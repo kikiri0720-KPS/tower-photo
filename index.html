@@ -101,6 +101,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .head{position:absolute;top:12px;left:max(16px, env(safe-area-inset-left,0px));max-width:min(330px, calc(100% - 32px));padding:12px 14px;display:grid;gap:5px}
 .eyebrow{font:600 10px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
 .head h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.stats .pk{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;border-radius:4px;padding:1px 2px}
+.stats .pk.on{background:var(--accent);color:var(--accent-ink);text-decoration:none}
+.stats .pklist{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:6px;max-height:96px;overflow:auto;white-space:normal}
+.stats .pklist b{font-family:var(--ui);font-size:11.5px;margin-right:2px}
+.stats .pklist button{font:600 12px/1 var(--ui);padding:6px 9px;border-radius:99px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer}
+.stats .pklist button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .head .stats{margin:0;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;line-height:1.5;white-space:pre-line}
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;align-items:center}
 .legend span{display:inline-flex;align-items:center;gap:5px}
@@ -787,13 +793,29 @@ function nextAfterLast(l){const last=l.towers[l.towers.length-1];const n=parseIn
 /* ---------- UI ---------- */
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const lineSel=document.getElementById('lineSel'), chipsEl=document.getElementById('chips'), card=document.getElementById('card');
+let pickKey=null, pickLine=null;
+const PICKS={aviation:{n:'도색',f:t=>t.aviation},lamp:{n:'항공등',f:t=>t.lamp},ball:{n:'항공구',f:t=>t.d.ball&&t.d.ballN>0},kudzu:{n:'칡넝쿨',f:t=>t.d.kudzu}};
+CROSS.forEach(c=>PICKS[c.k]={n:c.name,f:t=>t.d[c.k]});
+LAND.forEach(x=>PICKS[x.k]={n:x.name,f:t=>t.d.land===x.k});
+document.getElementById('stats').addEventListener('click',e=>{
+  const g=e.target.closest('[data-go]'); if(g){const t=towers[+g.dataset.go]; if(t){selectTower(t); renderHead();} return;}
+  const k=e.target.closest('[data-pk]'); if(k){pickKey=pickKey===k.dataset.pk?null:k.dataset.pk; renderHead();}
+});
 function renderHead(){
   const l=cur();
   document.getElementById('eyebrow').textContent=`${l.kv}kV · ${l.circuits}회선 · ${gwTxt(l)}`;
   document.getElementById('title').textContent=LN(l);
   const nT=towers.filter(t=>t.tension).length;
   const first=towers[0].label, last=towers[towers.length-1].label;
-  document.getElementById('stats').textContent=`${first}호~${last}호 · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · 도색 ${towers.filter(t=>t.aviation).length} · 항공등 ${lampTxt(towers.filter(t=>t.lamp).reduce((a,t)=>({high:a.high+t.lampN.high,mid:a.mid+t.lampN.mid,low:a.low+t.lampN.low}),{high:0,mid:0,low:0}),true)} · 항공구 ${ballSum(l)}개 · `+CROSS.map(c=>`${c.name.replace('횡단','')} ${l.towers.filter(t=>t[c.k]).length}`).join(' · ')+'\n'+LAND.map(x=>`${x.name} ${l.towers.filter(t=>t.land===x.k).length}기`).join(' · ')+` · 칡넝쿨 ${l.towers.filter(t=>t.kudzu).length}기`;
+  if(pickLine!==l.id){pickLine=l.id;pickKey=null;}
+  const pk=(k,txt,n)=>n>0?`<span class="pk${pickKey===k?' on':''}" data-pk="${k}" role="button">${txt}</span>`:txt;
+  const lampSum=towers.filter(t=>t.lamp).reduce((a,t)=>({high:a.high+t.lampN.high,mid:a.mid+t.lampN.mid,low:a.low+t.lampN.low}),{high:0,mid:0,low:0});
+  const hit=pickKey&&PICKS[pickKey]?towers.filter(PICKS[pickKey].f):[];
+  document.getElementById('stats').innerHTML=`${esc(first)}호~${esc(last)}호 · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · ${pk('aviation','도색 '+towers.filter(PICKS.aviation.f).length,towers.filter(PICKS.aviation.f).length)} · ${pk('lamp','항공등 '+esc(lampTxt(lampSum,true)),towers.filter(PICKS.lamp.f).length)} · ${pk('ball','항공구 '+ballSum(l)+'개',towers.filter(PICKS.ball.f).length)} · `
+    +CROSS.map(c=>{const n=towers.filter(PICKS[c.k].f).length;return pk(c.k,c.name.replace('횡단','')+' '+n,n);}).join(' · ')+'\n'
+    +LAND.map(x=>{const n=towers.filter(PICKS[x.k].f).length;return pk(x.k,x.name+' '+n+'기',n);}).join(' · ')
+    +' · '+pk('kudzu','칡넝쿨 '+towers.filter(PICKS.kudzu.f).length+'기',towers.filter(PICKS.kudzu.f).length)
+    +(hit.length?`<span class="pklist"><b>${PICKS[pickKey].n} ${hit.length}기</b>${hit.map(t=>`<button type="button" data-go="${towers.indexOf(t)}"${selT===t?' class="on"':''}>${esc(H_(t))}</button>`).join('')}</span>`:'');
   lineSel.innerHTML=lines.slice().sort((a,b)=>(+b.kv||0)-(+a.kv||0)||String(LN(a)).localeCompare(String(LN(b)),'ko',{numeric:true})).map(x=>`<option value="${x.id}"${x.id===curId?' selected':''}>${esc(x.kv+'kV '+LN(x))}</option>`).join('');
 }
 function renderRail(){
