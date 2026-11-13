@@ -508,6 +508,46 @@ function armSpec(c){
 }
 const ORANGE=new T.Color('#e2581b'), WHITE=new T.Color('#f2f2ee');
 // 관형주: 강관 원통 기둥 + 수평 완금
+
+/* ---------- 애자련·금구류 (2련·V련, 아킹혼·아킹링·피뢰기) ---------- */
+const v3=(a)=>new T.Vector3(a[0],a[1],a[2]);
+function fitting(a,b,kind,H){
+  if(!kind) return;
+  const A=v3(a), B=v3(b), d=B.clone().sub(A); const len=d.length(); if(len<.01) return; d.normalize();
+  const up=new T.Vector3(0,1,0); let p=new T.Vector3().crossVectors(d,up); if(p.lengthSq()<1e-4) p.set(1,0,0); p.normalize();
+  if(kind==='아킹혼'){
+    const h=Math.max(.5,H*.012);
+    const a1=A.clone().addScaledVector(p,h).addScaledVector(d,h*.8), b1=B.clone().addScaledVector(p,h).addScaledVector(d,-h*.8);
+    EXTRA.horns.push(A.x,A.y,A.z,a1.x,a1.y,a1.z, B.x,B.y,B.z,b1.x,b1.y,b1.z);
+  }else if(kind==='아킹링'){
+    EXTRA.rings.push({p:B.clone().addScaledVector(d,-Math.min(.4,len*.15)),d:d.clone(),r:Math.max(.3,H*.009)});
+  }else if(kind==='피뢰기'){
+    const o=Math.max(.6,H*.014);
+    EXTRA.arrs.push({a:A.clone().addScaledVector(p,o).addScaledVector(d,len*.1),b:B.clone().addScaledVector(p,o).addScaledVector(d,-len*.1),r:Math.max(.13,H*.0035)});
+  }
+}
+// 회선 번호: 선로 진행 방향 왼쪽(s=+1)·오른쪽(s=-1) 중 #1 쪽은 선로 정보의 '#1 측' 설정을 따름
+const noOf=(l,s)=>(s===(l.side1==='right'?-1:1))?'1':'2';
+function hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att){
+  const H=t.H, kv=l.kv, no=noOf(l,s), kS=t.d['arr'+no+'S']||'', kL=t.d['arr'+no+'L']||'';
+  if(t.tension){
+    const bk=[x,hy-.8,-ins], fw=[x,hy-.8,ins], mid=[x,hy-ins*.55,0];
+    seg(bk,mid,steel); seg(mid,fw,steel);
+    const off=kv>=300?Math.max(.3,H*.006):0;   // 345kV 이상은 내장 2련
+    [[bk,kS],[fw,kL]].forEach(([e,kind])=>{
+      (off?[-off,off]:[0]).forEach(o=>EXTRA.discs.push([W([hang[0]+o,hang[1],hang[2]]),W([e[0]+o,e[1],e[2]]),H]));
+      fitting(W(hang),W(e),kind,H);
+    });
+    att[key]={back:W(bk),fwd:W(fw)};
+  }else{
+    const at=[x,hy-ins,0];
+    if(kv>=700){const sv=Math.max(1.2,H*.03);EXTRA.discs.push([W([x-sv,hang[1],0]),W(at),H]);EXTRA.discs.push([W([x+sv,hang[1],0]),W(at),H]);}   // 765kV V련
+    else if(kv>=300){const o=Math.max(.3,H*.006);EXTRA.discs.push([W([x,hang[1],-o]),W([x,at[1],-o]),H]);EXTRA.discs.push([W([x,hang[1],o]),W([x,at[1],o]),H]);seg([x,at[1],-o],[x,at[1],o],steel);}   // 345kV 현수 2련
+    else EXTRA.discs.push([W(hang),W(at),H]);
+    fitting(W(hang),W(at),kS||kL,H);
+    att[key]={back:W(at),fwd:W(at)};
+  }
+}
 function poleInto(l,t,steel,pos,col,grp0,mat){
   const grp=new T.Group(); grp.position.set(t.x,0,t.z); grp.rotation.y=-(t.th||0); grp0.add(grp);
   const H=t.H, spec=armSpec(l.circuits);
@@ -536,12 +576,7 @@ function poleInto(l,t,steel,pos,col,grp0,mat){
     a.pts.forEach((pf,p)=>{
       const L=a.pts.length>1?(p===0?Lo*.45:Lo):Lo, x=s*(r+L), hang=[x,hy-th*.8,0];
       const key=s+'_'+k+'_'+p;
-      if(t.tension){
-        const bk=[x,hy-.8,-ins], fw=[x,hy-.8,ins], mid=[x,hy-ins*.55,0];
-        seg(bk,mid); seg(mid,fw);
-        EXTRA.discs.push([W(hang),W(bk),H]); EXTRA.discs.push([W(hang),W(fw),H]);
-        att[key]={back:W(bk),fwd:W(fw)};
-      }else{const at=[x,hy-ins,0]; EXTRA.discs.push([W(hang),W(at),H]); att[key]={back:W(at),fwd:W(at)};}
+      hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att);
     });
   }));
   t.W=W; t.poleR=rAt;
@@ -568,11 +603,13 @@ function towerInto(l,t,steel,pos,col){
   const S=[[-1,-1],[1,-1],[1,1],[-1,1]];
   const corner=(k,y)=>{const w=width(y)/2;return [S[k][0]*w,y,S[k][1]*w];};
   const lerp=(a,q,u)=>[a[0]+(q[0]-a[0])*u,a[1]+(q[1]-a[1])*u,a[2]+(q[2]-a[2])*u];
+  t.segFrom=pos.length; t.joints=[];
   // 몸체: 아래로 갈수록 패널을 촘촘하게 (주주재 + X 사재 + 보조재)
   let lv=[]; const nb=11; for(let i=0;i<=nb;i++) lv.push(hb*(1-Math.pow(1-i/nb,1.35)));
   spec.arms.forEach(a=>{lv.push(H*a.f,H*(a.f+spec.ad));}); lv.push(H*.95);
   lv=[...new Set(lv.map(v=>Math.round(v*100)/100))].sort((p,q)=>p-q);
   lv.forEach((y,li)=>{
+    for(let k=0;k<4;k++) t.joints.push(W(corner(k,y)));
     for(let k=0;k<4;k++) seg(corner(k,y),corner((k+1)%4,y));
     // 수평 격자(평면 사재): 몇 단마다 대각선으로
     if(li%3===0&&y<hb){seg(corner(0,y),corner(2,y));seg(corner(1,y),corner(3,y));}
@@ -609,12 +646,7 @@ function towerInto(l,t,steel,pos,col){
       const L=H*pf, u=L/Lo, x=s*(w0/2+L), zz=w0/2*(1-u), hang=[x,hy,0];
       if(p<a.pts.length-1) seg([x,hy,-zz],[x,hy,zz]);
       const key=s+'_'+k+'_'+p;
-      if(t.tension){
-        const bk=[x,hy-.8,-ins], fw=[x,hy-.8,ins], mid=[x,hy-ins*.55,0];
-        seg(mid,fw,steel); seg(bk,mid,steel);
-        EXTRA.discs.push([W(hang),W(bk),H]); EXTRA.discs.push([W(hang),W(fw),H]);
-        att[key]={back:W(bk),fwd:W(fw)};
-      }else{const at=[x,hy-ins,0]; EXTRA.discs.push([W(hang),W(at),H]); att[key]={back:W(at),fwd:W(at)};}
+      hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att);
     });
   }));
   if(l.gw===1){
@@ -629,13 +661,13 @@ function towerInto(l,t,steel,pos,col){
     seg([s*w0/2,H*.98,-w0/2],tip); seg([s*w0/2,H*.98,w0/2],tip);
     att['g'+s]={back:W(tip),fwd:W(tip),gw:true};
   });
-  t.attach=att;
+  t.attach=att; t.segTo=pos.length;
   // 가까이 볼 때 쓰는 위치 정보
   t.W=W; t.corner=corner; t.widthAt=width;
 }
 
 /* ---------- 선로 그리기 ---------- */
-let towers=[], spans=[], pathInfo=null, strobes=[], EXTRA={discs:[],feet:[]};
+let towers=[], spans=[], pathInfo=null, strobes=[], EXTRA={discs:[],feet:[],horns:[],rings:[],arrs:[],dmps:[]};
 let showWires=true, showTags=true, showPath=false, selT=null, play=null;
 const labelsEl=document.getElementById('labels');
 const LAND=[{k:'paddy',name:'논',c:'var(--paddy)',v:'--paddy'},{k:'field',name:'밭',c:'var(--field)',v:'--field'},{k:'urban',name:'도심지',c:'var(--urban)',v:'--urban'}];
@@ -692,7 +724,7 @@ function build(){
     return {d,i,label:d.label,pole:!!d.pole,x,z,th:TH[i],ang:i>0&&i<n-1?angOf(d):0,y:elev(x,z),H,autoH,tension,auto,aviation,autoAv,lamp,lampN,
       autoSpan:defSpan(i,l.seed)};
   });
-  const pos=[],col=[]; EXTRA={discs:[],feet:[]};
+  const pos=[],col=[]; EXTRA={discs:[],feet:[],horns:[],rings:[],arrs:[],dmps:[]}; G.pos=pos; G.col=col;
   const poleGrp=new T.Group(), matCache={};
   const mat=c=>{const k=c.getHexString();return matCache[k]||(matCache[k]=new T.MeshLambertMaterial({color:c.clone()}));};
   towers.forEach(t=>t.pole?poleInto(l,t,steel,pos,col,poleGrp,mat):towerInto(l,t,steel,pos,col));
@@ -769,7 +801,18 @@ function build(){
     keys.forEach(key=>{
       const A=towers[i].attach[key].fwd, Q=towers[i+1].attach[key].back, isG=towers[i].attach[key].gw;
       const span=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=span*span*.000075*(isG?.8:1), arr=isG?(wireOfKey(l,key)==='OPGW'?op:gw):ph;
-      let pv=null;for(let s=0;s<=24;s++){const u=s/24,p=[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];if(pv)arr.push(...pv,...p);pv=p;}
+      const at=u=>[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];
+      // 다도체: 345kV 4도체, 765kV 6도체 (전력선만)
+      const nb=isG?1:(l.kv>=700?6:l.kv>=300?4:1), hx=(Q[0]-A[0])/(span||1), hz=(Q[2]-A[2])/(span||1), sxv=-hz, szv=hx;
+      const offs=nb===1?[[0,0]]:nb===4?[[-.25,.25],[.25,.25],[.25,-.25],[-.25,-.25]]:[0,1,2,3,4,5].map(k=>[Math.cos(k/6*Math.PI*2)*.45,Math.sin(k/6*Math.PI*2)*.45]);
+      offs.forEach(([os,oy])=>{let pv=null;for(let s2=0;s2<=24;s2++){const p=at(s2/24);p[0]+=sxv*os;p[1]+=oy;p[2]+=szv*os;if(pv)arr.push(...pv,...p);pv=p;}});
+      if(nb>1){const ns=Math.max(2,Math.round(span/60));for(let k=1;k<ns;k++){const c=at(k/ns);for(let j=0;j<offs.length;j++){const a1=offs[j],b1=offs[(j+1)%offs.length];arr.push(c[0]+sxv*a1[0],c[1]+a1[1],c[2]+szv*a1[0],c[0]+sxv*b1[0],c[1]+b1[1],c[2]+szv*b1[0]);}}}
+      // 댐퍼: 철탑 가까이 (입력한 댐퍼 수량이 있을 때)
+      const wt=isG?wireOfKey(l,key):'P';
+      const dmpN=(d,side)=>wt==='P'?(+d.dmpP||0):wt==='OPGW'?(+d['dmpOP'+side]||0):(+d['dmpGW'+side]||0);
+      const u4=Math.min(.2,5/(span||1));
+      if(dmpN(l.towers[i],'L')>0) EXTRA.dmps.push({p:at(u4),h:Math.atan2(hz,hx)});
+      if(dmpN(l.towers[i+1],'S')>0) EXTRA.dmps.push({p:at(1-u4),h:Math.atan2(hz,hx)});
       if(!isG){midY+=(A[1]+Q[1])/2-sag;cnt++;}
     });
     spans.push({i,x:(towers[i].x+towers[i+1].x)/2,z:(towers[i].z+towers[i+1].z)/2,h:HD[i],y:midY/cnt,len:Math.hypot(towers[i+1].x-towers[i].x,towers[i+1].z-towers[i].z),tags:[]});
@@ -802,7 +845,7 @@ function build(){
   {
     const up=new T.Vector3(0,1,0), dir=new T.Vector3(), q=new T.Quaternion(), m4=new T.Matrix4(), sc=new T.Vector3(), ps=new T.Vector3();
     // 애자련: 줄마다 원판 8개
-    const DN=8, discs=EXTRA.discs;
+    const DN=l.kv>=700?14:l.kv>=300?11:8, discs=EXTRA.discs;
     if(discs.length){
       const im=new T.InstancedMesh(new T.CylinderGeometry(1,1,1,10),new T.MeshLambertMaterial({color:0x8fa3b0}),discs.length*DN);
       let n=0;
@@ -813,6 +856,20 @@ function build(){
       });
       im.count=n; world.add(im);
     }
+    // 아킹혼
+    if(EXTRA.horns.length){const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(EXTRA.horns,3));world.add(new T.LineSegments(gg,new T.LineBasicMaterial({color:0x6b6f73})));}
+    // 아킹링
+    if(EXTRA.rings.length){const rm=new T.InstancedMesh(new T.TorusGeometry(1,.12,6,16),new T.MeshLambertMaterial({color:0xb8bec4}),EXTRA.rings.length);const zz=new T.Vector3(0,0,1);
+      EXTRA.rings.forEach((r,i)=>{q.setFromUnitVectors(zz,r.d);sc.set(r.r,r.r,r.r);m4.compose(r.p,q,sc);rm.setMatrixAt(i,m4);});world.add(rm);}
+    // 피뢰기
+    if(EXTRA.arrs.length){const am=new T.InstancedMesh(new T.CylinderGeometry(1,1,1,10),new T.MeshLambertMaterial({color:0x7d8489}),EXTRA.arrs.length);
+      EXTRA.arrs.forEach((a,i)=>{dir.subVectors(a.b,a.a);const len=dir.length();dir.normalize();q.setFromUnitVectors(up,dir);ps.addVectors(a.a,a.b).multiplyScalar(.5);sc.set(a.r,len,a.r);m4.compose(ps,q,sc);am.setMatrixAt(i,m4);});world.add(am);
+      // 피뢰기 갓(원판)
+      const sk=new T.InstancedMesh(new T.CylinderGeometry(1,1,1,10),new T.MeshLambertMaterial({color:0x5c6266}),EXTRA.arrs.length*5);let k2=0;
+      EXTRA.arrs.forEach(a=>{dir.subVectors(a.b,a.a);const len=dir.length();dir.normalize();q.setFromUnitVectors(up,dir);for(let j=0;j<5;j++){ps.copy(a.a).addScaledVector(dir,len*(j+.5)/5);sc.set(a.r*2.2,len*.03,a.r*2.2);m4.compose(ps,q,sc);sk.setMatrixAt(k2++,m4);}});world.add(sk);}
+    // 댐퍼(스톡브리지): 전선 아래 아령 모양
+    if(EXTRA.dmps.length){const dm=new T.InstancedMesh(new T.CylinderGeometry(.14,.14,1.1,8),new T.MeshLambertMaterial({color:0x555b60}),EXTRA.dmps.length);const xx=new T.Vector3(1,0,0);
+      EXTRA.dmps.forEach((d,i)=>{q.setFromAxisAngle(up,-d.h);const q2=new T.Quaternion().setFromUnitVectors(up,xx);q.multiply(q2);ps.set(d.p[0],d.p[1]-.45,d.p[2]);sc.set(1,1,1);m4.compose(ps,q,sc);dm.setMatrixAt(i,m4);});world.add(dm);}
     // 기초 받침
     if(EXTRA.feet.length){
       const fm=new T.InstancedMesh(new T.BoxGeometry(1,1,1),new T.MeshLambertMaterial({color:0x9a9a94}),EXTRA.feet.length);
@@ -1253,6 +1310,32 @@ function updateDetail(){
   // 구명줄 아래 하부클램프
   {const p=t.pole?W([-(t.poleR(.6)+.25)*.7,.6,-(t.poleR(.6)+.25)*.7]):(c=>W([c[0]-.3,.6,c[2]-.3]))(t.corner(0,.6));
    const bx=new T.Mesh(new T.BoxGeometry(.35,.5,.35),new T.MeshLambertMaterial({color:0xff7a00}));bx.position.set(p[0],p[1],p[2]);g.add(bx);}
+  // 앵글(ㄱ형강) 부재 + 이음판·볼트 (격자 철탑을 눌렀을 때만)
+  if(!t.pole&&G.pos&&t.segTo>t.segFrom){
+    const P=G.pos, C=G.col, nseg=(t.segTo-t.segFrom)/6;
+    const geo=new T.BoxGeometry(1,1,1), mA=new T.InstancedMesh(geo,new T.MeshLambertMaterial({color:0xffffff}),nseg), mB=new T.InstancedMesh(geo,new T.MeshLambertMaterial({color:0xffffff}),nseg);
+    const a=new T.Vector3(),b=new T.Vector3(),d=new T.Vector3(),up=new T.Vector3(0,1,0),q=new T.Quaternion(),m4=new T.Matrix4(),sc=new T.Vector3(),ps=new T.Vector3(),ex=new T.Vector3(),ez=new T.Vector3(),col=new T.Color();
+    let k=0;
+    for(let i=t.segFrom;i<t.segTo;i+=6){
+      a.set(P[i],P[i+1],P[i+2]); b.set(P[i+3],P[i+4],P[i+5]); d.subVectors(b,a); const len=d.length(); if(len<.05) continue; d.normalize();
+      const main=Math.abs(d.y)>.8&&len>t.H*.025;            // 주주재(기둥)
+      const w=main?Math.max(.16,t.H*.0045):Math.max(.07,t.H*.0019), tk=w*.22;
+      q.setFromUnitVectors(up,d); ex.set(1,0,0).applyQuaternion(q); ez.set(0,0,1).applyQuaternion(q);
+      col.setRGB(C[(i/3)*3],C[(i/3)*3+1],C[(i/3)*3+2]);
+      ps.addVectors(a,b).multiplyScalar(.5).addScaledVector(ex,w/2); sc.set(w,len,tk); m4.compose(ps,q,sc); mA.setMatrixAt(k,m4); if(mA.setColorAt) mA.setColorAt(k,col);
+      ps.addVectors(a,b).multiplyScalar(.5).addScaledVector(ez,w/2); sc.set(tk,len,w); m4.compose(ps,q,sc); mB.setMatrixAt(k,m4); if(mB.setColorAt) mB.setColorAt(k,col);
+      k++;
+    }
+    mA.count=k; mB.count=k; [mA,mB].forEach(m=>{if(m.instanceColor)m.instanceColor.needsUpdate=true;g.add(m);});
+    // 이음판 + 볼트
+    const J=t.joints||[], pl=Math.max(.45,t.H*.012);
+    const gm=new T.InstancedMesh(new T.BoxGeometry(1,1,1),new T.MeshLambertMaterial({color:0x8d969c}),J.length);
+    const bm=new T.InstancedMesh(new T.SphereGeometry(1,6,4),new T.MeshLambertMaterial({color:0x3e4448}),J.length*4);
+    let kb=0; q.setFromAxisAngle(up,-(t.th||0));
+    J.forEach((p,i)=>{ps.set(p[0],p[1],p[2]);sc.set(pl,pl*1.2,pl);m4.compose(ps,q,sc);gm.setMatrixAt(i,m4);
+      for(let j=0;j<4;j++){const ox=(j%2?1:-1)*pl*.25, oy=(j<2?1:-1)*pl*.3;ps.set(p[0]+ox*Math.cos(t.th||0),p[1]+oy,p[2]+ox*Math.sin(t.th||0));sc.setScalar(Math.max(.05,pl*.07));m4.compose(ps,q,sc);bm.setMatrixAt(kb++,m4);}});
+    g.add(gm,bm);
+  }
   scene.add(g); detailGrp=g;
 }
 function updateMarker(){if(selT){marker.position.set(selT.x,selT.y+1.5,selT.z);marker.scale.setScalar(selT.H/45);marker.visible=true;}else marker.visible=false;updateDetail();}
@@ -1403,11 +1486,18 @@ renderer.domElement.addEventListener('pointerup',e=>{
 });
 function resize(){const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/Math.max(1,h);camera.updateProjectionMatrix();}
 window.addEventListener('resize',resize);
-function applyTheme(){scene.background=new T.Color(cssVar('--sky'));const ac=cssVar('--accent');marker.material.color.set(ac);walker.material.color.set(ac);if(G)build();}
+function applyTheme(){scene.background=new T.Color(cssVar('--sky'));paintSky();const ac=cssVar('--accent');marker.material.color.set(ac);walker.material.color.set(ac);if(G)build();}
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);
 new MutationObserver(applyTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 
 scene.background=new T.Color(cssVar('--sky'));
+// 하늘: 위는 파랗고 지평선은 밝은 그라데이션
+const skyDome=(()=>{const g=new T.SphereGeometry(140000,24,12),p=g.attributes.position,c=[];for(let i=0;i<p.count;i++)c.push(1,1,1);g.setAttribute('color',new T.Float32BufferAttribute(c,3));
+  const m=new T.Mesh(g,new T.MeshBasicMaterial({vertexColors:true,side:T.BackSide,fog:false,depthWrite:false}));m.renderOrder=-10;scene.add(m);return m;})();
+function paintSky(){const dark=(document.documentElement.dataset.theme==='dark')||(document.documentElement.dataset.theme!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const top=new T.Color(dark?'#0b1622':'#5d93c9'), hor=new T.Color(cssVar('--sky')), g=skyDome.geometry, p=g.attributes.position, c=g.attributes.color, t=new T.Color();
+  for(let i=0;i<p.count;i++){const y=Math.max(0,p.getY(i)/140000);t.copy(hor).lerp(top,Math.pow(y,.6));c.setXYZ(i,t.r,t.g,t.b);}c.needsUpdate=true;}
+paintSky();
 resize();
 /* ---------- 철탑 기별대장 (기별사진) ---------- */
 const gid=id=>document.getElementById(id);
@@ -1500,7 +1590,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v7`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v8`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
