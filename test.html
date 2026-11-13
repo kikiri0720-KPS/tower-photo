@@ -244,29 +244,27 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   .card dl{grid-template-columns:auto 1fr auto 1fr}
   body.playing .card{display:none}
 }
-/* v10: 화면 분할 — 철탑을 누르면 3D(위/왼쪽)와 정보 카드(아래/오른쪽)가 겹치지 않게 나뉨 */
+/* v10: 화면 분할 — 왼쪽 3D 철탑 / 오른쪽 정보·기별사진 (바꾸면 왼쪽에 바로 보임) */
 .splitBtn{font-size:13px;padding:5px 8px;border-radius:7px;white-space:nowrap;margin-left:auto}
 .splitBtn[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
-.card-top .splitBtn + .close{margin-left:0}
-body.split #scene,body.split #labels{right:var(--splitR,0px);bottom:var(--splitB,0px)}
-body.split #scene{border-bottom:2px solid var(--accent)}
-body.split .card{top:var(--splitT,auto);max-height:none;bottom:calc(var(--railH, 120px) + 8px)}
-@media (max-width:640px){
-  body.split{--splitB:calc(100% - 46%)}
-  body.split .head p.stats,body.split .head .eyebrow{display:none}
-  body.split .card{--splitT:calc(46% + 8px)}
-}
-@media (min-width:641px){
-  body.split{--splitR:330px}
-  body.split .card{--splitT:12px}
-}
+.lg-bar .splitBtn{flex:0 0 auto}
+body.split{--pw:56%}
+@media (min-width:900px){body.split{--pw:440px}}
+body.split #scene,body.split #labels{right:var(--pw)}
+body.split .rail{right:var(--pw)}
+body.split .head{max-width:calc(100% - var(--pw) - 24px)}
+body.split .head p.stats,body.split .head .eyebrow,body.split .head .legend{display:none}
+body.split .card{top:0;bottom:0;right:0;left:auto;width:var(--pw);max-height:none;border-radius:0;border-left:2px solid var(--accent);
+  padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+body.split .card dl{grid-template-columns:auto 1fr}
+body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)}
 </style>
 
 </head>
 <body>
 <div class="ledger" id="ledger" hidden>
   <div class="lg-bar"><button class="ghost" type="button" id="lgBack">← 3D 화면</button>
-    <div class="lg-head"><b id="lgTitle"></b><span id="lgSub"></span></div></div>
+    <div class="lg-head"><b id="lgTitle"></b><span id="lgSub"></span></div><button class="ghost splitBtn" type="button" data-split>⧉ 분할</button></div>
   <div class="lg-body">
     <div class="lg-prog panel"><div class="lg-row"><span id="lgPct"></span><button class="ghost" type="button" id="lgSide"></button></div>
       <div class="bar"><i id="lgBar"></i></div>
@@ -1413,23 +1411,29 @@ function selectTower(t,openCard){
   if(t){const [p,tg]=towerPose(t);flyTo(p,tg);}
 }
 
-/* ---------- v10: 화면 분할 ---------- */
+/* ---------- v10: 화면 분할 (왼쪽 3D · 오른쪽 정보) ---------- */
 let splitOn=true; try{splitOn=localStorage.getItem('tw_split')!=='0';}catch(e){}
+let splitTid=null;
 function applySplit(){
-  const want=splitOn&&!card.hidden&&!!selT&&!document.body.classList.contains('playing');
-  if(want===document.body.classList.contains('split')) return;
-  document.body.classList.toggle('split',want);
-  document.documentElement.style.setProperty('--railH',document.getElementById('rail').offsetHeight+'px');
-  requestAnimationFrame(()=>{resize(); if(want&&selT){const [p,tg]=towerPose(selT);flyTo(p,tg);}});
+  const lg=document.getElementById('ledger');
+  const ledgerOpen=lg&&!lg.hidden, cardOpen=!card.hidden&&!!selT;
+  const want=splitOn&&(ledgerOpen||cardOpen)&&!document.body.classList.contains('playing');
+  document.querySelectorAll('[data-split]').forEach(b=>b.setAttribute('aria-pressed',splitOn?'true':'false'));
+  const t=ledgerOpen&&typeof LT==='function'?(LT()||selT):selT, tid=t?t.d.id:null;
+  const was=document.body.classList.contains('split');
+  if(want===was&&(!want||tid===splitTid)) return;
+  document.body.classList.toggle('split',want); splitTid=want?tid:null;
+  requestAnimationFrame(()=>{resize(); if(want&&t){const [p,tg]=towerPose(t);flyTo(p,tg);}});
 }
 new MutationObserver(applySplit).observe(card,{attributes:true,attributeFilter:['hidden'],childList:true});
+new MutationObserver(applySplit).observe(document.getElementById('ledger'),{attributes:true,attributeFilter:['hidden']});
 new MutationObserver(applySplit).observe(document.body,{attributes:true,attributeFilter:['class']});
 try{new ResizeObserver(()=>resize()).observe(host);}catch(e){}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-split]');if(!b)return;
   splitOn=!splitOn; try{localStorage.setItem('tw_split',splitOn?'1':'0');}catch(err){}
-  b.setAttribute('aria-pressed',splitOn?'true':'false'); applySplit();
-  say(splitOn?'화면을 나눴어요. 바꾸면 위 3D에 바로 보여요.':'분할을 껐어요.');});
-
+  splitTid=null; document.body.classList.remove('split'); applySplit();
+  if(!splitOn) requestAnimationFrame(()=>resize());
+  say(splitOn?'화면을 나눴어요. 오른쪽에서 바꾸면 왼쪽 3D에 바로 보여요.':'분할을 껐어요.');});
 /* ---------- 동선 ---------- */
 const playbar=document.getElementById('playbar'), pPlay=document.getElementById('pPlay'), pText=document.getElementById('pText'), pBar=document.getElementById('pBar'), pSpeed=document.getElementById('pSpeed');
 const SPEEDS=[1,2,4,8]; let speedIx=0;
@@ -1658,7 +1662,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v9`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v10`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
