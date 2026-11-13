@@ -79,6 +79,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .xtag.valley{background:var(--water)}
 .xtag.ball{background:#e2581b}
 .qty{display:flex;align-items:center;gap:8px}
+.arrrow{display:flex;align-items:center;gap:8px;margin-top:6px}
+.arrrow>.lb{min-width:64px;white-space:nowrap}
+.arrrow .seg{flex:1}
+.arrrow .seg button{padding-left:4px;padding-right:4px;font-size:12px}
 .qty .stepper,.qty .seg{flex:1}
 .lampbox{display:grid;gap:8px;padding:10px;border:1px solid var(--line);border-radius:8px}
 .ldot{display:inline-block;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 1px var(--line);margin-right:5px;vertical-align:-1px}
@@ -347,7 +351,7 @@ if(!lines){ // 이전 버전 데이터 옮기기
       curId=o.cur;}}catch(e){}
 }
 if(!lines) lines=defaults();
-function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.ball1R==null&&d.ball1W==null&&d.ball2R==null&&d.ball2W==null){const r=d.ballR!=null?d.ballR:Math.ceil((d.ballN||0)/2),w=d.ballW!=null?d.ballW:Math.floor((d.ballN||0)/2);d.ball1R=r;d.ball1W=w;d.ball2R=0;d.ball2W=0;}['ball1R','ball1W','ball2R','ball2W'].forEach(k=>{if(d[k]==null)d[k]=0;});d.ballN=d.ball1R+d.ball1W+d.ball2R+d.ball2W;delete d.ballR;delete d.ballW;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(![1,2].includes(l.gw))l.gw=defGW(l.kv);if(!WT.includes(l.gw1))l.gw1='GW';if(!WT.includes(l.gw2))l.gw2='OPGW';if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
+function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.dmpGW>0&&d.dmpGWS==null)d.dmpGWS=d.dmpGW;if(d.dmpOP>0&&d.dmpOPS==null)d.dmpOPS=d.dmpOP;delete d.dmpGW;delete d.dmpOP;if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.ball1R==null&&d.ball1W==null&&d.ball2R==null&&d.ball2W==null){const r=d.ballR!=null?d.ballR:Math.ceil((d.ballN||0)/2),w=d.ballW!=null?d.ballW:Math.floor((d.ballN||0)/2);d.ball1R=r;d.ball1W=w;d.ball2R=0;d.ball2W=0;}['ball1R','ball1W','ball2R','ball2W'].forEach(k=>{if(d[k]==null)d[k]=0;});d.ballN=d.ball1R+d.ball1W+d.ball2R+d.ball2W;delete d.ballR;delete d.ballW;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(![1,2].includes(l.gw))l.gw=defGW(l.kv);if(!WT.includes(l.gw1))l.gw1='GW';if(!WT.includes(l.gw2))l.gw2='OPGW';if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
 lines.forEach(normalize);
 if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
 /* ---------- 저장 (Supabase 서버 · 로그인 없이 주소만 알면 같이 씀) ---------- */
@@ -793,10 +797,27 @@ function nextAfterLast(l){const last=l.towers[l.towers.length-1];const n=parseIn
 /* ---------- UI ---------- */
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const lineSel=document.getElementById('lineSel'), chipsEl=document.getElementById('chips'), card=document.getElementById('card');
+const ARR_KINDS=['','피뢰기','아킹혼','아킹링'];
+const ARR_POS=[{k:'1S',name:'#1 전원측'},{k:'1L',name:'#1 부하측'},{k:'2S',name:'#2 전원측'},{k:'2L',name:'#2 부하측'}];
+const arrHas=(d,kind)=>ARR_POS.some(x=>d['arr'+x.k]===kind);
+const arrTxt=d=>ARR_KINDS.slice(1).filter(k=>arrHas(d,k)).join('·');
+function dmpKinds(l){
+  const ws=[l.gw1,l.gw===2?l.gw2:null], r=[];
+  if(l.kv==154) r.push({k:'dmpP',name:'전력선 댐퍼'});
+  const gw=ws.includes('GW'), op=ws.includes('OPGW');
+  if(gw||!op) r.push({k:'dmpGWS',name:'GW 전원측'},{k:'dmpGWL',name:'GW 부하측'});
+  if(op||!gw) r.push({k:'dmpOPS',name:'OPGW 전원측'},{k:'dmpOPL',name:'OPGW 부하측'});
+  return r;
+}
+const DMP_G=[{k:'dmpP',name:'전력선',keys:['dmpP']},{k:'dmpGW',name:'GW',keys:['dmpGWS','dmpGWL']},{k:'dmpOP',name:'OPGW',keys:['dmpOPS','dmpOPL']}];
+const dmpSum=(d,g)=>g.keys.reduce((a,k)=>a+(d[k]>0?d[k]:0),0);
+const dmpGroups=l=>{const ks=dmpKinds(l).map(x=>x.k);return DMP_G.filter(g=>g.keys.some(k=>ks.includes(k)));};
 let pickKey=null, pickLine=null;
 const PICKS={aviation:{n:'도색',f:t=>t.aviation},lamp:{n:'항공등',f:t=>t.lamp},ball:{n:'항공구',f:t=>t.d.ball&&t.d.ballN>0},kudzu:{n:'칡넝쿨',f:t=>t.d.kudzu}};
 CROSS.forEach(c=>PICKS[c.k]={n:c.name,f:t=>t.d[c.k]});
 LAND.forEach(x=>PICKS[x.k]={n:x.name,f:t=>t.d.land===x.k});
+ARR_KINDS.slice(1).forEach(k=>PICKS['arr_'+k]={n:k,f:t=>arrHas(t.d,k)});
+DMP_G.forEach(g=>PICKS[g.k]={n:g.name+' 댐퍼',f:t=>dmpSum(t.d,g)>0});
 document.getElementById('stats').addEventListener('click',e=>{
   const g=e.target.closest('[data-go]'); if(g){const t=towers[+g.dataset.go]; if(t){selectTower(t); renderHead();} return;}
   const k=e.target.closest('[data-pk]'); if(k){pickKey=pickKey===k.dataset.pk?null:k.dataset.pk; renderHead();}
@@ -815,6 +836,8 @@ function renderHead(){
     +CROSS.map(c=>{const n=towers.filter(PICKS[c.k].f).length;return pk(c.k,c.name.replace('횡단','')+' '+n,n);}).join(' · ')+'\n'
     +LAND.map(x=>{const n=towers.filter(PICKS[x.k].f).length;return pk(x.k,x.name+' '+n+'기',n);}).join(' · ')
     +' · '+pk('kudzu','칡넝쿨 '+towers.filter(PICKS.kudzu.f).length+'기',towers.filter(PICKS.kudzu.f).length)
+    +'\n'+ARR_KINDS.slice(1).map(k=>{const n=towers.filter(PICKS['arr_'+k].f).length;return pk('arr_'+k,k+' '+n+'기',n);}).join(' · ')
+    +'\n댐퍼 '+dmpGroups(l).map(g=>{const n=towers.filter(PICKS[g.k].f).length;return pk(g.k,g.name+' '+towers.reduce((a,t)=>a+dmpSum(t.d,g),0)+'개',n);}).join(' · ')
     +(hit.length?`<span class="pklist"><b>${PICKS[pickKey].n} ${hit.length}기</b>${hit.map(t=>`<button type="button" data-go="${towers.indexOf(t)}"${selT===t?' class="on"':''}>${esc(H_(t))}</button>`).join('')}</span>`:'');
   lineSel.innerHTML=lines.slice().sort((a,b)=>(+b.kv||0)-(+a.kv||0)||String(LN(a)).localeCompare(String(LN(b)),'ko',{numeric:true})).map(x=>`<option value="${x.id}"${x.id===curId?' selected':''}>${esc(x.kv+'kV '+LN(x))}</option>`).join('');
 }
@@ -827,7 +850,7 @@ function renderRail(){
   towers.forEach(t=>{
     const c=document.createElement('button'); c.type='button'; c.className='chip'+(selT===t?' on':'');
     const pg=progress(t);
-    c.innerHTML=`<b><i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}</b><span>${pg.done?'📸'+pg.done+'/'+pg.total+' · ':''}${landOf(t.d)?landOf(t.d).name+' · ':''}${t.d.kudzu?'칡넝쿨 · ':''}${t.pole?'관형주 · ':''}${t.d.form?esc(FORM(t.d))+' · ':''}${t.H}m${t.aviation?' · 도색':''}${t.lamp?' · 등 '+lampTxt(t.lampN):''}${crossOf(t.d).map(x=>`<i style="background:${x.c}"></i>`).join('')}${t.d.ball&&t.d.ballN>0?'<i style="background:#e2581b;border-radius:50%;width:6px"></i>':''}</span>`;
+    c.innerHTML=`<b><i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}</b><span>${pg.done?'📸'+pg.done+'/'+pg.total+' · ':''}${landOf(t.d)?landOf(t.d).name+' · ':''}${t.d.kudzu?'칡넝쿨 · ':''}${arrTxt(t.d)?arrTxt(t.d)+' · ':''}${t.pole?'관형주 · ':''}${t.d.form?esc(FORM(t.d))+' · ':''}${t.H}m${t.aviation?' · 도색':''}${t.lamp?' · 등 '+lampTxt(t.lampN):''}${crossOf(t.d).map(x=>`<i style="background:${x.c}"></i>`).join('')}${t.d.ball&&t.d.ballN>0?'<i style="background:#e2581b;border-radius:50%;width:6px"></i>':''}</span>`;
     c.addEventListener('click',()=>selectTower(t)); frag.appendChild(c); t.chip=c;
   });
   chipsEl.appendChild(frag);
@@ -926,6 +949,10 @@ function renderCard(){
       <div class="field"><span class="lb">구조</span>${segHTML('data-pole',[0,1],t.pole?1:0,v=>v?'│ 관형주':'▲ 철탑(격자형)')}</div>
       <div class="field"><span class="lb">철탑 형식 · ${t.tension===t.auto?'기본값':'직접 지정함'}</span>
         ${segHTML('data-type',[0,1],t.tension?1:0,v=>v?'■ 내장형':'○ 현수형')}</div>
+      <div class="field"><span class="lb">피뢰기 · 아킹혼 · 아킹링 (회선별 · 전원측/부하측)</span>
+        ${ARR_POS.map(x=>`<div class="arrrow"><span class="lb">${x.name}</span>${segHTML('data-arr-'+x.k,ARR_KINDS,t.d['arr'+x.k]||'',v=>v||'없음')}</div>`).join('')}</div>
+      <div class="field"><span class="lb">댐퍼 수량${l.kv==154?'':' · 가공지선'}</span>
+        ${dmpKinds(l).map(x=>`<div class="qty" style="margin-top:6px"><span class="lb" style="min-width:92px">${x.name}</span><div class="unit" data-unit="개" style="flex:1"><input type="number" inputmode="numeric" min="0" max="999" step="1" placeholder="0" data-dmp="${x.k}" value="${t.d[x.k]>0?t.d[x.k]:''}"></div></div>`).join('')}</div>
       <div class="field"><span class="lb">항공장애표시 · 선택한 철탑에만 표시</span>
         <label class="check"><input type="checkbox" id="xAv" ${t.aviation?'checked':''}>주황·백색 도색<i class="sw" style="background:repeating-linear-gradient(90deg,#e2581b 0 3px,#f2f2ee 3px 6px)"></i></label>
         <div class="lampbox">
@@ -996,6 +1023,12 @@ function renderCard(){
     t.d.span=v; save(); build();
   });
   q('#xKudzu').addEventListener('change',e=>{t.d.kudzu=e.target.checked;save();build();});
+  ARR_POS.forEach(x=>card.querySelectorAll('[data-arr-'+x.k.toLowerCase()+']').forEach(b=>b.addEventListener('click',()=>{const v=b.getAttribute('data-arr-'+x.k.toLowerCase());if((t.d['arr'+x.k]||'')===v)return;t.d['arr'+x.k]=v;save();renderHead();renderRail();renderCard();})));
+  card.querySelectorAll('[data-dmp]').forEach(inp=>inp.addEventListener('change',e=>{
+    const raw=e.target.value.trim(), v=raw===''?0:Math.round(parseFloat(raw));
+    if(!(v>=0&&v<=999)){bad('댐퍼 수량은 0~999개 사이로 입력해 주세요.');return;}
+    t.d[inp.dataset.dmp]=v; save(); renderHead(); renderCard();
+  }));
   card.querySelectorAll('[data-land]').forEach(cb=>cb.addEventListener('change',()=>{t.d.land=cb.checked?cb.dataset.land:'';save();build();}));
   card.querySelectorAll('[data-pole]').forEach(b=>b.addEventListener('click',()=>{const v=b.dataset.pole==='1';if(v===t.pole)return;t.d.pole=v;save();build();}));
   card.querySelectorAll('[data-type]').forEach(b=>b.addEventListener('click',()=>{
