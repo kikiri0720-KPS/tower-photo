@@ -228,6 +228,14 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .lg-danger{background:var(--danger)}
 .ledger-btn{font-size:14px;padding:11px 12px}
 .hot:focus-visible{outline:2px solid var(--accent)}
+/* 순서대로 한번에 첨부 */
+.sq-modal{max-height:82vh;overflow:auto}
+.sq-list{display:grid;gap:4px;margin:4px 0}
+.sq-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;font-weight:400}
+.sq-row input{width:18px;height:18px;margin:0;accent-color:var(--accent);flex:0 0 auto}
+.sq-row.off{opacity:.5}
+.seq-open{width:100%;font-size:15px;padding:13px 12px}
+.seq-mini{width:100%;font-size:13.5px;padding:11px 8px;border-radius:8px}
 @media (max-width:640px){
   .head{padding:10px 12px}
   .head h1{font-size:16px}
@@ -1331,7 +1339,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v4`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v5`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
@@ -1340,7 +1348,8 @@ function renderLedger(){
   gid('lgRO').textContent='서버에 연결되지 않아 사진을 올릴 수 없어요. 인터넷 연결을 확인하세요.';
   const g=gid('photoGrid'), d=gid('diagram'); g.innerHTML='';
   if(!sel||!itemOf(sel)||!okItem(itemOf(sel),t,tp)){
-    sel=null; g.hidden=true; d.hidden=false; d.innerHTML=diagramHTML(t,tp);
+    sel=null; g.hidden=true; d.hidden=false; d.innerHTML=(AS?'<button class="primary seq-open" type="button" id="seqOpen">📷 순서대로 한번에 첨부</button>':'')+diagramHTML(t,tp);
+    if(gid('seqOpen')) gid('seqOpen').addEventListener('click',()=>openSeq());
     d.querySelectorAll('.hot').forEach(e=>e.addEventListener('click',()=>pick(e.dataset.id,e.dataset.no,e.dataset.tier)));
     d.querySelectorAll('[data-pick]').forEach(e=>e.addEventListener('click',()=>pick(e.dataset.pick)));
     return;
@@ -1481,6 +1490,7 @@ function groupCard(t,tp,g){
   const head=el('div','group-head');
   head.append(el('b',null,g.label),el('small',null,`${done}/${ids.length}측 등록`));
   c.append(head);
+  if(SEQ_ITEMS[g.id]&&AS){const sb2=el('button','primary seq-mini',`📷 ${SEQ_ITEMS[g.id]} 여러 장 순서대로 (빈 칸부터)`);sb2.type='button';sb2.onclick=()=>openSeq(g.id);c.append(sb2);}
   const curN=g.nums?(numSel[gk]||'1'):null;
   const curT=g.nums?(TIER_KEYS.includes(tierSel[gk])?tierSel[gk]:'u'):null;
   const inNo=([s,n,tr])=>!g.nums||((s.includes('2_')?'2':'1')===curN&&(!tr||tr===curT));
@@ -1582,6 +1592,124 @@ function photosChanged(){
   if(!ledgerEl.hidden) renderLedger();
   if(towers.length&&!play){renderRail();}
   const b=card.querySelector('#openLedger'); if(b&&selT){const p=progress(selT);b.textContent=`📸 기별사진 · ${p.done}/${p.total}`;}
+}
+
+/* ---------- 순서대로 한번에 첨부 ----------
+   여러 장을 고르면 고른 순서대로, 아직 사진이 없는 다음 칸부터 자동으로 들어감.
+   기초부지까지 올리고 나중에 애자련을 고르면 애자련 첫 빈 칸부터 이어서 들어감 */
+function seqOrder(t){
+  const l=cur(), r=[];
+  const add=(id,name,on)=>r.push({id,name,on:on!==false});
+  add('num_plate','번호찰');
+  add('num_plate_danger','위험표시찰',!!t.d.danger);
+  add('top_src','전원측 상부');
+  add('v_line_src','전원측 수직구명줄');
+  add('v_line_src_clamp','전원측 하부클램프');
+  add('top_load','부하측 상부');
+  add('v_line_load','부하측 수직구명줄');
+  add('v_line_load_clamp','부하측 하부클램프');
+  add('base','기초부지');
+  [['1',''],['2','2_']].forEach(([no,p])=>[['src','전원측'],['load','부하측']].forEach(([sd,sn])=>
+    [['d','하단'],['m','중단'],['u','상단']].forEach(([tr,tn])=>add('insulator_'+(tr==='u'?'':tr+'_')+p+sd,`애자련 #${no} ${sn} ${tn}`))));
+  if(lineHas(l,'OPGW')) [['src','전원측'],['mid','중앙'],['load','부하측']].forEach(([s,n])=>add('opgw_'+s,'OPGW '+n));
+  if(lineHas(l,'GW')) [['src','전원측'],['mid','중앙'],['load','부하측']].forEach(([s,n])=>add('gw_'+s,'GW '+n));
+  let off={}; try{off=JSON.parse(lsGet('tower3d-seq-off')||'{}')||{};}catch(e){}
+  r.forEach(x=>{if(x.id in off) x.on=!off[x.id];});
+  if(t.d.danger) r.find(x=>x.id==='num_plate_danger').on=true;
+  return r;
+}
+const SEQ_ITEMS={top:'상부',v_line:'수직구명줄',insulator:'애자련',opgw:'OPGW',gw:'GW'};   // 항목 안에서도 쓸 수 있는 것
+const inScope=(id,scope)=>!scope||id.startsWith(scope+'_');
+const seqLeft=(t,scope)=>seqOrder(t).filter(x=>x.on&&inScope(x.id,scope)&&!photosOf(t.d.id,x.id).length);
+const seqIn=document.createElement('input'); seqIn.type='file'; seqIn.multiple=true;
+seqIn.accept='image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic';
+seqIn.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;opacity:0'; seqIn.tabIndex=-1; document.body.append(seqIn);
+let seqJob=null;
+function seqModal(build){
+  const ov=el('div','lg-modal'), bx=el('div','lg-modal-box panel sq-modal');
+  const close=()=>ov.remove();
+  ov.onclick=e=>{if(e.target===ov)close();};
+  build(bx,close); ov.append(bx); document.body.append(ov);
+  return close;
+}
+function openSeq(scope){
+  const t=LT(); if(!t) return;
+  if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요.');
+  const left=seqLeft(t,scope);
+  seqModal((bx,close)=>{
+    bx.append(el('p',null,(scope?SEQ_ITEMS[scope]+' ':'')+'여러 장 순서대로 첨부'));
+    if(!left.length){
+      bx.append(el('p','note',scope?`${SEQ_ITEMS[scope]} 칸에 모두 사진이 있어요. 바꾸려면 사진을 지운 뒤 다시 하세요.`:'순서표의 모든 칸에 사진이 있어요.'));
+    }else{
+      bx.append(el('p','note',`사진을 고른 순서대로 아래 빈 칸에 차례로 들어가요. (남은 칸 ${left.length}개)`));
+      const ol=el('div','sq-list');
+      left.forEach((x,i)=>ol.append(el('div','sq-row',`${i+1}. ${x.name}`)));
+      bx.append(ol);
+      const go=el('button','primary','🖼️ 사진 고르기'); go.type='button';
+      go.onclick=()=>{seqJob={tid:t.d.id,lineId:curId,scope};close();seqIn.value='';seqIn.click();};
+      bx.append(go);
+    }
+    if(!scope){const st=el('button','ghost','순서표 설정 (안 찍는 항목 빼기)');st.type='button';st.onclick=()=>{close();seqSetup();};bx.append(st);}
+    const no=el('button','ghost','닫기'); no.type='button'; no.onclick=close; bx.append(no);
+  });
+}
+function seqSetup(){
+  const t=LT(); if(!t) return;
+  const ord=seqOrder(t);
+  seqModal((bx,close)=>{
+    bx.append(el('p',null,'순서표 설정'),el('p','note','체크를 빼면 그 칸은 건너뛰어요. 이 휴대폰에 기억돼요.'));
+    const ol=el('div','sq-list');
+    ord.forEach((x,i)=>{
+      const r=el('label','sq-row'+(x.on?'':' off'));
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=x.on;
+      cb.onchange=()=>{let s={};try{s=JSON.parse(lsGet('tower3d-seq-off')||'{}')||{};}catch(e){}s[x.id]=!cb.checked;lsSet('tower3d-seq-off',JSON.stringify(s));r.classList.toggle('off',!cb.checked);};
+      r.append(cb,document.createTextNode(`${i+1}. ${x.name}`)); ol.append(r);
+    });
+    const ok=el('button','primary','완료'); ok.type='button'; ok.onclick=()=>{close();openSeq();};
+    bx.append(ol,ok);
+  });
+}
+seqIn.addEventListener('change',async()=>{
+  const job=seqJob; seqJob=null;
+  const files=[...(seqIn.files||[])].filter(x=>!x.type||x.type.startsWith('image/')); seqIn.value='';
+  if(!job||!files.length) return;
+  const t=towers.find(x=>x.d.id===job.tid); if(!t) return;
+  if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요.');
+  const left=seqLeft(t,job.scope), targets=left.slice(0,files.length);
+  const extra=files.length-targets.length, done=[];
+  let step='사진 줄이기';
+  try{
+    for(let i=0;i<targets.length;i++){
+      const s=targets[i], file=files[i];
+      say(`저장 중… ${i+1}/${targets.length} · ${s.name}`,true);
+      step='사진 줄이기'; const blob=await shrink(file);
+      const pid='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+      const path=job.tid+'/'+pid+'.jpg';
+      step='사진 올리기';
+      const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:'image/jpeg',upsert:true}); if(up.error) throw up.error;
+      step='사진 기록';
+      const ins=await sb.from(T_PHOTOS).insert({id:pid,data:{towerId:job.tid,lineId:job.lineId,slot:s.id,path,name:file.name||'',at:Date.now()+i}}); if(ins.error) throw ins.error;
+      done.push({name:s.name,p:{id:pid,path}});
+    }
+    await pullPhotos(true);
+    seqDone(done,extra,null);
+  }catch(e){
+    console.error(e); try{await pullPhotos(true);}catch(_){}
+    seqDone(done,extra,`${step}: ${(e&&(e.message||e.error))||e}`);
+  }
+});
+function seqDone(done,extra,err){
+  document.getElementById('toast').hidden=true;
+  seqModal((bx,close)=>{
+    bx.append(el('p',null,err?`${done.length}장 저장 후 멈췄어요`:`${done.length}장을 각 칸에 넣었어요`));
+    if(err) bx.append(el('p','err',err+' · 다시 하면 남은 빈 칸부터 이어서 들어가요.'));
+    if(extra>0) bx.append(el('p','err',`빈 칸보다 사진이 ${extra}장 많아서 뒤의 ${extra}장은 넣지 않았어요.`));
+    const ol=el('div','sq-list'); done.forEach((d,i)=>ol.append(el('div','sq-row',`✓ ${d.name}`))); bx.append(ol);
+    const ok=el('button','primary','확인'); ok.type='button'; ok.onclick=close;
+    const undo=el('button','ghost danger','방금 넣은 사진 모두 지우기'); undo.type='button';
+    undo.onclick=async()=>{if(!await askYes(`방금 넣은 사진 ${done.length}장을 지울까요?`,'지우기'))return;close();say('지우는 중…',true);for(const d of done){try{await deletePhoto(d.p,true);}catch(e){console.warn(e);}}await pullPhotos(true);say('지웠어요.');};
+    bx.append(ok); if(done.length) bx.append(undo);
+  });
 }
 
 /* 사진 ZIP: 부산경남 기술팀/선로/철탑/항목.jpg */
