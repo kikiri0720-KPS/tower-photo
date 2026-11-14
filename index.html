@@ -244,13 +244,27 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   .card dl{grid-template-columns:auto 1fr auto 1fr}
   body.playing .card{display:none}
 }
+/* v10: 화면 분할 — 왼쪽 3D 철탑 / 오른쪽 정보·기별사진 (바꾸면 왼쪽에 바로 보임) */
+.splitBtn{font-size:13px;padding:5px 8px;border-radius:7px;white-space:nowrap;margin-left:auto}
+.splitBtn[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.lg-bar .splitBtn{flex:0 0 auto}
+body.split{--pw:56%}
+@media (min-width:900px){body.split{--pw:440px}}
+body.split #scene,body.split #labels{right:var(--pw)}
+body.split .rail{right:var(--pw)}
+body.split .head{max-width:calc(100% - var(--pw) - 24px)}
+body.split .head p.stats,body.split .head .eyebrow,body.split .head .legend{display:none}
+body.split .card{top:0;bottom:0;right:0;left:auto;width:var(--pw);max-height:none;border-radius:0;border-left:2px solid var(--accent);
+  padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+body.split .card dl{grid-template-columns:auto 1fr}
+body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)}
 </style>
 
 </head>
 <body>
 <div class="ledger" id="ledger" hidden>
   <div class="lg-bar"><button class="ghost" type="button" id="lgBack">← 3D 화면</button>
-    <div class="lg-head"><b id="lgTitle"></b><span id="lgSub"></span></div></div>
+    <div class="lg-head"><b id="lgTitle"></b><span id="lgSub"></span></div><button class="ghost splitBtn" type="button" data-split>⧉ 분할</button></div>
   <div class="lg-body">
     <div class="lg-prog panel"><div class="lg-row"><span id="lgPct"></span><button class="ghost" type="button" id="lgSide"></button></div>
       <div class="bar"><i id="lgBar"></i></div>
@@ -567,18 +581,53 @@ function poleInto(l,t,steel,pos,col,grp0,mat){
   // 기초: 원형 콘크리트 받침
   const base=new T.Mesh(new T.CylinderGeometry(rB*1.9,rB*2.1,1.2,20),mat(new T.Color('#9a9a94'))); base.position.set(0,t.y+.4,0); grp.add(base);
   const ins=H*(t.tension?.05:.042), att={}, th=Math.max(.45,H*.012);
+  const slant=false;   // v10: 강관주(경사 완금) 선택 없앰 → 모두 관형주로 그림   // 강관주 · 경사 완금 (완금이 기둥에서 비스듬히 올라감)
+  const armC=slant&&t.aviation?ORANGE:steel;
+  const grate=slant?new T.MeshLambertMaterial({color:t.aviation?0xd2704a:0x9aa3a8,transparent:true,opacity:.55,side:T.DoubleSide,depthWrite:false}):null;
   [-1,1].forEach(s=>spec.arms.forEach((a,k)=>{
-    const hy=H*a.f, Lo=H*a.pts[a.pts.length-1]*.85, r=rAt(hy);
-    const arm=new T.Mesh(new T.BoxGeometry(th*1.4,th*1.6,Lo),mat(steel));
-    arm.position.set(0,t.y+hy,-(s*(r+Lo/2))); grp.add(arm);
-    // 완금 받침대(경사)
-    seg([s*r,hy-H*.04,0],[s*(r+Lo*.55),hy,0]);
+    const hy=H*a.f, Lo=H*a.pts[a.pts.length-1]*(slant?1:.85), r=rAt(hy);
+    if(!slant){
+      const arm=new T.Mesh(new T.BoxGeometry(th*1.4,th*1.6,Lo),mat(steel));
+      arm.position.set(0,t.y+hy,-(s*(r+Lo/2))); grp.add(arm);
+      seg([s*r,hy-H*.04,0],[s*(r+Lo*.55),hy,0]);   // 완금 받침대(경사)
+      a.pts.forEach((pf,p)=>{
+        const L=a.pts.length>1?(p===0?Lo*.45:Lo):Lo, x=s*(r+L), hang=[x,hy-th*.8,0];
+        hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,s+'_'+k+'_'+p,att);
+      });
+      return;
+    }
+    // 경사 완금: 뿌리는 아래, 끝은 전선 높이 (약 35°)
+    const phi=35*Math.PI/180, rise=Lo*Math.tan(phi), y0=hy-rise, r0=rAt(y0), len=Math.hypot(Lo,rise);
+    const yAt=L=>y0+rise*(L/Lo);
+    const box=new T.Mesh(new T.BoxGeometry(th*1.8,th*1.8,len),mat(armC));
+    box.position.set(0,t.y+(y0+hy)/2,-(s*(r0+Lo/2))); box.rotation.x=s*phi; grp.add(box);
+    // 철망 발판(점검 통로): 완금 아래에 넓게
+    const wk=Math.max(1.2,H*.022);
+    const gp=new T.Mesh(new T.BoxGeometry(wk,.08,len*.92),grate);
+    gp.position.set(0,t.y+(y0+hy)/2-th*1.1,-(s*(r0+Lo/2))); gp.rotation.x=s*phi; grp.add(gp);
+    // 난간: 발판 양옆 손잡이 줄 + 기둥
+    [-1,1].forEach(o=>{
+      const A=[s*r0,y0+1.1,o*wk/2], B=[s*(r0+Lo*.95),yAt(Lo*.95)+1.1,o*wk/2]; seg(A,B,armC);
+      for(let j=0;j<=6;j++){const L=Lo*.95*j/6;seg([s*(r0+L),yAt(L)-th*1.1,o*wk/2],[s*(r0+L),yAt(L)+1.1,o*wk/2],armC);}
+    });
+    // 완금 뿌리 작업 발판(기둥 둘레 링 + 난간)
+    {const rr=r0+1.4, yb=y0-th*1.2;for(let j=0;j<16;j++){const a1=j/16*Math.PI*2,a2=(j+1)/16*Math.PI*2;
+      [yb,yb+1.1].forEach(yy=>seg([Math.cos(a1)*rr,yy,Math.sin(a1)*rr],[Math.cos(a2)*rr,yy,Math.sin(a2)*rr],steel));
+      if(j%2===0) seg([Math.cos(a1)*rr,yb,Math.sin(a1)*rr],[Math.cos(a1)*rr,yb+1.1,Math.sin(a1)*rr],steel);}}
     a.pts.forEach((pf,p)=>{
-      const L=a.pts.length>1?(p===0?Lo*.45:Lo):Lo, x=s*(r+L), hang=[x,hy-th*.8,0];
-      const key=s+'_'+k+'_'+p;
-      hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att);
+      const L=a.pts.length>1?(p===0?Lo*.45:Lo):Lo, x=s*(r0+L), yy=yAt(L), hang=[x,yy-th*.9,0];
+      hangIns(l,t,W,seg,steel,s,x,yy,hang,ins,s+'_'+k+'_'+p,att);
+      // 점퍼 지지애자 2개 + 점퍼선 고리
+      if(t.tension){
+        [-1,1].forEach(o=>EXTRA.discs.push([W([x,yy-th,o*.7]),W([x,yy-th-Math.max(2,H*.04),o*.7]),H*.7]));
+        const jb=yy-th-Math.max(2,H*.04)-.6, kk=att[s+'_'+k+'_'+p];
+        if(kk){const b0=[x,yy-.8,-ins], f0=[x,yy-.8,ins];seg(b0,[x,jb,-.7]);seg([x,jb,-.7],[x,jb-.3,0]);seg([x,jb-.3,0],[x,jb,.7]);seg([x,jb,.7],f0);}
+      }
     });
   }));
+  // 사다리: 기둥을 따라 (경사 완금 강관주)
+  if(slant){const lad=y=>-(rAt(y)+.35);for(let y=1;y<H*.95;y+=1){const y2=Math.min(H*.95,y+1);
+    [-.25,.25].forEach(o=>seg([lad(y),y,o],[lad(y2),y2,o],steel)); seg([lad(y),y,-.25],[lad(y),y,.25],steel);}}
   t.W=W; t.poleR=rAt;
   if(l.gw===1){
     // 가공지선 1조: 기둥 꼭대기 가운데 지선 받침대
@@ -1029,7 +1078,7 @@ function renderRail(){
   towers.forEach(t=>{
     const c=document.createElement('button'); c.type='button'; c.className='chip'+(selT===t?' on':'');
     const pg=progress(t);
-    c.innerHTML=`<b><i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}</b><span>${pg.done?'📸'+pg.done+'/'+pg.total+' · ':''}${t.ang?'∠'+esc(angTxt(t.d))+' · ':''}${landOf(t.d)?landOf(t.d).name+' · ':''}${t.d.kudzu?'칡넝쿨 · ':''}${arrTxt(t.d)?arrTxt(t.d)+' · ':''}${t.pole?'관형주 · ':''}${t.d.form?esc(FORM(t.d))+' · ':''}${t.H}m${t.aviation?' · 도색':''}${t.lamp?' · 등 '+lampTxt(t.lampN):''}${crossOf(t.d).map(x=>`<i style="background:${x.c}"></i>`).join('')}${t.d.ball&&t.d.ballN>0?'<i style="background:#e2581b;border-radius:50%;width:6px"></i>':''}</span>`;
+    c.innerHTML=`<b><i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}</b><span>${pg.done?'📸'+pg.done+'/'+pg.total+' · ':''}${t.ang?'∠'+esc(angTxt(t.d))+' · ':''}${landOf(t.d)?landOf(t.d).name+' · ':''}${t.d.kudzu?'칡넝쿨 · ':''}${arrTxt(t.d)?arrTxt(t.d)+' · ':''}${t.pole?(false?'강관주 · ':'관형주 · '):''}${t.d.form?esc(FORM(t.d))+' · ':''}${t.H}m${t.aviation?' · 도색':''}${t.lamp?' · 등 '+lampTxt(t.lampN):''}${crossOf(t.d).map(x=>`<i style="background:${x.c}"></i>`).join('')}${t.d.ball&&t.d.ballN>0?'<i style="background:#e2581b;border-radius:50%;width:6px"></i>':''}</span>`;
     c.addEventListener('click',()=>selectTower(t)); frag.appendChild(c); t.chip=c;
   });
   chipsEl.appendChild(frag);
@@ -1104,8 +1153,8 @@ function renderCard(){
     const br=nextBranch(l,t.label);
     card.innerHTML=`
       <div class="card-top"><span class="no">${esc(H_(t))}</span>
-        <span class="pill ${t.tension?'ten':''}"><i class="sym ${t.tension?'ten':'sus'}"></i>${t.tension?'내장형':'현수형'}</span>${t.ang?'<span class="pill">∠ '+esc(angTxt(t.d))+'</span>':''}${t.pole?'<span class="pill">관형주</span>':''}${t.d.danger?'<span class="pill" style="background:var(--danger);color:#fff;border-color:var(--danger)">⚠ 위험</span>':''}
-        <button class="close" type="button" aria-label="닫기">×</button></div>
+        <span class="pill ${t.tension?'ten':''}"><i class="sym ${t.tension?'ten':'sus'}"></i>${t.tension?'내장형':'현수형'}</span>${t.ang?'<span class="pill">∠ '+esc(angTxt(t.d))+'</span>':''}${t.pole?'<span class="pill">'+(false?'강관주·경사완금':'관형주')+'</span>':''}${t.d.danger?'<span class="pill" style="background:var(--danger);color:#fff;border-color:var(--danger)">⚠ 위험</span>':''}
+        <button class="ghost splitBtn" type="button" data-split aria-pressed="${splitOn?'true':'false'}" title="3D와 정보를 나눠서 보기">⧉ 분할</button><button class="close" type="button" aria-label="닫기">×</button></div>
       <div class="sub">${esc(l.kv+'kV '+LN(l))} · ${l.circuits}회선 · ${gwTxt(l)}${t.d.form?' · '+esc(FORM(t.d)):''}</div>
       <button class="primary ledger-btn" type="button" id="openLedger">📸 기별사진 · ${progress(t).done}/${progress(t).total}</button>
       <label class="check danger-check"><input type="checkbox" id="xDanger" ${t.d.danger?'checked':''}>⚠ 위험 철탑 (번호찰에 경고 표시)<i class="sw" style="background:var(--danger)"></i></label>
@@ -1125,7 +1174,7 @@ function renderCard(){
       <div class="field"><span class="lb">가공지선 종류 · OPGW / GW</span>
         <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
         ${l.gw===1?'':`<div class="row2" style="align-items:center;margin-top:6px"><span class="lb" style="min-width:44px">#2</span>${segHTML('data-wt2',WT,l.gw2,v=>v)}</div>`}</div>
-      <div class="field"><span class="lb">구조</span>${segHTML('data-pole',[0,1],t.pole?1:0,v=>v?'│ 관형주':'▲ 철탑(격자형)')}</div>
+      <div class="field"><span class="lb">구조</span>${segHTML('data-pole',[0,1],t.pole?1:0,v=>v?'│ 관형주':'▲ 격자형')}</div>
       <div class="field"><span class="lb">철탑 형식 · ${t.tension===t.auto?'기본값':'직접 지정함'}</span>
         ${segHTML('data-type',[0,1],t.tension?1:0,v=>v?'■ 내장형':'○ 현수형')}</div>
       ${t.i>0&&t.i<towers.length-1?`<div class="field"><span class="lb">각도주 · 선로가 꺾이는 방향과 각도</span>
@@ -1212,7 +1261,7 @@ function renderCard(){
     t.d[inp.dataset.dmp]=v; save(); renderHead(); renderCard();
   }));
   card.querySelectorAll('[data-land]').forEach(cb=>cb.addEventListener('change',()=>{t.d.land=cb.checked?cb.dataset.land:'';save();build();}));
-  card.querySelectorAll('[data-pole]').forEach(b=>b.addEventListener('click',()=>{const v=b.dataset.pole==='1';if(v===t.pole)return;t.d.pole=v;save();build();}));
+  card.querySelectorAll('[data-pole]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.pole, curv=t.pole?1:0;if(v===curv)return;t.d.pole=v>0;t.d.poleKind='';save();build();}));
   card.querySelectorAll('[data-type]').forEach(b=>b.addEventListener('click',()=>{
     const v=b.dataset.type==='1'; if(v===t.tension) return;
     t.d.type=(v===t.auto)?null:v; save(); build();
@@ -1362,6 +1411,29 @@ function selectTower(t,openCard){
   if(t){const [p,tg]=towerPose(t);flyTo(p,tg);}
 }
 
+/* ---------- v10: 화면 분할 (왼쪽 3D · 오른쪽 정보) ---------- */
+let splitOn=true; try{splitOn=localStorage.getItem('tw_split')!=='0';}catch(e){}
+let splitTid=null;
+function applySplit(){
+  const lg=document.getElementById('ledger');
+  const ledgerOpen=lg&&!lg.hidden, cardOpen=!card.hidden&&!!selT;
+  const want=splitOn&&(ledgerOpen||cardOpen)&&!document.body.classList.contains('playing');
+  document.querySelectorAll('[data-split]').forEach(b=>b.setAttribute('aria-pressed',splitOn?'true':'false'));
+  const t=ledgerOpen&&typeof LT==='function'?(LT()||selT):selT, tid=t?t.d.id:null;
+  const was=document.body.classList.contains('split');
+  if(want===was&&(!want||tid===splitTid)) return;
+  document.body.classList.toggle('split',want); splitTid=want?tid:null;
+  requestAnimationFrame(()=>{resize(); if(want&&t){const [p,tg]=towerPose(t);flyTo(p,tg);}});
+}
+new MutationObserver(applySplit).observe(card,{attributes:true,attributeFilter:['hidden'],childList:true});
+new MutationObserver(applySplit).observe(document.getElementById('ledger'),{attributes:true,attributeFilter:['hidden']});
+new MutationObserver(applySplit).observe(document.body,{attributes:true,attributeFilter:['class']});
+try{new ResizeObserver(()=>resize()).observe(host);}catch(e){}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-split]');if(!b)return;
+  splitOn=!splitOn; try{localStorage.setItem('tw_split',splitOn?'1':'0');}catch(err){}
+  splitTid=null; document.body.classList.remove('split'); applySplit();
+  if(!splitOn) requestAnimationFrame(()=>resize());
+  say(splitOn?'화면을 나눴어요. 오른쪽에서 바꾸면 왼쪽 3D에 바로 보여요.':'분할을 껐어요.');});
 /* ---------- 동선 ---------- */
 const playbar=document.getElementById('playbar'), pPlay=document.getElementById('pPlay'), pText=document.getElementById('pText'), pBar=document.getElementById('pBar'), pSpeed=document.getElementById('pSpeed');
 const SPEEDS=[1,2,4,8]; let speedIx=0;
@@ -1590,7 +1662,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v8`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v10`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
