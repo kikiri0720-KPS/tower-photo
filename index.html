@@ -66,6 +66,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   font:600 11px/1 var(--mono);font-variant-numeric:tabular-nums;padding:3px 6px;
   background:var(--surface);color:var(--ink);border:1px solid var(--line);white-space:nowrap;border-radius:99px}
 .tag.ten{border-radius:2px;border:1.5px solid var(--ink)}
+.tag .angb{font-style:normal;font-size:10.5px;padding:2px 5px;margin-left:2px;border-radius:99px;background:#6d28d9;color:#fff;letter-spacing:-.2px}
+.tag.on .angb{background:#fff;color:#6d28d9}
 .tag.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .tag.danger-tag{border-color:var(--danger);box-shadow:0 0 0 1.5px var(--danger)}
 .tag.danger-tag.on{background:var(--danger);color:#fff;border-color:var(--danger)}
@@ -83,6 +85,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .arrrow>.lb{min-width:64px;white-space:nowrap}
 .arrrow .seg{flex:1}
 .arrrow .seg button{padding-left:4px;padding-right:4px;font-size:12px}
+/* v13: 없음·피뢰기·아킹혼·링 3칸 — 좁은 화면(분할)에서는 이름 아래 줄로 내려서 다 보이게 */
+.arrrow{flex-wrap:wrap}
+.arrrow .seg{display:grid;grid-template-columns:repeat(3,1fr);min-width:0}
+.arrrow .seg button{white-space:nowrap;overflow:hidden;text-overflow:clip}
+@media (max-width:640px){.arrrow .seg{flex:1 1 100%}}
+body.split .arrrow .seg{flex:1 1 100%}
 .qty .stepper,.qty .seg{flex:1}
 .lampbox{display:grid;gap:8px;padding:10px;border:1px solid var(--line);border-radius:8px}
 .ldot{display:inline-block;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 1px var(--line);margin-right:5px;vertical-align:-1px}
@@ -529,6 +537,7 @@ function fitting(a,b,kind,H){
   if(!kind) return;
   const A=v3(a), B=v3(b), d=B.clone().sub(A); const len=d.length(); if(len<.01) return; d.normalize();
   const up=new T.Vector3(0,1,0); let p=new T.Vector3().crossVectors(d,up); if(p.lengthSq()<1e-4) p.set(1,0,0); p.normalize();
+  if(kind==='아킹혼·링'){ fitting(a,b,'아킹혼',H); fitting(a,b,'아킹링',H); return; }   // v12: 아킹혼과 아킹링을 같이 단 경우
   if(kind==='아킹혼'){
     const h=Math.max(.5,H*.012);
     const a1=A.clone().addScaledVector(p,h).addScaledVector(d,h*.8), b1=B.clone().addScaledVector(p,h).addScaledVector(d,-h*.8);
@@ -543,7 +552,7 @@ function fitting(a,b,kind,H){
 // 회선 번호: 선로 진행 방향 왼쪽(s=+1)·오른쪽(s=-1) 중 #1 쪽은 선로 정보의 '#1 측' 설정을 따름
 const noOf=(l,s)=>(s===(l.side1==='right'?-1:1))?'1':'2';
 function hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att){
-  const H=t.H, kv=l.kv, no=noOf(l,s), kS=t.d['arr'+no+'S']||'', kL=t.d['arr'+no+'L']||'';
+  const H=t.H, kv=l.kv, no=noOf(l,s), kS=arrN(t.d['arr'+no+'S']), kL=arrN(t.d['arr'+no+'L']);
   if(t.tension){
     const bk=[x,hy-.8,-ins], fw=[x,hy-.8,ins], mid=[x,hy-ins*.55,0];
     seg(bk,mid,steel); seg(mid,fw,steel);
@@ -1002,7 +1011,7 @@ function makeCrossTags(){
     if(d.ball&&((d.ball1R||0)+(d.ball1W||0)+(d.ball2R||0)+(d.ball2W||0)>0)){const ps=[];if(cur().gw===1)ps.push(`적${(d.ball1R||0)+(d.ball2R||0)}·백${(d.ball1W||0)+(d.ball2W||0)}`);else{if((d.ball1R||0)+(d.ball1W||0)>0)ps.push(`#1 적${d.ball1R||0}·백${d.ball1W||0}`);if((d.ball2R||0)+(d.ball2W||0)>0)ps.push(`#2 적${d.ball2R||0}·백${d.ball2W||0}`);}const el=document.createElement('div');el.className='xtag ball';el.textContent='항공구 '+ps.join(' ');labelsEl.appendChild(el);s.tags.push(el);}});
 }
 const crossOf=d=>CROSS.filter(c=>d[c.k]);
-const H_=t=>t.label+'호';
+const H_=t=>'No.'+t.label;   // v15: 1호 → No.1 표기
 const LAMP_KINDS=[{k:'high',name:'고광도',desc:'백색 섬광',c:'#ffffff'},{k:'mid',name:'중광도',desc:'적색 섬광',c:'#ff3b2f'},{k:'low',name:'저광도',desc:'적색 점멸',c:'#ff2a2a'}];
 const LAMP_DEFAULT={high:0,mid:1,low:2};
 function lampCounts(d){const n=d.lampN;if(!n)return Object.assign({},LAMP_DEFAULT);const r={high:+n.high||0,mid:+n.mid||0,low:+n.low||0};if(r.high+r.mid+r.low===0)return Object.assign({},LAMP_DEFAULT);return r;}
@@ -1010,7 +1019,9 @@ const lampTxt=(n,all)=>{const p=[];if(n.high)p.push('고'+n.high);if(n.mid)p.pus
 const stripForm=f=>String(f||'').replace(/\s*형\s*$/,'').trim();
 const FORM=d=>d.form?stripForm(d.form)+'형':'';
 const ballSum=l=>l.towers.reduce((a,d,i)=>a+(i<l.towers.length-1&&d.ball?(d.ballN||0):0),0);
-function updateTag(t){t.tag.className='tag'+(t.tension?' ten':'')+(t===selT?' on':'')+(t.d.danger?' danger-tag':'');t.tag.innerHTML=`${t.d.danger?'<i class="warn">⚠</i>':''}<i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}${t.ang?' ∠':''}`;}
+function updateTag(t){t.tag.className='tag'+(t.tension?' ten':'')+(t===selT?' on':'')+(t.d.danger?' danger-tag':'');t.tag.innerHTML=`${t.d.danger?'<i class="warn">⚠</i>':''}<i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}${angBadge(t.d)}`;}
+// v14: 각도주는 3D 번호표 옆에 꺾이는 방향과 각도를 표시 (예: ↱ 30°15′)
+function angBadge(d){if(!d.angDir||!(+d.angDeg>0))return '';const v=+d.angDeg,dg=Math.floor(v+1e-9),mn=Math.round((v-dg)*60);return `<i class="angb" title="각도주 ${esc(angTxt(d))}">${d.angDir==='L'?'↰ ':''}${dg}°${mn?String(mn).padStart(2,'0')+'′':''}${d.angDir==='R'?' ↱':''}</i>`;}
 
 /* ---------- 번호 ---------- */
 const baseNo=lb=>String(lb).split('-')[0];
@@ -1024,10 +1035,12 @@ function nextAfterLast(l){const last=l.towers[l.towers.length-1];const n=parseIn
 /* ---------- UI ---------- */
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const lineSel=document.getElementById('lineSel'), chipsEl=document.getElementById('chips'), card=document.getElementById('card');
-const ARR_KINDS=['','피뢰기','아킹혼','아킹링'];
+const ARR_KINDS=['','피뢰기','아킹혼·링'];   // v13: 아킹혼과 아킹링은 항상 같이 → 하나로 묶음
+const ARR_STAT=['피뢰기','아킹혼·링'];
+const arrN=v=>v==='아킹혼'||v==='아킹링'?'아킹혼·링':(v||'');   // 예전에 아킹혼·아킹링으로 따로 저장한 철탑도 아킹혼·링으로 봄
 const ARR_POS=[{k:'1S',name:'#1 전원측'},{k:'1L',name:'#1 부하측'},{k:'2S',name:'#2 전원측'},{k:'2L',name:'#2 부하측'}];
-const arrHas=(d,kind)=>ARR_POS.some(x=>d['arr'+x.k]===kind);
-const arrTxt=d=>ARR_KINDS.slice(1).filter(k=>arrHas(d,k)).join('·');
+const arrHas=(d,kind)=>ARR_POS.some(x=>arrN(d['arr'+x.k])===kind);
+const arrTxt=d=>ARR_STAT.filter(k=>arrHas(d,k)).join('·');
 function dmpKinds(l){
   const ws=[l.gw1,l.gw===2?l.gw2:null], r=[];
   if(l.kv==154) r.push({k:'dmpP',name:'전력선 댐퍼'});
@@ -1043,7 +1056,7 @@ let pickKey=null, pickLine=null;
 const PICKS={angle:{n:'각도주',f:t=>!!t.ang},aviation:{n:'도색',f:t=>t.aviation},lamp:{n:'항공등',f:t=>t.lamp},ball:{n:'항공구',f:t=>t.d.ball&&t.d.ballN>0},kudzu:{n:'칡넝쿨',f:t=>t.d.kudzu}};
 CROSS.forEach(c=>PICKS[c.k]={n:c.name,f:t=>t.d[c.k]});
 LAND.forEach(x=>PICKS[x.k]={n:x.name,f:t=>t.d.land===x.k});
-ARR_KINDS.slice(1).forEach(k=>PICKS['arr_'+k]={n:k,f:t=>arrHas(t.d,k)});
+ARR_STAT.forEach(k=>PICKS['arr_'+k]={n:k,f:t=>arrHas(t.d,k)});
 DMP_G.forEach(g=>PICKS[g.k]={n:g.name+' 댐퍼',f:t=>dmpSum(t.d,g)>0});
 document.getElementById('stats').addEventListener('click',e=>{
   const g=e.target.closest('[data-go]'); if(g){const t=towers[+g.dataset.go]; if(t){selectTower(t); renderHead();} return;}
@@ -1059,12 +1072,12 @@ function renderHead(){
   const pk=(k,txt,n)=>n>0?`<span class="pk${pickKey===k?' on':''}" data-pk="${k}" role="button">${txt}</span>`:txt;
   const lampSum=towers.filter(t=>t.lamp).reduce((a,t)=>({high:a.high+t.lampN.high,mid:a.mid+t.lampN.mid,low:a.low+t.lampN.low}),{high:0,mid:0,low:0});
   const hit=pickKey&&PICKS[pickKey]?towers.filter(PICKS[pickKey].f):[];
-  document.getElementById('stats').innerHTML=`${esc(first)}호~${esc(last)}호 · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · ${pk('aviation','도색 '+towers.filter(PICKS.aviation.f).length,towers.filter(PICKS.aviation.f).length)} · ${pk('lamp','항공등 '+esc(lampTxt(lampSum,true)),towers.filter(PICKS.lamp.f).length)} · ${pk('ball','항공구 '+ballSum(l)+'개',towers.filter(PICKS.ball.f).length)} · `
+  document.getElementById('stats').innerHTML=`No.${esc(first)}~No.${esc(last)} · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · ${pk('aviation','도색 '+towers.filter(PICKS.aviation.f).length,towers.filter(PICKS.aviation.f).length)} · ${pk('lamp','항공등 '+esc(lampTxt(lampSum,true)),towers.filter(PICKS.lamp.f).length)} · ${pk('ball','항공구 '+ballSum(l)+'개',towers.filter(PICKS.ball.f).length)} · `
     +CROSS.map(c=>{const n=towers.filter(PICKS[c.k].f).length;return pk(c.k,c.name.replace('횡단','')+' '+n,n);}).join(' · ')+'\n'
     +LAND.map(x=>{const n=towers.filter(PICKS[x.k].f).length;return pk(x.k,x.name+' '+n+'기',n);}).join(' · ')
     +' · '+pk('kudzu','칡넝쿨 '+towers.filter(PICKS.kudzu.f).length+'기',towers.filter(PICKS.kudzu.f).length)
     +' · '+pk('angle','각도주 '+towers.filter(PICKS.angle.f).length+'기',towers.filter(PICKS.angle.f).length)
-    +'\n'+ARR_KINDS.slice(1).map(k=>{const n=towers.filter(PICKS['arr_'+k].f).length;return pk('arr_'+k,k+' '+n+'기',n);}).join(' · ')
+    +'\n'+ARR_STAT.map(k=>{const n=towers.filter(PICKS['arr_'+k].f).length;return pk('arr_'+k,k+' '+n+'기',n);}).join(' · ')
     +'\n댐퍼 '+dmpGroups(l).map(g=>{const n=towers.filter(PICKS[g.k].f).length;return pk(g.k,g.name+' '+towers.reduce((a,t)=>a+dmpSum(t.d,g),0)+'개',n);}).join(' · ')
     +(hit.length?`<span class="pklist"><b>${PICKS[pickKey].n} ${hit.length}기</b>${hit.map(t=>`<button type="button" data-go="${towers.indexOf(t)}"${selT===t?' class="on"':''}>${esc(H_(t))}</button>`).join('')}</span>`:'');
   lineSel.innerHTML=lines.slice().sort((a,b)=>(+b.kv||0)-(+a.kv||0)||String(LN(a)).localeCompare(String(LN(b)),'ko',{numeric:true})).map(x=>`<option value="${x.id}"${x.id===curId?' selected':''}>${esc(x.kv+'kV '+LN(x))}</option>`).join('');
@@ -1078,7 +1091,7 @@ function renderRail(){
   towers.forEach(t=>{
     const c=document.createElement('button'); c.type='button'; c.className='chip'+(selT===t?' on':'');
     const pg=progress(t);
-    c.innerHTML=`<b><i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}</b><span>${pg.done?'📸'+pg.done+'/'+pg.total+' · ':''}${t.ang?'∠'+esc(angTxt(t.d))+' · ':''}${landOf(t.d)?landOf(t.d).name+' · ':''}${t.d.kudzu?'칡넝쿨 · ':''}${arrTxt(t.d)?arrTxt(t.d)+' · ':''}${t.pole?(false?'강관주 · ':'관형주 · '):''}${t.d.form?esc(FORM(t.d))+' · ':''}${t.H}m${t.aviation?' · 도색':''}${t.lamp?' · 등 '+lampTxt(t.lampN):''}${crossOf(t.d).map(x=>`<i style="background:${x.c}"></i>`).join('')}${t.d.ball&&t.d.ballN>0?'<i style="background:#e2581b;border-radius:50%;width:6px"></i>':''}</span>`;
+    c.innerHTML=`<b><i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}</b>`;   // v15: 아래 철탑 목록은 번호만 (자세한 건 철탑을 누르면 카드에)
     c.addEventListener('click',()=>selectTower(t)); frag.appendChild(c); t.chip=c;
   });
   chipsEl.appendChild(frag);
@@ -1099,8 +1112,8 @@ function renderAdd(){
     <div class="field"><span class="lb">회선 수</span>${segHTML('data-dc',[2,4,6],d.circuits,v=>v+'회선')}</div>
     <div class="field"><span class="lb">가공지선 (꼭대기 지선 수)</span>${segHTML('data-dgw',[1,2],d.gw,v=>v===1?'1조 · 가운데':'2조 · 양쪽')}</div>
     <div class="field"><span class="lb">철탑 호수</span>
-      <div class="row2"><div class="unit" data-unit="호부터"><input id="fFrom" type="number" inputmode="numeric" min="1" value="${d.from}" aria-label="시작 호수"></div>
-      <div class="unit" data-unit="호까지"><input id="fTo" type="number" inputmode="numeric" min="1" value="${d.to}" aria-label="끝 호수"></div></div></div>
+      <div class="row2"><div class="unit" data-unit="번부터"><input id="fFrom" type="number" inputmode="numeric" min="1" value="${d.from}" aria-label="시작 호수"></div>
+      <div class="unit" data-unit="번까지"><input id="fTo" type="number" inputmode="numeric" min="1" value="${d.to}" aria-label="끝 호수"></div></div></div>
     <p class="err" id="addErr" hidden></p>
     <p class="note">22-1호처럼 중간 철탑은 추가한 뒤 22호를 눌러 끼워넣을 수 있어요.</p>
     <div class="actions"><button class="primary" type="button" id="addOk">선로 추가</button>
@@ -1140,14 +1153,14 @@ function renderCard(){
         <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
         ${l.gw===1?'':`<div class="row2" style="align-items:center;margin-top:6px"><span class="lb" style="min-width:44px">#2</span>${segHTML('data-wt2',WT,l.gw2,v=>v)}</div>`}</div>
       <dl>
-        <dt>철탑</dt><dd>${towers[0].label}호~${towers[towers.length-1].label}호 · ${towers.length}기</dd>
+        <dt>철탑</dt><dd>No.${towers[0].label}~No.${towers[towers.length-1].label} · ${towers.length}기</dd>
         <dt>선로길이</dt><dd>${(G.L/1000).toFixed(2)} km</dd>
       </dl>
       <div class="actions">
-        <button class="ghost" type="button" id="addEnd">+ 끝에 ${nextAfterLast(l)}호 추가</button>
+        <button class="ghost" type="button" id="addEnd">+ 끝에 No.${nextAfterLast(l)} 추가</button>
         <button class="ghost danger" type="button" id="delLine">${confirmDel==='line'?'한 번 더 누르면 선로가 삭제됩니다':'이 선로 삭제'}</button>
       </div>
-      <p class="note">철탑을 누르면 높이·경간, 현수·내장, 항공 철탑, 횡단을 입력할 수 있어요. 중간 철탑(22-1호)도 끼워넣을 수 있어요. 수정 내용은 서버에 자동 저장되고, 이 주소를 아는 직원끼리 같이 봐요. 철탑의 📸 기별사진에서 사진을 등록하세요.</p>`;
+      <p class="note">철탑을 누르면 높이·경간, 현수·내장, 항공 철탑, 횡단을 입력할 수 있어요. 중간 철탑(No.22-1)도 끼워넣을 수 있어요. 수정 내용은 서버에 자동 저장되고, 이 주소를 아는 직원끼리 같이 봐요. 철탑의 📸 기별사진에서 사진을 등록하세요.</p>`;
   }else{
     const s=spans[t.i], next=towers[t.i+1], prev=towers[t.i-1];
     const br=nextBranch(l,t.label);
@@ -1159,7 +1172,7 @@ function renderCard(){
       <button class="primary ledger-btn" type="button" id="openLedger">📸 기별사진 · ${progress(t).done}/${progress(t).total}</button>
       <label class="check danger-check"><input type="checkbox" id="xDanger" ${t.d.danger?'checked':''}>⚠ 위험 철탑 (번호찰에 경고 표시)<i class="sw" style="background:var(--danger)"></i></label>
       <div class="row2">
-        <div class="field"><label for="fLabel">철탑 번호</label><div class="unit" data-unit="호"><input id="fLabel" type="text" value="${esc(t.label)}"></div></div>
+        <div class="field"><label for="fLabel">철탑 번호 (No.)</label><div class="unit" data-unit=""><input id="fLabel" type="text" value="${esc(t.label)}"></div></div>
         <div class="field"><label for="fH">철탑 높이</label><div class="unit" data-unit="m"><input id="fH" type="number" inputmode="decimal" min="10" max="250" step="0.1" placeholder="${t.autoH}" value="${t.d.h>0?t.d.h:''}"></div></div>
       </div>
       <div class="field"><label for="fForm">철탑 형</label><div class="unit" data-unit="형"><input id="fForm" type="text" placeholder="예: A, B, SA, D" value="${esc(stripForm(t.d.form))}"></div></div>
@@ -1180,8 +1193,8 @@ function renderCard(){
       ${t.i>0&&t.i<towers.length-1?`<div class="field"><span class="lb">각도주 · 선로가 꺾이는 방향과 각도</span>
         ${segHTML('data-angdir',['','L','R'],t.d.angDir||'',v=>v===''?'직선':v==='L'?'↰ 좌로':'우로 ↱')}
         ${t.d.angDir?`<div class="row2" style="margin-top:6px"><div class="unit" data-unit="도"><input id="fAngD" type="number" inputmode="numeric" min="0" max="90" step="1" value="${Math.floor((+t.d.angDeg||0)+1e-9)}" aria-label="각도 도"></div><div class="unit" data-unit="분"><input id="fAngM" type="number" inputmode="numeric" min="0" max="59" step="1" value="${Math.round(((+t.d.angDeg||0)-Math.floor((+t.d.angDeg||0)+1e-9))*60)}" aria-label="각도 분"></div></div>`:''}</div>`:''}
-      <div class="field"><span class="lb">피뢰기 · 아킹혼 · 아킹링 (회선별 · 전원측/부하측)</span>
-        ${ARR_POS.map(x=>`<div class="arrrow"><span class="lb">${x.name}</span>${segHTML('data-arr-'+x.k,ARR_KINDS,t.d['arr'+x.k]||'',v=>v||'없음')}</div>`).join('')}</div>
+      <div class="field"><span class="lb">피뢰기 · 아킹혼·링 (회선별 · 전원측/부하측)</span>
+        ${ARR_POS.map(x=>`<div class="arrrow"><span class="lb">${x.name}</span>${segHTML('data-arr-'+x.k,ARR_KINDS,arrN(t.d['arr'+x.k]),v=>v||'없음')}</div>`).join('')}</div>
       <div class="field"><span class="lb">댐퍼 수량${l.kv==154?'':' · 가공지선'}</span>
         ${dmpKinds(l).map(x=>`<div class="qty" style="margin-top:6px"><span class="lb" style="min-width:92px">${x.name}</span><div class="unit" data-unit="개" style="flex:1"><input type="number" inputmode="numeric" min="0" max="999" step="1" placeholder="0" data-dmp="${x.k}" value="${t.d[x.k]>0?t.d[x.k]:''}"></div></div>`).join('')}</div>
       <div class="field"><span class="lb">항공장애표시 · 선택한 철탑에만 표시</span>
@@ -1205,7 +1218,7 @@ function renderCard(){
         <div class="qty" aria-disabled="${!t.d.ball}"><span class="lb">${l.gw===1?'':'#'+ballSide+' '}백색 <i class="sw" style="background:#f2f2ee;border:1px solid var(--muted);border-radius:50%;width:9px;height:9px;vertical-align:middle"></i></span>
           <div class="stepper"><button type="button" id="bWMinus" aria-label="백색 줄이기">−</button><output>${t.d['ball'+ballSide+'W']||0}개</output><button type="button" id="bWPlus" aria-label="백색 늘리기">+</button></div></div></div>`:''}
       <div class="actions">
-        ${next?`<button class="ghost" type="button" id="insAfter">+ ${esc(H_(t))} 다음에 ${esc(br)}호 끼워넣기</button>`:`<button class="ghost" type="button" id="addEnd">+ 끝에 ${nextAfterLast(l)}호 추가</button>`}
+        ${next?`<button class="ghost" type="button" id="insAfter">+ ${esc(H_(t))} 다음에 No.${esc(br)} 끼워넣기</button>`:`<button class="ghost" type="button" id="addEnd">+ 끝에 No.${nextAfterLast(l)} 추가</button>`}
         <button class="ghost danger" type="button" id="delTower">${confirmDel===t.d.id?'한 번 더 누르면 삭제됩니다':esc(H_(t))+' 삭제'}</button>
       </div>
       <p class="note">높이·경간을 비워 두면 기본값(회색 숫자)을 씁니다.</p>`;
@@ -1238,7 +1251,7 @@ function renderCard(){
   q('#fLabel').addEventListener('change',e=>{
     const v=e.target.value.trim().replace(/호$/,'');
     if(!v){bad('철탑 번호를 입력해 주세요.');e.target.value=t.label;return;}
-    if(l.towers.some(x=>x!==t.d&&x.label===v)){bad(`${v}호는 이미 있어요.`);e.target.value=t.label;return;}
+    if(l.towers.some(x=>x!==t.d&&x.label===v)){bad(`No.${v}는 이미 있어요.`);e.target.value=t.label;return;}
     t.d.label=v; save(); build();
   });
   q('#fH').addEventListener('change',e=>{
@@ -1340,7 +1353,7 @@ function updateDetail(){
   const face=y=>t.pole?(t.poleR(y)+.08):(t.widthAt(y)/2+.08);    // 카메라 쪽 면까지 거리
   const plate=(tex,w,h,y)=>{const m=new T.Mesh(new T.PlaneGeometry(w,h),new T.MeshBasicMaterial({map:tex,side:T.DoubleSide}));const p=W([-face(y),y,0]);m.position.set(p[0],p[1],p[2]);m.rotation.y=-(t.th||0);g.add(m);};
   const l=cur();
-  plate(plateTex([t.label+'호',stripTL(l.name)],'#ffffff','#111111','#1f4fa0'),1.7,1.06,4.4);
+  plate(plateTex(['No.'+t.label,stripTL(l.name)],'#ffffff','#111111','#1f4fa0'),1.7,1.06,4.4);
   if(t.d.danger) plate(plateTex(['⚠ 위험','고압 전기 · 접근 금지'],'#ffd400','#c00000','#c00000'),1.5,.94,3.0);
   const line=(pts,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(pts,3));g.add(new T.LineSegments(gg,new T.LineBasicMaterial({color})));};
   // 수직구명줄: 전원측 다리(A각)를 따라 주황색 줄
@@ -1662,7 +1675,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v10`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v15`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
@@ -1732,7 +1745,7 @@ ${hs("view",'<rect x="10" y="12" width="40" height="22" rx="4"/>',30,50)}
 
 // 사진 입력칸은 화면이 다시 그려져도 사라지지 않게 하나만 만들어 둠
 const camIn=document.createElement('input'); camIn.type='file'; camIn.accept='image/*'; camIn.setAttribute('capture','environment');
-const galIn=document.createElement('input'); galIn.type='file'; galIn.accept='image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic';  // 카메라 없이 갤러리(사진 선택)로 바로 열림
+const galIn=document.createElement('input'); galIn.type='file'; galIn.accept='image/*';  // v11: 확장자(.jpg 등)를 넣으면 안드로이드가 '내 파일'을 열어서, 사진 종류만 지정 → 갤러리(사진 선택기)로 바로 열림. capture가 없어 카메라는 안 뜸
 [camIn,galIn].forEach(x=>{x.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;opacity:0';x.tabIndex=-1;document.body.append(x);});
 let pending=null;
 camIn.addEventListener('change',()=>addPhoto(camIn));
@@ -1945,7 +1958,7 @@ const SEQ_ITEMS={top:'상부',v_line:'수직구명줄',insulator:'애자련',opg
 const inScope=(id,scope)=>!scope||id.startsWith(scope+'_');
 const seqLeft=(t,scope)=>seqOrder(t).filter(x=>x.on&&inScope(x.id,scope)&&!photosOf(t.d.id,x.id).length);
 const seqIn=document.createElement('input'); seqIn.type='file'; seqIn.multiple=true;
-seqIn.accept='image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic';
+seqIn.accept='image/*';   // v11: 갤러리로 바로 열림 (여러 장 선택)
 seqIn.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;opacity:0'; seqIn.tabIndex=-1; document.body.append(seqIn);
 let seqJob=null;
 function seqModal(build){
