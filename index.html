@@ -100,6 +100,14 @@ body.split .arrrow .seg{flex:1 1 100%}
 .lampmk .mkgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
 .lampchip{display:inline-flex;align-items:center;flex-wrap:wrap;font-size:12.5px;font-weight:600;padding:5px 9px;border-radius:6px;background:color-mix(in srgb,var(--ink) 7%,transparent)}
 .lampchip small{font-weight:400;color:var(--muted);margin-left:6px}
+.hipos{margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:8px}
+.hipos table{width:100%;border-collapse:collapse;margin-top:6px;font-size:12.5px}
+.hipos th{font-weight:600;color:var(--muted);padding:4px 2px;text-align:center}
+.hipos td{text-align:center;padding:2px}
+.hipos td label{display:flex;justify-content:center;align-items:center;padding:8px 0;border:1px solid var(--line);border-radius:6px;cursor:pointer}
+.hipos td label:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.hipos input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
+.hipos .hipt{margin-top:6px;font-size:12.5px}
 .lamps{display:grid;gap:6px}
 .lamps[aria-disabled="true"]{opacity:.45;pointer-events:none}
 .lamprow{display:grid;grid-template-columns:1fr 92px;align-items:center;gap:8px}
@@ -1019,6 +1027,11 @@ function makeCrossTags(){
 const crossOf=d=>CROSS.filter(c=>d[c.k]);
 const H_=t=>'No.'+t.label;   // v15: 1호 → No.1 표기
 const LAMP_KINDS=[{k:'high',name:'고광도',desc:'백색 섬광',c:'#ffffff'},{k:'mid',name:'중광도',desc:'적색 섬광',c:'#ff3b2f'},{k:'low',name:'저광도',desc:'적색 점멸',c:'#ff2a2a'}];
+const HI_FACE=['A-B','B-C','C-D','D-A'], HI_LV=['상부','중부','하부'];
+const hiList=d=>{const s=new Set(d.hiPos||[]);const out=[];HI_LV.forEach(v=>HI_FACE.forEach(f=>{if(s.has(f+' '+v))out.push(f+'각 '+v);}));return out;};
+function hiPosTxt(t){const a=hiList(t.d), n=t.lampN.high;return a.length?`${a.join(' · ')}${a.length!==n?` <b style="color:#C0392B">(체크 ${a.length}곳 / 고광도 ${n}개)</b>`:''}`:'<span class="lb">아직 위치를 고르지 않았어요.</span>';}
+function hiPosHTML(t){const s=new Set(t.d.hiPos||[]);
+  return `<div class="hipos"><span class="lb">고광도 위치 · 각(면)과 높이를 체크하세요</span><table><tr><th></th>${HI_FACE.map(f=>`<th>${f}각</th>`).join('')}</tr>${HI_LV.map(v=>`<tr><th>${v}</th>${HI_FACE.map(f=>{const k=f+' '+v;return `<td><label><input type="checkbox" data-hip="${k}" ${s.has(k)?'checked':''} aria-label="${f}각 ${v}"></label></td>`;}).join('')}</tr>`).join('')}</table><div class="hipt" id="hipTxt">${hiPosTxt(t)}</div></div>`;}
 const LAMP_DEFAULT={high:0,mid:1,low:2};
 function lampCounts(d){const n=d.lampN;if(!n)return Object.assign({},LAMP_DEFAULT);const r={high:+n.high||0,mid:+n.mid||0,low:+n.low||0};if(r.high+r.mid+r.low===0)return Object.assign({},LAMP_DEFAULT);return r;}
 const lampTxt=(n,all)=>{const p=[];if(n.high)p.push('고'+n.high);if(n.mid)p.push('중'+n.mid);if(n.low)p.push('저'+n.low);return p.length?p.join('·'):(all?'0':'');};
@@ -1212,7 +1225,8 @@ function renderCard(){
           <span class="lb">항공장애등 · 종류를 고르고 추가·빼기</span>
           ${segHTML('data-lsel',LAMP_KINDS.map(k=>k.k),lampSel,v=>{const k=LAMP_KINDS.find(x=>x.k===v);return `<i class="ldot" style="background:${k.c}"></i>${k.name}`;})}
           <div class="row2"><button class="ghost" type="button" id="lampMinus">− 빼기</button><button class="primary" type="button" id="lampPlus">+ 추가</button></div>
-          <div class="lamplist">${t.lamp?LAMP_KINDS.filter(k=>t.lampN[k.k]>0).map(k=>`<span class="lampchip"><i class="ldot" style="background:${k.c}"></i>${k.name} ${t.lampN[k.k]}개<small>${k.desc}</small></span>`).join(''):'<span class="lb">설치된 항공등이 없어요. 종류를 고르고 + 추가를 누르세요.</span>'}</div>
+          <div class="lamplist">${t.lamp?LAMP_KINDS.filter(k=>t.lampN[k.k]>0).map(k=>`<span class="lampchip"><i class="ldot" style="background:${k.c}"></i>${k.name} ${t.lampN[k.k]}개<small>${k.desc}${k.k==='high'&&hiList(t.d).length?' · '+esc(hiList(t.d).join(', ')):''}</small></span>`).join(''):'<span class="lb">설치된 항공등이 없어요. 종류를 고르고 + 추가를 누르세요.</span>'}</div>
+          ${t.lamp&&t.lampN.high>0?hiPosHTML(t):''}
           <details class="lampmk"><summary>제조사 ${(t.d.lampMk||[]).length?'<b>'+esc(t.d.lampMk.join(' · '))+'</b>':'<span class="lb">선택 안 함</span>'}</summary>
             <div class="mkgrid">${LAMP_MAKERS.map(m=>`<label class="check"><input type="checkbox" data-lmk="${m}" ${(t.d.lampMk||[]).includes(m)?'checked':''}>${m}</label>`).join('')}</div></details>
         </div></div>
@@ -1316,6 +1330,12 @@ function renderCard(){
     const set=new Set(t.d.lampMk||[]); cb.checked?set.add(cb.dataset.lmk):set.delete(cb.dataset.lmk);
     t.d.lampMk=LAMP_MAKERS.filter(m=>set.has(m)); if(!t.d.lampMk.length) delete t.d.lampMk; save();
     const sm=cb.closest('details').querySelector('summary'); sm.innerHTML='제조사 '+(t.d.lampMk?'<b>'+esc(t.d.lampMk.join(' · '))+'</b>':'<span class="lb">선택 안 함</span>');
+  }));
+  card.querySelectorAll('[data-hip]').forEach(cb=>cb.addEventListener('change',()=>{
+    const set=new Set(t.d.hiPos||[]); cb.checked?set.add(cb.dataset.hip):set.delete(cb.dataset.hip);
+    t.d.hiPos=[]; HI_LV.forEach(v=>HI_FACE.forEach(f=>{if(set.has(f+' '+v))t.d.hiPos.push(f+' '+v);})); if(!t.d.hiPos.length) delete t.d.hiPos; save();
+    const e=q('#hipTxt'); if(e) e.innerHTML=hiPosTxt(t);
+    const ch=[...card.querySelectorAll('.lampchip')].find(c=>c.textContent.startsWith('고광도')); if(ch){const sm=ch.querySelector('small'); if(sm) sm.textContent='백색 섬광'+(hiList(t.d).length?' · '+hiList(t.d).join(', '):'');}
   }));
   q('#lampMinus').addEventListener('click',()=>{if(!t.lamp||!t.lampN[lampSel]){bad(`${LAMP_KINDS.find(k=>k.k===lampSel).name} 항공등이 없어요.`);return;}const n=Object.assign({},t.lampN);n[lampSel]--;lampSet(n);});
   q('#xAv').addEventListener('change',e=>{const v=e.target.checked;t.d.av=(v===t.autoAv)?null:v;save();build();});
