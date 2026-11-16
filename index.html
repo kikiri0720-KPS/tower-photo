@@ -363,6 +363,8 @@ const STORE='tower3d-lines-v2', OLD='tower3d-straight-v1';
 let uid=0; const rid=()=>'t'+Date.now().toString(36)+(uid++).toString(36);
 const newTower=label=>({id:rid(),label:String(label),form:'',type:null,av:null,h:null,span:null,road:false,river:false,rail:false,land:'',kudzu:false,valley:false,ball:false,ballN:0,ball1R:0,ball1W:0,ball2R:0,ball2W:0,lamp:null,lampN:null,danger:false,pole:false,angDir:'',angDeg:0});
 // 각도주: angDir = '' 직선 / 'L' 좌 / 'R' 우, angDeg = 꺾이는 각도(도, 소수)
+// v17: 회선 수는 선로 기본값(보통 2회선)을 따르고, 철탑마다 따로 4·6회선으로 바꿀 수 있음 (d.cir)
+const cirOf=(l,d)=>(d&&+d.cir)||l.circuits;
 function angOf(d){const v=+d.angDeg||0;return d.angDir==='R'?v:d.angDir==='L'?-v:0;}
 function angTxt(d){const v=+d.angDeg||0, dg=Math.floor(v+1e-9), mn=Math.round((v-dg)*60);return (d.angDir==='L'?'좌 ':'우 ')+dg+'°'+(mn?String(mn).padStart(2,'0')+'′':'');}
 const range=(a,b)=>{const r=[];for(let n=a;n<=b;n++)r.push(newTower(n));return r;};
@@ -576,7 +578,7 @@ function hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att){
 }
 function poleInto(l,t,steel,pos,col,grp0,mat){
   const grp=new T.Group(); grp.position.set(t.x,0,t.z); grp.rotation.y=-(t.th||0); grp0.add(grp);
-  const H=t.H, spec=armSpec(l.circuits);
+  const H=t.H, spec=armSpec(cirOf(l,t.d));
   const ca=Math.cos(t.th||0), sa=Math.sin(t.th||0);
   const W=p=>[t.x+p[2]*ca+p[0]*sa, t.y+p[1], t.z+p[2]*sa-p[0]*ca];
   const seg=(a,q,cc)=>{cc=cc||steel;pos.push(...W(a),...W(q));col.push(cc.r,cc.g,cc.b,cc.r,cc.g,cc.b);};
@@ -654,7 +656,7 @@ function poleInto(l,t,steel,pos,col,grp0,mat){
   t.attach=att;
 }
 function towerInto(l,t,steel,pos,col){
-  const H=t.H, c=l.circuits, spec=armSpec(c);
+  const H=t.H, c=cirOf(l,t.d), spec=armSpec(c);
   const b=H*(t.tension?(c===2?.25:.21):(c===2?.19:.16)), w0=H*(c===2?.055:.045), hb=H*(spec.arms[0].f-.07);
   const ca=Math.cos(t.th||0), sa=Math.sin(t.th||0);   // th = 철탑이 향한 선로 방향(각도주는 앞뒤 경간의 가운데)
   const W=p=>[t.x+p[2]*ca+p[0]*sa, t.y+p[1], t.z+p[2]*sa-p[0]*ca];
@@ -779,7 +781,7 @@ function build(){
   towers=l.towers.map((d,i)=>{
     const x=PX[i], z=PZ[i];
     const auto=i===0||i===n-1||i%6===5||(i>0&&i<n-1&&angOf(d)!==0), tension=d.type!=null?d.type:auto;
-    const autoH=Math.round(baseH(l.kv)*CIRC_MUL[l.circuits]+(hash(i*1.7,l.seed)-.5)*8+(tension?4:0));
+    const autoH=Math.round(baseH(l.kv)*CIRC_MUL[cirOf(l,d)]+(hash(i*1.7,l.seed)-.5)*8+(tension?4:0));
     const H=d.h>0?d.h:autoH;
     const autoAv=false, aviation=d.av!=null?d.av:autoAv, lamp=d.lamp!=null?d.lamp:autoAv, lampN=lampCounts(d);
     return {d,i,label:d.label,pole:!!d.pole,x,z,th:TH[i],ang:i>0&&i<n-1?angOf(d):0,y:elev(x,z),H,autoH,tension,auto,aviation,autoAv,lamp,lampN,
@@ -855,11 +857,12 @@ function build(){
   });
 
   // 전선
-  const ph=[],gw=[],op=[], keys=Object.keys(towers[0].attach);
+  const ph=[],gw=[],op=[];
   spans=[];
   for(let i=0;i<n-1;i++){
     let midY=0,cnt=0;
-    keys.forEach(key=>{
+    // v17: 회선 수가 다른 철탑 사이(2회선↔4회선)는 양쪽에 다 있는 회선만 이음
+    Object.keys(towers[i].attach).filter(k=>towers[i+1].attach[k]).forEach(key=>{
       const A=towers[i].attach[key].fwd, Q=towers[i+1].attach[key].back, isG=towers[i].attach[key].gw;
       const span=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=span*span*.000075*(isG?.8:1), arr=isG?(wireOfKey(l,key)==='OPGW'?op:gw):ph;
       const at=u=>[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];
@@ -876,7 +879,7 @@ function build(){
       if(dmpN(l.towers[i+1],'S')>0) EXTRA.dmps.push({p:at(1-u4),h:Math.atan2(hz,hx)});
       if(!isG){midY+=(A[1]+Q[1])/2-sag;cnt++;}
     });
-    spans.push({i,x:(towers[i].x+towers[i+1].x)/2,z:(towers[i].z+towers[i+1].z)/2,h:HD[i],y:midY/cnt,len:Math.hypot(towers[i+1].x-towers[i].x,towers[i+1].z-towers[i].z),tags:[]});
+    spans.push({i,x:(towers[i].x+towers[i+1].x)/2,z:(towers[i].z+towers[i+1].z)/2,h:HD[i],y:cnt?midY/cnt:(towers[i].y+towers[i+1].y)/2+Math.min(HD[i]||30,towers[i].H),len:Math.hypot(towers[i+1].x-towers[i].x,towers[i+1].z-towers[i].z),tags:[]});
   }
   if(n>1){
     const mk=(arr,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(arr,3));return new T.LineSegments(gg,new T.LineBasicMaterial({color}));};
@@ -1068,7 +1071,8 @@ document.getElementById('stats').addEventListener('click',e=>{
 });
 function renderHead(){
   const l=cur();
-  document.getElementById('eyebrow').textContent=`${l.kv}kV · ${l.circuits}회선 · ${gwTxt(l)}`;
+  const cx=[4,6,2].filter(c=>c!==l.circuits).map(c=>[c,l.towers.filter(d=>cirOf(l,d)===c).length]).filter(x=>x[1]);
+  document.getElementById('eyebrow').textContent=`${l.kv}kV · ${l.circuits}회선${cx.length?' ('+cx.map(x=>x[0]+'회선 '+x[1]+'기').join(' · ')+')':''} · ${gwTxt(l)}`;
   document.getElementById('title').textContent=LN(l);
   const nT=towers.filter(t=>t.tension).length;
   const first=towers[0].label, last=towers[towers.length-1].label;
@@ -1151,7 +1155,7 @@ function renderCard(){
       <div class="card-top"><h2>선로 정보</h2><button class="close" type="button" aria-label="닫기">×</button></div>
       ${nameField(stripTL(l.name))}
       ${kvField(l.kv)}
-      <div class="field"><span class="lb">회선 수</span>${segHTML('data-circ',[2,4,6],l.circuits,v=>v+'회선')}</div>
+      <div class="field"><span class="lb">회선 수 · 선로 기본값 (따로 고른 철탑은 그대로)</span>${segHTML('data-circ',[2,4,6],l.circuits,v=>v+'회선')}</div>
       <div class="field"><span class="lb">가공지선 (꼭대기 지선 수)</span>${segHTML('data-gw',[1,2],l.gw,v=>v===1?'1조 · 가운데':'2조 · 양쪽')}</div>
       <div class="field"><span class="lb">가공지선 종류 · OPGW / GW</span>
         <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
@@ -1172,7 +1176,7 @@ function renderCard(){
       <div class="card-top"><span class="no">${esc(H_(t))}</span>
         <span class="pill ${t.tension?'ten':''}"><i class="sym ${t.tension?'ten':'sus'}"></i>${t.tension?'내장형':'현수형'}</span>${t.ang?'<span class="pill">∠ '+esc(angTxt(t.d))+'</span>':''}${t.pole?'<span class="pill">'+(false?'강관주·경사완금':'관형주')+'</span>':''}${t.d.danger?'<span class="pill" style="background:var(--danger);color:#fff;border-color:var(--danger)">⚠ 위험</span>':''}
         <button class="ghost splitBtn" type="button" data-split aria-pressed="${splitOn?'true':'false'}" title="3D와 정보를 나눠서 보기">⧉ 분할</button><button class="close" type="button" aria-label="닫기">×</button></div>
-      <div class="sub">${esc(l.kv+'kV '+LN(l))} · ${l.circuits}회선 · ${gwTxt(l)}${t.d.form?' · '+esc(FORM(t.d)):''}</div>
+      <div class="sub">${esc(l.kv+'kV '+LN(l))} · ${cirOf(l,t.d)}회선${t.d.cir?' (따로 설정)':''} · ${gwTxt(l)}${t.d.form?' · '+esc(FORM(t.d)):''}</div>
       <button class="primary ledger-btn" type="button" id="openLedger">📸 기별사진 · ${progress(t).done}/${progress(t).total}</button>
       <label class="check danger-check"><input type="checkbox" id="xDanger" ${t.d.danger?'checked':''}>⚠ 위험 철탑 (번호찰에 경고 표시)<i class="sw" style="background:var(--danger)"></i></label>
       <div class="row2">
@@ -1186,7 +1190,8 @@ function renderCard(){
         <dt>후경간</dt><dd>${prev?Math.round(spans[t.i-1].len)+' m':'—'}</dd>
         <dt>지반표고</dt><dd>EL.${t.y.toFixed(1)}</dd>
       </dl>
-      <div class="field"><span class="lb">회선 수 (선로 전체 적용)</span>${segHTML('data-circ',[2,4,6],l.circuits,v=>v+'회선')}</div>
+      <div class="field"><span class="lb">회선 수 · 이 철탑만</span>${segHTML('data-tcir',[2,4,6],cirOf(l,t.d),v=>v+'회선'+(v===l.circuits?' (기본)':''))}
+        <span class="lb" style="font-size:12px">선로 기본 ${l.circuits}회선 · 다르게 고른 철탑만 바뀌어요. 기본값은 선로 정보에서 바꿔요.</span></div>
       <div class="field"><span class="lb">가공지선 (선로 전체 적용)</span>${segHTML('data-gw',[1,2],l.gw,v=>v===1?'1조 · 가운데':'2조 · 양쪽')}</div>
       <div class="field"><span class="lb">가공지선 종류 · OPGW / GW</span>
         <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
@@ -1233,6 +1238,7 @@ function renderCard(){
   q('.close').addEventListener('click',()=>{confirmDel=null;if(selT)selectTower(null);else card.hidden=true;});
   // 선로
   card.querySelectorAll('[data-circ]').forEach(b=>b.addEventListener('click',()=>{l.circuits=+b.dataset.circ;save();build();}));
+  card.querySelectorAll('[data-tcir]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.tcir;if(cirOf(l,t.d)===v)return;if(v===l.circuits)delete t.d.cir;else t.d.cir=v;save();build();}));
   card.querySelectorAll('[data-gw]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.gw;if(v!==l.gw){l.gw=v;save();build();}}));
   card.querySelectorAll('[data-wt1]').forEach(b=>b.addEventListener('click',()=>{if(l.gw1!==b.dataset.wt1){l.gw1=b.dataset.wt1;save();build();}}));
   card.querySelectorAll('[data-wt2]').forEach(b=>b.addEventListener('click',()=>{if(l.gw2!==b.dataset.wt2){l.gw2=b.dataset.wt2;save();build();}}));
@@ -1686,7 +1692,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v16`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v17`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
