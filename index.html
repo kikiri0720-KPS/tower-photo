@@ -95,6 +95,9 @@ body.split .arrrow .seg{flex:1 1 100%}
 .lampbox{display:grid;gap:8px;padding:10px;border:1px solid var(--line);border-radius:8px}
 .ldot{display:inline-block;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 1px var(--line);margin-right:5px;vertical-align:-1px}
 .lamplist{display:flex;flex-wrap:wrap;gap:6px}
+.lampmk{border-top:1px dashed var(--line);padding-top:8px}
+.lampmk summary{cursor:pointer;font-size:13px}
+.lampmk .mkgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
 .lampchip{display:inline-flex;align-items:center;flex-wrap:wrap;font-size:12.5px;font-weight:600;padding:5px 9px;border-radius:6px;background:color-mix(in srgb,var(--ink) 7%,transparent)}
 .lampchip small{font-weight:400;color:var(--muted);margin-left:6px}
 .lamps{display:grid;gap:6px}
@@ -1035,6 +1038,7 @@ function nextAfterLast(l){const last=l.towers[l.towers.length-1];const n=parseIn
 /* ---------- UI ---------- */
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const lineSel=document.getElementById('lineSel'), chipsEl=document.getElementById('chips'), card=document.getElementById('card');
+const LAMP_MAKERS=['신성','한국항공','서광','스마트IT'];   // v16: 항공장애등 제조사 (여러 개 고를 수 있음)
 const ARR_KINDS=['','피뢰기','아킹혼·링'];   // v13: 아킹혼과 아킹링은 항상 같이 → 하나로 묶음
 const ARR_STAT=['피뢰기','아킹혼·링'];
 const arrN=v=>v==='아킹혼'||v==='아킹링'?'아킹혼·링':(v||'');   // 예전에 아킹혼·아킹링으로 따로 저장한 철탑도 아킹혼·링으로 봄
@@ -1204,6 +1208,8 @@ function renderCard(){
           ${segHTML('data-lsel',LAMP_KINDS.map(k=>k.k),lampSel,v=>{const k=LAMP_KINDS.find(x=>x.k===v);return `<i class="ldot" style="background:${k.c}"></i>${k.name}`;})}
           <div class="row2"><button class="ghost" type="button" id="lampMinus">− 빼기</button><button class="primary" type="button" id="lampPlus">+ 추가</button></div>
           <div class="lamplist">${t.lamp?LAMP_KINDS.filter(k=>t.lampN[k.k]>0).map(k=>`<span class="lampchip"><i class="ldot" style="background:${k.c}"></i>${k.name} ${t.lampN[k.k]}개<small>${k.desc}</small></span>`).join(''):'<span class="lb">설치된 항공등이 없어요. 종류를 고르고 + 추가를 누르세요.</span>'}</div>
+          <details class="lampmk"><summary>제조사 ${(t.d.lampMk||[]).length?'<b>'+esc(t.d.lampMk.join(' · '))+'</b>':'<span class="lb">선택 안 함</span>'}</summary>
+            <div class="mkgrid">${LAMP_MAKERS.map(m=>`<label class="check"><input type="checkbox" data-lmk="${m}" ${(t.d.lampMk||[]).includes(m)?'checked':''}>${m}</label>`).join('')}</div></details>
         </div></div>
       <div class="field"><span class="lb">철탑 밑 표시 (하나만 선택)</span>
         <div class="checks">${LAND.map(x=>`<label class="check"><input type="checkbox" data-land="${x.k}" ${t.d.land===x.k?'checked':''}>${x.name}<i class="sw" style="background:${x.c}"></i></label>`).join('')}</div></div>
@@ -1300,6 +1306,11 @@ function renderCard(){
   card.querySelectorAll('[data-lsel]').forEach(b=>b.addEventListener('click',()=>{lampSel=b.dataset.lsel;renderCard();}));
   const lampSet=n=>{const tot=n.high+n.mid+n.low;t.d.lampN=tot?n:null;t.d.lamp=tot>0;save();build();};
   q('#lampPlus').addEventListener('click',()=>{const n=t.lamp?Object.assign({},t.lampN):{high:0,mid:0,low:0};if(n[lampSel]>=20){bad('종류별로 20개까지 넣을 수 있어요.');return;}n[lampSel]++;lampSet(n);});
+  card.querySelectorAll('[data-lmk]').forEach(cb=>cb.addEventListener('change',()=>{
+    const set=new Set(t.d.lampMk||[]); cb.checked?set.add(cb.dataset.lmk):set.delete(cb.dataset.lmk);
+    t.d.lampMk=LAMP_MAKERS.filter(m=>set.has(m)); if(!t.d.lampMk.length) delete t.d.lampMk; save();
+    const sm=cb.closest('details').querySelector('summary'); sm.innerHTML='제조사 '+(t.d.lampMk?'<b>'+esc(t.d.lampMk.join(' · '))+'</b>':'<span class="lb">선택 안 함</span>');
+  }));
   q('#lampMinus').addEventListener('click',()=>{if(!t.lamp||!t.lampN[lampSel]){bad(`${LAMP_KINDS.find(k=>k.k===lampSel).name} 항공등이 없어요.`);return;}const n=Object.assign({},t.lampN);n[lampSel]--;lampSet(n);});
   q('#xAv').addEventListener('change',e=>{const v=e.target.checked;t.d.av=(v===t.autoAv)?null:v;save();build();});
   card.querySelectorAll('[data-x]').forEach(cb=>cb.addEventListener('change',()=>{
@@ -1675,7 +1686,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v15`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${l.circuits}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v16`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
