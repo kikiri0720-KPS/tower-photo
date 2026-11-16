@@ -1237,7 +1237,7 @@ function renderCard(){
   const q=s=>card.querySelector(s);
   q('.close').addEventListener('click',()=>{confirmDel=null;if(selT)selectTower(null);else card.hidden=true;});
   // 선로
-  card.querySelectorAll('[data-circ]').forEach(b=>b.addEventListener('click',()=>{l.circuits=+b.dataset.circ;save();build();}));
+  card.querySelectorAll('[data-circ]').forEach(b=>b.addEventListener('click',()=>{l.circuits=+b.dataset.circ;l.towers.forEach(d=>{if(+d.cir===l.circuits)delete d.cir;});save();build();}));
   card.querySelectorAll('[data-tcir]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.tcir;if(cirOf(l,t.d)===v)return;if(v===l.circuits)delete t.d.cir;else t.d.cir=v;save();build();}));
   card.querySelectorAll('[data-gw]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.gw;if(v!==l.gw){l.gw=v;save();build();}}));
   card.querySelectorAll('[data-wt1]').forEach(b=>b.addEventListener('click',()=>{if(l.gw1!==b.dataset.wt1){l.gw1=b.dataset.wt1;save();build();}}));
