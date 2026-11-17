@@ -255,7 +255,10 @@ body.split .arrrow .seg{flex:1 1 100%}
 .thumb-x{position:absolute;top:3px;right:3px;border:0;border-radius:50%;width:26px;height:26px;background:rgba(0,0,0,.65);color:#fff;font-size:12px;padding:0;cursor:pointer}
 .lg-input{width:100%;font-size:14px;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink)}
 .lightbox{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.92);display:grid;place-items:center;padding:16px}
-.lightbox img{max-width:100%;max-height:88vh;object-fit:contain}
+.lightbox{touch-action:none;overflow:hidden}
+.lightbox img{max-width:100%;max-height:88vh;object-fit:contain;transform-origin:0 0;will-change:transform;user-select:none;-webkit-user-drag:none}
+.lightbox .lbx{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px;width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:24px;z-index:2}
+.lightbox .lbh{position:absolute;bottom:calc(12px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:rgba(255,255,255,.7);font-size:12.5px;pointer-events:none}
 .toast{position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:80;margin:0 auto;max-width:420px;background:var(--ink);color:var(--sky);border-radius:10px;padding:12px 14px;text-align:center;font-size:13.5px}
 .lg-modal{position:fixed;inset:0;z-index:75;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:20px}
 .lg-modal-box{width:min(360px,100%);padding:16px;display:grid;gap:8px}
@@ -308,7 +311,7 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
     <div id="photoGrid" class="lg-grid" hidden></div>
   </div>
 </div>
-<div class="lightbox" id="lightbox" hidden><img id="lbImg" alt="사진 확대"></div>
+<div class="lightbox" id="lightbox" hidden><img id="lbImg" alt="사진 확대" draggable="false"><button class="lbx" id="lbX" type="button" aria-label="닫기">×</button><div class="lbh" id="lbH">두 손가락으로 확대 · 두 번 누르면 확대/원래대로</div></div>
 <div class="toast" id="toast" hidden role="status"></div>
 <div id="app">
   <div id="scene"></div>
@@ -2056,7 +2059,7 @@ function openLedger(t){
 function closeLedger(){ledgerEl.hidden=true;ledgerTid=null;sel=null;if(!card.hidden)renderCard();}
 // 휴대폰 뒤로가기 = 한 단계 뒤로 (앱이 통째로 닫히지 않도록)
 function closeTopLayer(){
-  if(!lbEl.hidden){lbEl.hidden=true;gid('lbImg').src='';return true;}
+  if(!lbEl.hidden){lbClose();return true;}
   if(!ledgerEl.hidden){
     if(sel){sel=null;renderLedger();ledgerEl.scrollTop=0;return true;}
     closeLedger();return true;
@@ -2070,8 +2073,33 @@ window.addEventListener('popstate',()=>{
   if(!closed) say('첫 화면이에요. 종료하려면 홈 버튼을 사용하세요.');
 });
 gid('lgBack').addEventListener('click',()=>{history.back();});
-const zoom=src=>{gid('lbImg').src=src;lbEl.hidden=false;};
-lbEl.addEventListener('click',()=>{lbEl.hidden=true;gid('lbImg').src='';});
+/* 사진 크게 보기: 두 손가락 확대(최대 8배)·한 손가락 이동·두 번 눌러 확대/원래대로 */
+const lbImg=gid('lbImg'), LBZ={s:1,x:0,y:0,P:new Map(),d0:0,s0:1,c0:null,x0:0,y0:0,moved:false,tap:0};
+const lbApply=()=>{lbImg.style.transform=`translate(${LBZ.x}px,${LBZ.y}px) scale(${LBZ.s})`;gid('lbH').style.display=LBZ.s>1.01?'none':'';};
+const lbReset=()=>{LBZ.s=1;LBZ.x=0;LBZ.y=0;lbImg.style.transition='transform .2s';lbApply();setTimeout(()=>lbImg.style.transition='',220);};
+function lbClamp(){const r=lbImg.getBoundingClientRect(),W=innerWidth,H=innerHeight,bw=r.width,bh=r.height,ox=r.left-LBZ.x,oy=r.top-LBZ.y;   // 사진이 화면 밖으로 다 나가지 않게
+  if(bw<=W)LBZ.x=(W-bw)/2-ox;else LBZ.x=Math.min(-ox,Math.max(W-bw-ox,LBZ.x));
+  if(bh<=H)LBZ.y=(H-bh)/2-oy;else LBZ.y=Math.min(-oy,Math.max(H-bh-oy,LBZ.y));}
+function lbZoomAt(ns,cx,cy){ns=Math.max(1,Math.min(8,ns));const r=lbImg.getBoundingClientRect(),ox=r.left-LBZ.x,oy=r.top-LBZ.y,px=(cx-ox-LBZ.x)/LBZ.s,py=(cy-oy-LBZ.y)/LBZ.s;
+  LBZ.s=ns;LBZ.x=cx-ox-px*ns;LBZ.y=cy-oy-py*ns;if(ns<=1.001){LBZ.s=1;LBZ.x=0;LBZ.y=0;}else lbClamp();lbApply();}
+const zoom=src=>{lbImg.src=src;LBZ.s=1;LBZ.x=0;LBZ.y=0;lbApply();lbEl.hidden=false;};
+function lbClose(){lbEl.hidden=true;lbImg.src='';LBZ.P.clear();}
+gid('lbX').addEventListener('click',e=>{e.stopPropagation();lbClose();});
+lbEl.addEventListener('pointerdown',e=>{if(e.target.id==='lbX')return;lbEl.setPointerCapture(e.pointerId);LBZ.P.set(e.pointerId,{x:e.clientX,y:e.clientY});LBZ.moved=false;
+  if(LBZ.P.size===2){const[a,b]=[...LBZ.P.values()];LBZ.d0=Math.hypot(a.x-b.x,a.y-b.y);LBZ.s0=LBZ.s;LBZ.c0={x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
+  else if(LBZ.P.size===1){LBZ.c0={x:e.clientX,y:e.clientY};LBZ.x0=LBZ.x;LBZ.y0=LBZ.y;}});
+lbEl.addEventListener('pointermove',e=>{if(!LBZ.P.has(e.pointerId))return;LBZ.P.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(LBZ.P.size>=2){const[a,b]=[...LBZ.P.values()],d=Math.hypot(a.x-b.x,a.y-b.y),c={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+    if(LBZ.d0>0){lbZoomAt(LBZ.s0*d/LBZ.d0,c.x,c.y);LBZ.s0=LBZ.s;LBZ.d0=d;if(LBZ.s>1){LBZ.x+=c.x-LBZ.c0.x;LBZ.y+=c.y-LBZ.c0.y;lbClamp();lbApply();}}LBZ.c0=c;LBZ.moved=true;}
+  else if(LBZ.P.size===1&&LBZ.c0){const dx=e.clientX-LBZ.c0.x,dy=e.clientY-LBZ.c0.y;if(Math.hypot(dx,dy)>6)LBZ.moved=true;if(LBZ.s>1&&LBZ.moved){LBZ.x=LBZ.x0+dx;LBZ.y=LBZ.y0+dy;lbClamp();lbApply();}}});
+const lbUp=e=>{if(!LBZ.P.has(e.pointerId))return;const wasOne=LBZ.P.size===1;LBZ.P.delete(e.pointerId);
+  if(LBZ.P.size===1){const p=[...LBZ.P.values()][0];LBZ.c0={x:p.x,y:p.y};LBZ.x0=LBZ.x;LBZ.y0=LBZ.y;return;}
+  if(!wasOne||LBZ.moved)return;
+  const now=Date.now();
+  if(now-LBZ.tap<300){LBZ.tap=0;clearTimeout(LBZ.tt);if(LBZ.s>1.01)lbReset();else{lbImg.style.transition='transform .2s';lbZoomAt(2.5,e.clientX,e.clientY);setTimeout(()=>lbImg.style.transition='',220);}return;}
+  LBZ.tap=now;clearTimeout(LBZ.tt);LBZ.tt=setTimeout(()=>{if(LBZ.s<=1.01&&e.target!==lbImg)lbClose();},310);};   // 확대 안 한 상태에서 사진 바깥을 한 번 누르면 닫기
+lbEl.addEventListener('pointerup',lbUp);lbEl.addEventListener('pointercancel',e=>LBZ.P.delete(e.pointerId));
+lbEl.addEventListener('wheel',e=>{e.preventDefault();lbZoomAt(LBZ.s*(e.deltaY<0?1.2:1/1.2),e.clientX,e.clientY);},{passive:false});
 try{history.replaceState({nav:0},'');history.pushState({nav:1},'');}catch(e){}
 
 function renderLedger(){
