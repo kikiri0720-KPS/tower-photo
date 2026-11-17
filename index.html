@@ -542,6 +542,7 @@ function armSpec(c){
   return {ad:.03,arms:[{f:.50,pts:[.10,.21]},{f:.58,pts:[.11,.235]},{f:.66,pts:[.10,.21]},{f:.75,pts:[.13]},{f:.83,pts:[.155]},{f:.91,pts:[.13]}]};
 }
 const ORANGE=new T.Color('#e2581b'), WHITE=new T.Color('#f2f2ee'), ECO=new T.Color('#e8a283');   // ECO: 친환경(저채도) 항공장애 도색
+const GREEN=new T.Color('#5f8f6a');   // 친환경 녹색 도장 (경관 도장)
 const AVO=t=>t.d&&t.d.avEco?ECO:ORANGE;
 // 관형주: 강관 원통 기둥 + 수평 완금
 
@@ -799,7 +800,7 @@ function build(){
   const pos=[],col=[]; EXTRA={discs:[],feet:[],horns:[],rings:[],arrs:[],dmps:[]}; G.pos=pos; G.col=col;
   const poleGrp=new T.Group(), matCache={};
   const mat=c=>{const k=c.getHexString();return matCache[k]||(matCache[k]=new T.MeshLambertMaterial({color:c.clone()}));};
-  towers.forEach(t=>t.pole?poleInto(l,t,steel,pos,col,poleGrp,mat):towerInto(l,t,steel,pos,col));
+  towers.forEach(t=>{const st=t.d.green?GREEN:steel;t.pole?poleInto(l,t,st,pos,col,poleGrp,mat):towerInto(l,t,st,pos,col);});
   world.add(poleGrp);
   const g=new T.BufferGeometry();
   g.setAttribute('position',new T.Float32BufferAttribute(pos,3));
@@ -1039,7 +1040,7 @@ const lampTxt=(n,all)=>{const p=[];if(n.high)p.push('고'+n.high);if(n.mid)p.pus
 const stripForm=f=>String(f||'').replace(/\s*형\s*$/,'').trim();
 const FORM=d=>d.form?stripForm(d.form)+'형':'';
 const ballSum=l=>l.towers.reduce((a,d,i)=>a+(i<l.towers.length-1&&d.ball?(d.ballN||0):0),0);
-function updateTag(t){t.tag.className='tag'+(t.tension?' ten':'')+(t===selT?' on':'')+(t.d.danger?' danger-tag':'');t.tag.innerHTML=`${t.d.danger?'<i class="warn">⚠</i>':''}<i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}${angBadge(t.d)}`;}
+function updateTag(t){t.tag.className='tag'+(t.tension?' ten':'')+(t===selT?' on':'');t.tag.innerHTML=`<i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}${angBadge(t.d)}`;}
 // v14: 각도주는 3D 번호표 옆에 꺾이는 방향과 각도를 표시 (예: ↱ 30°15′)
 function angBadge(d){if(!d.angDir||!(+d.angDeg>0))return '';const v=+d.angDeg,dg=Math.floor(v+1e-9),mn=Math.round((v-dg)*60);return `<i class="angb" title="각도주 ${esc(angTxt(d))}">${d.angDir==='L'?'↰ ':''}${dg}°${mn?String(mn).padStart(2,'0')+'′':''}${d.angDir==='R'?' ↱':''}</i>`;}
 
@@ -1075,7 +1076,7 @@ const dmpSum=(d,g)=>g.keys.reduce((a,k)=>a+(d[k]>0?d[k]:0),0);
 const dmpGroups=l=>{const ks=dmpKinds(l).map(x=>x.k);return DMP_G.filter(g=>g.keys.some(k=>ks.includes(k)));};
 let pickKey=null, pickLine=null;
 const MT_LEGS=['A','B','C','D'];
-const PICKS={angle:{n:'각도주',f:t=>!!t.ang},aviation:{n:'도색',f:t=>t.aviation},lamp:{n:'항공등',f:t=>t.lamp},ball:{n:'항공구',f:t=>t.d.ball&&t.d.ballN>0},kudzu:{n:'칡넝쿨',f:t=>t.d.kudzu},mtag:{n:'모바일태그',f:t=>(t.d.mtag||[]).length>0},avEco:{n:'친환경 도색',f:t=>t.aviation&&!!t.d.avEco}};
+const PICKS={angle:{n:'각도주',f:t=>!!t.ang},aviation:{n:'도색',f:t=>t.aviation},lamp:{n:'항공등',f:t=>t.lamp},ball:{n:'항공구',f:t=>t.d.ball&&t.d.ballN>0},kudzu:{n:'칡넝쿨',f:t=>t.d.kudzu},green:{n:'녹색 도장',f:t=>!!t.d.green},mtag:{n:'모바일태그',f:t=>(t.d.mtag||[]).length>0},avEco:{n:'친환경 도색',f:t=>t.aviation&&!!t.d.avEco}};
 CROSS.forEach(c=>PICKS[c.k]={n:c.name,f:t=>t.d[c.k]});
 LAND.forEach(x=>PICKS[x.k]={n:x.name,f:t=>t.d.land===x.k});
 ARR_STAT.forEach(k=>PICKS['arr_'+k]={n:k,f:t=>arrHas(t.d,k)});
@@ -1100,6 +1101,7 @@ function renderHead(){
     +LAND.map(x=>{const n=towers.filter(PICKS[x.k].f).length;return pk(x.k,x.name+' '+n+'기',n);}).join(' · ')
     +' · '+pk('kudzu','칡넝쿨 '+towers.filter(PICKS.kudzu.f).length+'기',towers.filter(PICKS.kudzu.f).length)
     +' · '+pk('mtag','모바일태그 '+towers.filter(PICKS.mtag.f).length+'기',towers.filter(PICKS.mtag.f).length)
+    +(towers.some(PICKS.green.f)?' · '+pk('green','녹색 도장 '+towers.filter(PICKS.green.f).length+'기',towers.filter(PICKS.green.f).length):'')
     +(towers.some(PICKS.avEco.f)?' · '+pk('avEco','친환경 도색 '+towers.filter(PICKS.avEco.f).length+'기',towers.filter(PICKS.avEco.f).length):'')
     +' · '+pk('angle','각도주 '+towers.filter(PICKS.angle.f).length+'기',towers.filter(PICKS.angle.f).length)
     +'\n'+ARR_STAT.map(k=>{const n=towers.filter(PICKS['arr_'+k].f).length;return pk('arr_'+k,k+' '+n+'기',n);}).join(' · ')
@@ -1195,7 +1197,6 @@ function renderCard(){
         <button class="ghost splitBtn" type="button" data-split aria-pressed="${splitOn?'true':'false'}" title="3D와 정보를 나눠서 보기">⧉ 분할</button><button class="close" type="button" aria-label="닫기">×</button></div>
       <div class="sub">${esc(l.kv+'kV '+LN(l))} · ${cirOf(l,t.d)}회선${t.d.cir?' (따로 설정)':''} · ${gwTxt(l)}${t.d.form?' · '+esc(FORM(t.d)):''}</div>
       <button class="primary ledger-btn" type="button" id="openLedger">📸 기별사진 · ${progress(t).done}/${progress(t).total}</button>
-      <label class="check danger-check"><input type="checkbox" id="xDanger" ${t.d.danger?'checked':''}>⚠ 위험 철탑 (번호찰에 경고 표시)<i class="sw" style="background:var(--danger)"></i></label>
       <div class="row2">
         <div class="field"><label for="fLabel">철탑 번호 (No.)</label><div class="unit" data-unit=""><input id="fLabel" type="text" value="${esc(t.label)}"></div></div>
         <div class="field"><label for="fH">철탑 높이</label><div class="unit" data-unit="m"><input id="fH" type="number" inputmode="decimal" min="10" max="250" step="0.1" placeholder="${t.autoH}" value="${t.d.h>0?t.d.h:''}"></div></div>
@@ -1223,6 +1224,8 @@ function renderCard(){
         ${ARR_POS.map(x=>`<div class="arrrow"><span class="lb">${x.name}</span>${segHTML('data-arr-'+x.k,ARR_KINDS,arrN(t.d['arr'+x.k]),v=>v||'없음')}</div>`).join('')}</div>
       <div class="field"><span class="lb">댐퍼 수량${l.kv==154?'':' · 가공지선'}</span>
         ${dmpKinds(l).map(x=>`<div class="qty" style="margin-top:6px"><span class="lb" style="min-width:92px">${x.name}</span><div class="unit" data-unit="개" style="flex:1"><input type="number" inputmode="numeric" min="0" max="999" step="1" placeholder="0" data-dmp="${x.k}" value="${t.d[x.k]>0?t.d[x.k]:''}"></div></div>`).join('')}</div>
+      <div class="field"><span class="lb">철탑 도장</span>${segHTML('data-grn',['none','green'],t.d.green?'green':'none',v=>v==='green'?'<i class="sw" style="background:#5f8f6a;margin:0 4px 0 0"></i>친환경 녹색':'도장 없음 (아연도금)')}
+        ${t.d.green&&t.aviation?'<p class="note" style="margin:6px 0 0">항공장애 도색 구간(상부)은 항공 도색이 우선이고, 그 아래가 녹색으로 보여요.</p>':''}</div>
       <div class="field"><span class="lb">모바일태그 설치각 (여러 개 선택 가능)</span>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">${MT_LEGS.map(k=>`<label class="check" style="flex:1;min-width:64px"><input type="checkbox" data-mtag="${k}" ${(t.d.mtag||[]).includes(k)?'checked':''}>${k}각</label>`).join('')}</div></div>
       <div class="field"><span class="lb">항공장애표시 · 선택한 철탑에만 표시</span>
@@ -1279,7 +1282,6 @@ function renderCard(){
   if(!t){card.hidden=false;return;}
   // 철탑
   q('#openLedger').addEventListener('click',()=>openLedger(t));
-  q('#xDanger').addEventListener('change',e=>{t.d.danger=e.target.checked;save();build();});
   const err=q('#tErr'), bad=m=>{err.textContent=m;err.hidden=false;};
   q('#fLabel').addEventListener('change',e=>{
     const v=e.target.value.trim().replace(/호$/,'');
@@ -1345,6 +1347,7 @@ function renderCard(){
     const ch=[...card.querySelectorAll('.lampchip')].find(c=>c.textContent.startsWith('고광도')); if(ch){const sm=ch.querySelector('small'); if(sm) sm.textContent='백색 섬광'+(hiList(t.d).length?' · '+hiList(t.d).join(', '):'');}
   }));
   q('#lampMinus').addEventListener('click',()=>{if(!t.lamp||!t.lampN[lampSel]){bad(`${LAMP_KINDS.find(k=>k.k===lampSel).name} 항공등이 없어요.`);return;}const n=Object.assign({},t.lampN);n[lampSel]--;lampSet(n);});
+  card.querySelectorAll('[data-grn]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.grn==='green')t.d.green=true;else delete t.d.green;save();build();}));
   card.querySelectorAll('[data-avt]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.avt==='eco')t.d.avEco=true;else delete t.d.avEco;save();build();}));
   card.querySelectorAll('[data-mtag]').forEach(cb=>cb.addEventListener('change',()=>{
     const set=new Set(t.d.mtag||[]); cb.checked?set.add(cb.dataset.mtag):set.delete(cb.dataset.mtag);
@@ -1403,7 +1406,6 @@ function updateDetail(){
   const plate=(tex,w,h,y)=>{const m=new T.Mesh(new T.PlaneGeometry(w,h),new T.MeshBasicMaterial({map:tex,side:T.DoubleSide}));const p=W([-face(y),y,0]);m.position.set(p[0],p[1],p[2]);m.rotation.y=-(t.th||0);g.add(m);};
   const l=cur();
   plate(plateTex(['No.'+t.label,stripTL(l.name)],'#ffffff','#111111','#1f4fa0'),1.7,1.06,4.4);
-  if(t.d.danger) plate(plateTex(['⚠ 위험','고압 전기 · 접근 금지'],'#ffd400','#c00000','#c00000'),1.5,.94,3.0);
   const line=(pts,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(pts,3));g.add(new T.LineSegments(gg,new T.LineBasicMaterial({color})));};
   // 수직구명줄: 전원측 다리(A각)를 따라 주황색 줄
   const lp=[], top=t.H*.93, N=40;
@@ -1990,7 +1992,7 @@ function seqOrder(t){
   const l=cur(), r=[];
   const add=(id,name,on)=>r.push({id,name,on:on!==false});
   add('num_plate','번호찰');
-  add('num_plate_danger','위험표시찰',!!t.d.danger);
+  add('num_plate_danger','위험표시찰');
   add('top_src','전원측 상부');
   add('v_line_src','전원측 수직구명줄');
   add('v_line_src_clamp','전원측 하부클램프');
@@ -2004,7 +2006,6 @@ function seqOrder(t){
   if(lineHas(l,'GW')) [['src','전원측'],['mid','중앙'],['load','부하측']].forEach(([s,n])=>add('gw_'+s,'GW '+n));
   let off={}; try{off=JSON.parse(lsGet('tower3d-seq-off')||'{}')||{};}catch(e){}
   r.forEach(x=>{if(x.id in off) x.on=!off[x.id];});
-  if(t.d.danger) r.find(x=>x.id==='num_plate_danger').on=true;
   return r;
 }
 const SEQ_ITEMS={top:'상부',v_line:'수직구명줄',insulator:'애자련',opgw:'OPGW',gw:'GW'};   // 항목 안에서도 쓸 수 있는 것
