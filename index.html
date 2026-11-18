@@ -2100,6 +2100,8 @@ function closeLedger(){ledgerEl.hidden=true;ledgerTid=null;sel=null;if(!card.hid
 // 휴대폰 뒤로가기 = 한 단계 뒤로 (앱이 통째로 닫히지 않도록)
 function closeTopLayer(){
   if(!lbEl.hidden){lbClose();return true;}
+  {const pk=gid('mapPick');if(pk&&!pk.hidden){pk.hidden=true;return true;}}
+  {const mo=gid('mapOv');if(mo&&!mo.hidden){if(typeof LMAP!=='undefined'&&LMAP)LMAP.closePopup();gid('mapClose').click();return true;}}
   if(!ledgerEl.hidden){
     if(sel){sel=null;renderLedger();ledgerEl.scrollTop=0;return true;}
     closeLedger();return true;
@@ -2107,10 +2109,15 @@ function closeTopLayer(){
   if(!card.hidden){ if(selT) selectTower(null); else closeCard(); return true; }
   return false;
 }
+// 크롬은 '화면을 누르지 않고' 만든 뒤로가기 기록은 건너뛰고 바로 닫아 버림 → 화면을 누를 때마다 기록을 하나 채워 둠
+let navArmed=false;
+const navArm=()=>{if(navArmed)return;try{history.pushState({nav:1},'');navArmed=true;}catch(e){}};
+document.addEventListener('pointerdown',navArm,true);
+document.addEventListener('keydown',navArm,true);
 window.addEventListener('popstate',()=>{
+  navArmed=false;
   const closed=closeTopLayer();
-  try{history.pushState({nav:1},'');}catch(e){} // 항상 받을 수 있는 상태를 하나 유지
-  if(!closed) say('첫 화면이에요. 종료하려면 홈 버튼을 사용하세요.');
+  if(!closed) say('첫 화면이에요. 한 번 더 누르면 앱이 닫혀요.');
 });
 gid('lgBack').addEventListener('click',()=>{history.back();});
 /* 사진 크게 보기: 두 손가락 확대(최대 8배)·한 손가락 이동·두 번 눌러 확대/원래대로 */
@@ -2140,7 +2147,7 @@ const lbUp=e=>{if(!LBZ.P.has(e.pointerId))return;const wasOne=LBZ.P.size===1;LBZ
   LBZ.tap=now;clearTimeout(LBZ.tt);LBZ.tt=setTimeout(()=>{if(LBZ.s<=1.01&&e.target!==lbImg)lbClose();},310);};   // 확대 안 한 상태에서 사진 바깥을 한 번 누르면 닫기
 lbEl.addEventListener('pointerup',lbUp);lbEl.addEventListener('pointercancel',e=>LBZ.P.delete(e.pointerId));
 lbEl.addEventListener('wheel',e=>{e.preventDefault();lbZoomAt(LBZ.s*(e.deltaY<0?1.2:1/1.2),e.clientX,e.clientY);},{passive:false});
-try{history.replaceState({nav:0},'');history.pushState({nav:1},'');}catch(e){}
+try{history.replaceState({nav:0},'');}catch(e){}
 
 function renderLedger(){
   if(ledgerEl.hidden) return;
