@@ -340,7 +340,8 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
   </header>
 
   <aside class="card panel" id="card" hidden aria-live="polite"></aside>
-  <div id="mapOv" hidden><div class="mbar"><button class="btn" id="mapClose" type="button">◀ 3D로</button><b id="mapTitle" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">순시 지도</b><button class="btn" id="mapGo" type="button" style="background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700">🥾 순시 시작</button><button class="btn" id="mapMe" type="button">📍</button></div>
+  <div id="mapOv" hidden><div class="mbar"><button class="btn" id="mapClose" type="button">◀ 3D로</button><b id="mapTitle" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">순시 지도</b><button class="btn" id="mapGo" type="button" style="background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700">🥾 순시 시작</button><button class="btn" id="mapPos" type="button">📌 위치</button><button class="btn" id="mapMe" type="button">📍</button></div>
+  <div id="posBar" hidden style="padding:8px 10px;border-bottom:1px solid var(--line);display:grid;gap:6px;background:#fff8e1"><div class="row2" style="align-items:center;grid-template-columns:auto 1fr"><span class="lb">찍을 철탑</span><select id="posSel"></select></div><div class="note" id="posMsg" style="margin:0;font-size:12.5px">위성 지도에서 철탑이 보이는 곳을 누르세요. 찍은 표시는 끌어서 옮길 수 있어요.</div><div style="display:flex;gap:6px"><button class="btn" type="button" id="posPrev">◀ 이전</button><button class="btn" type="button" id="posNext">다음 ▶</button><button class="btn" type="button" id="posDel">위치 지우기</button><button class="primary" type="button" id="posEnd" style="margin-left:auto">완료</button></div></div>
   <div id="mapPick" hidden style="padding:10px;border-bottom:1px solid var(--line);display:grid;gap:8px">
     <div class="row2" style="align-items:center"><span class="lb" style="min-width:64px">출발 철탑</span><select id="mpFrom" style="flex:1"></select></div>
     <div class="row2" style="align-items:center"><span class="lb" style="min-width:64px">출발 위치</span><select id="mpCar" style="flex:1"><option value="1">🚗 차에서 내린 곳 → 이 철탑까지 걸어가서 시작</option><option value="0">이 철탑에서 바로 시작</option></select></div>
@@ -1737,7 +1738,7 @@ function gpsPause(p){
 function gpsThin(trk,n){if(trk.length<=n)return trk;const out=[],k=(trk.length-1)/(n-1);for(let i=0;i<n;i++)out.push(trk[Math.round(i*k)]);return out;}
 function gpsSetTowerPos(l,lab,pt){const d=gpsTw(l,lab);if(!d||!pt)return;
   if(d.gps&&d.gpsN){const n=Math.min(d.gpsN,9);d.gps=[+((d.gps[0]*n+pt[0])/(n+1)).toFixed(6),+((d.gps[1]*n+pt[1])/(n+1)).toFixed(6)];d.gpsN=n+1;}   // 여러 번 도착하면 평균
-  else{d.gps=[+pt[0].toFixed(6),+pt[1].toFixed(6)];d.gpsN=1;}}
+  else{d.gps=[+pt[0].toFixed(6),+pt[1].toFixed(6)];d.gpsN=1;delete d.gpsSrc;}}
 function gpsArrive(stopAfter){
   if(!GP)return;
   const l=gpsLine(); if(!l){gpsEnd();return;}
@@ -1804,7 +1805,7 @@ function realFieldHTML(l){
   const nG=l.towers.filter(d=>d.gps).length, R=REAL[l.id];
   return `<div class="field"><span class="lb">3D 지형</span>${segHTML('data-real',['0','1'],realOn()?'1':'0',v=>v==='1'?'실제 (GPS·표고)':'가상')}
     ${realOn()?`<div style="margin-top:6px">${segHTML('data-surf',['sat','green'],surfSat()?'sat':'green',v=>v==='sat'?'위성 사진':'녹색 지형')}</div>`:''}
-    <p class="note" style="margin:4px 0 0">${!realOn()?'가상 지형으로 보여요.':nG<2?`철탑 위치가 ${nG}기만 기록돼 있어요. 순시에서 [✓ 도착]으로 2기 이상 기록되면 실제 배치·지형으로 바뀌어요.`:`철탑 ${nG}기 위치 기록 · 나머지 ${l.towers.length-nG}기는 경간 비율로 추정 · ${esc(R?R.st:'지형 자료 준비 중')}`}</p></div>`;
+    <p class="note" style="margin:4px 0 0">${!realOn()?'가상 지형으로 보여요.':nG<2?`철탑 위치가 ${nG}기만 기록돼 있어요. 순시에서 [✓ 도착]으로 기록하거나, 순시 지도의 [📌 위치]로 위성 사진을 보고 2기 이상 찍으면 실제 배치·지형으로 바뀌어요.`:`철탑 ${nG}기 위치 기록 · 나머지 ${l.towers.length-nG}기는 경간 비율로 추정 · ${esc(R?R.st:'지형 자료 준비 중')}`}</p></div>`;
 }
 function gpsBind(card,l,t){
   card.querySelectorAll('[data-gcar]').forEach(b=>b.addEventListener('click',()=>{if(GP){alert('이미 순시 기록 중이에요.');return;}gpsStart('하차',String(t.label));}));
@@ -1844,6 +1845,7 @@ async function openMap(){
     sat.addTo(LMAP);   // 열 때마다 위성 지도로 시작
     L.control.layers(B,null,{position:'topright',collapsed:true}).addTo(LMAP);
     LMAP.on('dragstart',()=>{mapFollow=false;});
+    LMAP.on('click',e=>{try{posOnMapClick(e);}catch(er){}});
   }
   document.getElementById('mapOv').appendChild(gpsBar);
   setTimeout(()=>LMAP.invalidateSize(),50);
@@ -1875,7 +1877,7 @@ function mapLive(){
   if(GP&&GP.trk.length)L.circleMarker(GP.trk[0],{radius:5,color:'#fff',weight:2,fillColor:'#2e7d4f',fillOpacity:1}).addTo(liveLayer);
   if(GP&&GP.pos){L.circleMarker(GP.pos,{radius:8,color:'#fff',weight:3,fillColor:'#c0392b',fillOpacity:1}).addTo(liveLayer);if(mapFollow){if(LMAP.getZoom()<15)LMAP.setView(GP.pos,17);else LMAP.panTo(GP.pos,{animate:true});}}
 }
-document.getElementById('mapClose').addEventListener('click',()=>{document.getElementById('mapOv').hidden=true;mapOn=false;try{build();}catch(e){}const r=document.getElementById('rail');r.insertBefore(gpsBar,r.querySelector('.tools'));});
+document.getElementById('mapClose').addEventListener('click',()=>{if(posMode){posMode=false;document.getElementById('posBar').hidden=true;if(posLayer){posLayer.remove();posLayer=null;}}document.getElementById('mapOv').hidden=true;mapOn=false;try{build();}catch(e){}const r=document.getElementById('rail');r.insertBefore(gpsBar,r.querySelector('.tools'));});
 document.getElementById('mapBtn').addEventListener('click',()=>openMap());
 document.getElementById('mapBox').addEventListener('click',e=>{const b=e.target.closest('[data-ms]');if(!b||GP)return;LMAP.closePopup();gpsStart(b.dataset.ms,b.dataset.ms==='하차'?b.dataset.md:+b.dataset.md);});
 document.getElementById('mapGo').addEventListener('click',()=>{
@@ -1896,6 +1898,63 @@ document.getElementById('mapMe').addEventListener('click',()=>{
 // 새로고침·화면 꺼짐으로 페이지가 다시 열려도 기록을 이어감
 try{const v=JSON.parse(lsGet(GPS_LIVE)||'null');if(v&&v.lineId&&v.to){GP=v;GP.watch=null;if(!GP.paused){GP.acc+=Math.max(0,((GP.lastT||GP.runFrom)-GP.runFrom)/1000);GP.paused=true;}gpsDraw();
   setTimeout(()=>{if(GP&&confirm(`${FT(GP.from).replace('🚗 ','')} → No.${GP.to} 순시 기록 중이었어요 (${kmT(GP.walk+GP.car)}). 이어서 기록할까요?\n취소를 누르면 일시정지 상태로 둬요.`)){gpsPause(false);clearInterval(gpsTick);gpsTick=setInterval(gpsDraw,1000);}},800);}}catch(e){}
+
+
+/* ---------- 철탑 위치 찍기 (위성 지도에서 직접 지정) ----------
+   · 순시 [도착] 없이도 위성 사진을 보고 철탑 위치를 정함 → 2기 이상이면 3D가 실제 지형·위성 사진으로 바뀜
+   · 손으로 찍은 위치는 gpsN=0 으로 저장해서, 나중에 현장 [도착] 기록이 들어오면 그 값으로 바뀜 */
+let posMode=false, posLayer=null, posIdx=0;
+function posTowers(){return cur().towers;}
+function posFill(){
+  const T_=posTowers(), sel=document.getElementById('posSel');
+  sel.innerHTML=T_.map((d,i)=>`<option value="${i}">No.${esc(d.label)}${d.gps?(d.gpsSrc==='map'?' 📌':' 📍'):''}</option>`).join('');
+  sel.value=String(posIdx);
+  const n=T_.filter(d=>d.gps).length, d=T_[posIdx];
+  document.getElementById('posMsg').innerHTML=d?`<b>No.${esc(d.label)}</b> ${d.gps?'위치가 있어요. 다시 누르면 옮겨져요.':'자리를 위성 지도에서 누르세요.'} · 위치 있는 철탑 <b>${n}/${T_.length}</b>기${n<2?' (2기 이상이면 3D가 실제 지형으로 바뀌어요)':''}`:'철탑이 없어요';
+}
+function posDraw(){
+  if(!LMAP)return;
+  if(posLayer)posLayer.remove(); posLayer=L.layerGroup().addTo(LMAP);
+  const T_=posTowers(), pts=[];
+  T_.forEach((d,i)=>{
+    if(!d.gps)return; pts.push(d.gps);
+    const on=i===posIdx;
+    const m=L.marker(d.gps,{draggable:true,icon:L.divIcon({className:'',html:`<div class="tlab" style="${on?'background:#f5b301;color:#000;':''}${d.gpsSrc==='map'?'outline:2px dashed #f5b301;':''}">No.${esc(d.label)}</div>`,iconSize:null})}).addTo(posLayer);
+    m.on('click',()=>{posIdx=i;posFill();posDraw();});
+    m.on('dragend',()=>{const q=m.getLatLng();d.gps=[+q.lat.toFixed(6),+q.lng.toFixed(6)];d.gpsN=0;d.gpsSrc='map';posIdx=i;save();posFill();posDraw();});
+  });
+  if(pts.length>1)L.polyline(pts,{color:'#f5b301',weight:2,opacity:.8,dashArray:'6 6'}).addTo(posLayer);
+}
+function posStart(){
+  if(GP){alert('순시 기록 중에는 위치 찍기를 할 수 없어요.');return;}
+  if(!LMAP)return;
+  posMode=true; document.getElementById('mapPick').hidden=true; document.getElementById('posBar').hidden=false;
+  if(mapLayer)LMAP.removeLayer(mapLayer);
+  const T_=posTowers(); const k=T_.findIndex(d=>!d.gps); posIdx=selT&&T_.indexOf(selT.d||selT)>=0?T_.indexOf(selT.d||selT):(k>=0?k:0);
+  posFill(); posDraw();
+  try{const cur_=LMAP.getCenter();if(!cur_||LMAP.getZoom()<14){const g=T_.filter(d=>d.gps).map(d=>d.gps);if(g.length)LMAP.fitBounds(L.latLngBounds(g).pad(.3),{maxZoom:17});}}catch(e){}
+}
+function posStop(){
+  posMode=false; document.getElementById('posBar').hidden=true;
+  if(posLayer){posLayer.remove();posLayer=null;}
+  openMap();
+}
+function posMove(dv){const n=posTowers().length;if(!n)return;posIdx=Math.max(0,Math.min(n-1,posIdx+dv));posFill();posDraw();const d=posTowers()[posIdx];if(d&&d.gps)LMAP.panTo(d.gps);}
+document.getElementById('mapPos').addEventListener('click',()=>{if(posMode)posStop();else posStart();});
+document.getElementById('posEnd').addEventListener('click',posStop);
+document.getElementById('posPrev').addEventListener('click',()=>posMove(-1));
+document.getElementById('posNext').addEventListener('click',()=>posMove(1));
+document.getElementById('posSel').addEventListener('change',e=>{posIdx=+e.target.value;posFill();posDraw();const d=posTowers()[posIdx];if(d&&d.gps)LMAP.panTo(d.gps);});
+document.getElementById('posDel').addEventListener('click',()=>{const d=posTowers()[posIdx];if(!d||!d.gps)return;if(!confirm(`No.${d.label} 위치를 지울까요?`))return;delete d.gps;delete d.gpsN;delete d.gpsSrc;save();posFill();posDraw();});
+function posOnMapClick(e){
+  if(!posMode)return;
+  const T_=posTowers(), d=T_[posIdx]; if(!d)return;
+  d.gps=[+e.latlng.lat.toFixed(6),+e.latlng.lng.toFixed(6)]; d.gpsN=0; d.gpsSrc='map';
+  save();
+  // 다음 철탑으로 자동 이동 (위치 없는 철탑 우선)
+  const nx=T_.findIndex((x,i)=>i>posIdx&&!x.gps); posIdx=nx>=0?nx:Math.min(T_.length-1,posIdx+1);
+  posFill(); posDraw();
+}
 
 /* ---------- 동선 ---------- */
 const playbar=document.getElementById('playbar'), pPlay=document.getElementById('pPlay'), pText=document.getElementById('pText'), pBar=document.getElementById('pBar'), pSpeed=document.getElementById('pSpeed');
