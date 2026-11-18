@@ -123,6 +123,9 @@ body.split .arrrow .seg{flex:1 1 100%}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px}
 .head{position:absolute;top:12px;left:max(16px, env(safe-area-inset-left,0px));max-width:min(330px, calc(100% - 32px));padding:12px 14px;display:grid;gap:5px}
 .eyebrow{font:600 10px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+body.headmin .head .eyebrow,body.headmin .head .sync,body.headmin .head .stats,body.headmin .head .legend{display:none!important}
+body.headmin .head{padding:8px 12px;gap:0}
+body.headmin .head h1{font-size:15px}
 .head h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
 .stats .pk{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;border-radius:4px;padding:1px 2px}
 .stats .pk.on{background:var(--accent);color:var(--accent-ink);text-decoration:none}
@@ -320,7 +323,7 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
   <header class="head panel">
     <div class="eyebrow" id="eyebrow">154kV · 2회선</div>
     <span class="sync busy" id="sync" role="button" title="눌러서 서버와 다시 맞추기" style="cursor:pointer">연결 중…</span>
-    <h1 id="title">선로</h1>
+    <h1 id="title" style="display:flex;align-items:center;gap:8px;cursor:pointer" title="눌러서 접기·펴기"><span id="titleTx">선로</span><span id="headTog" style="margin-left:auto;font-size:13px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:2px 8px">접기 ▴</span></h1>
     <p class="stats" id="stats"></p>
     <div class="legend">
       <span><i class="sym sus"></i>현수형</span>
@@ -1218,7 +1221,7 @@ function renderHead(){
   const l=cur();
   const cx=[4,6,2].filter(c=>c!==l.circuits).map(c=>[c,l.towers.filter(d=>cirOf(l,d)===c).length]).filter(x=>x[1]);
   document.getElementById('eyebrow').textContent=`${l.kv}kV · ${l.circuits}회선${cx.length?' ('+cx.map(x=>x[0]+'회선 '+x[1]+'기').join(' · ')+')':''} · ${gwTxt(l)}`;
-  document.getElementById('title').textContent=LN(l);
+  document.getElementById('titleTx').textContent=LN(l);
   const nT=towers.filter(t=>t.tension).length;
   const first=towers[0].label, last=towers[towers.length-1].label;
   if(pickLine!==l.id){pickLine=l.id;pickKey=null;}
@@ -2069,6 +2072,11 @@ toggle('tWire',()=>{showWires=!showWires;if(world.userData.wires)world.userData.
 toggle('tTag',()=>{showTags=!showTags;labelsEl.hidden=!showTags;return showTags;});
 
 const pv=new T.Vector3(); let down=null;
+
+/* 선로 정보창 접기: 3D를 손으로 돌리기 시작하면 선로명만 남기고 접힘, 선로명을 누르면 다시 펼침 */
+function headMin(on){document.body.classList.toggle('headmin',on);const b=document.getElementById('headTog');if(b)b.textContent=on?'펼치기 ▾':'접기 ▴';}
+document.getElementById('title').addEventListener('click',()=>headMin(!document.body.classList.contains('headmin')));
+renderer.domElement.addEventListener('pointerdown',()=>headMin(true));
 renderer.domElement.addEventListener('pointerdown',e=>{down=[e.clientX,e.clientY];anim=null;if(play&&!play.paused)pausePatrol(true);});
 renderer.domElement.addEventListener('pointerup',e=>{
   if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>6) return;
