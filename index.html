@@ -431,7 +431,7 @@ if(!lines){ // 이전 버전 데이터 옮기기
       curId=o.cur;}}catch(e){}
 }
 if(!lines) lines=defaults();
-function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.angDir==null)d.angDir='';if(d.angDeg==null)d.angDeg=0;if(d.dmpGW>0&&d.dmpGWS==null)d.dmpGWS=d.dmpGW;if(d.dmpOP>0&&d.dmpOPS==null)d.dmpOPS=d.dmpOP;delete d.dmpGW;delete d.dmpOP;if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.ball1R==null&&d.ball1W==null&&d.ball2R==null&&d.ball2W==null){const r=d.ballR!=null?d.ballR:Math.ceil((d.ballN||0)/2),w=d.ballW!=null?d.ballW:Math.floor((d.ballN||0)/2);d.ball1R=r;d.ball1W=w;d.ball2R=0;d.ball2W=0;}['ball1R','ball1W','ball2R','ball2W'].forEach(k=>{if(d[k]==null)d[k]=0;});d.ballN=d.ball1R+d.ball1W+d.ball2R+d.ball2W;delete d.ballR;delete d.ballW;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(![1,2].includes(l.gw))l.gw=defGW(l.kv);if(!WT.includes(l.gw1))l.gw1='GW';if(!WT.includes(l.gw2))l.gw2='OPGW';if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
+function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.angDir==null)d.angDir='';if(d.angDeg==null)d.angDeg=0;if(d.gwKind==='bait'){['S','L'].forEach(x=>{if(d['dmpGW'+x]>0&&d['baitGW'+x]==null)d['baitGW'+x]=d['dmpGW'+x];delete d['dmpGW'+x];});if(d.on_dmpGW){d.on_baitGW=true;delete d.on_dmpGW;}}delete d.gwKind;if(d.dmpP>0&&d.dmpPS==null)d.dmpPS=d.dmpP;delete d.dmpP;if(d.dmpGW>0&&d.dmpGWS==null)d.dmpGWS=d.dmpGW;if(d.dmpOP>0&&d.dmpOPS==null)d.dmpOPS=d.dmpOP;delete d.dmpGW;delete d.dmpOP;if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.ball1R==null&&d.ball1W==null&&d.ball2R==null&&d.ball2W==null){const r=d.ballR!=null?d.ballR:Math.ceil((d.ballN||0)/2),w=d.ballW!=null?d.ballW:Math.floor((d.ballN||0)/2);d.ball1R=r;d.ball1W=w;d.ball2R=0;d.ball2W=0;}['ball1R','ball1W','ball2R','ball2W'].forEach(k=>{if(d[k]==null)d[k]=0;});d.ballN=d.ball1R+d.ball1W+d.ball2R+d.ball2W;delete d.ballR;delete d.ballW;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(![1,2].includes(l.gw))l.gw=defGW(l.kv);if(!WT.includes(l.gw1))l.gw1='GW';if(!WT.includes(l.gw2))l.gw2='OPGW';if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
 lines.forEach(normalize);
 if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
 /* ---------- 저장 (Supabase 서버 · 로그인 없이 주소만 알면 같이 씀) ---------- */
@@ -1010,7 +1010,7 @@ function build(){
       if(nb>1){const ns=Math.max(2,Math.round(span/60));for(let k=1;k<ns;k++){const c=at(k/ns);for(let j=0;j<offs.length;j++){const a1=offs[j],b1=offs[(j+1)%offs.length];arr.push(c[0]+sxv*a1[0],c[1]+a1[1],c[2]+szv*a1[0],c[0]+sxv*b1[0],c[1]+b1[1],c[2]+szv*b1[0]);}}}
       // 댐퍼: 철탑 가까이 (입력한 댐퍼 수량이 있을 때)
       const wt=isG?wireOfKey(l,key):'P';
-      const dmpN=(d,side)=>wt==='P'?(+d.dmpP||0):wt==='OPGW'?(+d['dmpOP'+side]||0):(+d['dmpGW'+side]||0);
+      const dmpN=(d,side)=>wt==='P'?(+d['dmpP'+side]||0):wt==='OPGW'?(+d['dmpOP'+side]||0):(+d['dmpGW'+side]||0);
       const u4=Math.min(.2,5/(span||1));
       if(dmpN(l.towers[i],'L')>0) EXTRA.dmps.push({p:at(u4),h:Math.atan2(hz,hx)});
       if(dmpN(l.towers[i+1],'S')>0) EXTRA.dmps.push({p:at(1-u4),h:Math.atan2(hz,hx)});
@@ -1192,13 +1192,13 @@ const arrHas=(d,kind)=>ARR_POS.some(x=>arrN(d['arr'+x.k])===kind);
 const arrTxt=d=>ARR_STAT.filter(k=>arrHas(d,k)).join('·');
 function dmpKinds(l){
   const ws=[l.gw1,l.gw===2?l.gw2:null], r=[];
-  if(l.kv==154) r.push({k:'dmpP',name:'전력선 댐퍼'});
+  r.push({k:'dmpPS',name:'전력선 전원측'},{k:'dmpPL',name:'전력선 부하측'});   // 전압 상관없이 항상
   const gw=ws.includes('GW'), op=ws.includes('OPGW');
-  if(gw||!op) r.push({k:'dmpGWS',name:'GW 전원측'},{k:'dmpGWL',name:'GW 부하측'});
+  if(gw||!op) r.push({k:'dmpGWS',name:'GW 전원측'},{k:'dmpGWL',name:'GW 부하측'},{k:'baitGWS',name:'GW 배이트 전원측'},{k:'baitGWL',name:'GW 배이트 부하측'});
   if(op||!gw) r.push({k:'dmpOPS',name:'OPGW 전원측'},{k:'dmpOPL',name:'OPGW 부하측'});
   return r;
 }
-const DMP_G=[{k:'dmpP',name:'전력선',keys:['dmpP']},{k:'dmpGW',name:'GW',keys:['dmpGWS','dmpGWL']},{k:'dmpOP',name:'OPGW',keys:['dmpOPS','dmpOPL']}];
+const DMP_G=[{k:'dmpP',name:'전력선 댐퍼',keys:['dmpPS','dmpPL']},{k:'dmpGW',name:'GW 댐퍼',keys:['dmpGWS','dmpGWL']},{k:'baitGW',name:'GW 배이트',keys:['baitGWS','baitGWL']},{k:'dmpOP',name:'OPGW 댐퍼',keys:['dmpOPS','dmpOPL']}];
 const dmpSum=(d,g)=>g.keys.reduce((a,k)=>a+(d[k]>0?d[k]:0),0);
 const dmpGroups=l=>{const ks=dmpKinds(l).map(x=>x.k);return DMP_G.filter(g=>g.keys.some(k=>ks.includes(k)));};
 let pickKey=null, pickLine=null;
@@ -1207,7 +1207,7 @@ const PICKS={angle:{n:'각도주',f:t=>!!t.ang},aviation:{n:'도색',f:t=>t.avia
 CROSS.forEach(c=>PICKS[c.k]={n:c.name,f:t=>t.d[c.k]});
 LAND.forEach(x=>PICKS[x.k]={n:x.name,f:t=>t.d.land===x.k});
 ARR_STAT.forEach(k=>PICKS['arr_'+k]={n:k,f:t=>arrHas(t.d,k)});
-DMP_G.forEach(g=>PICKS[g.k]={n:g.name+' 댐퍼',f:t=>dmpSum(t.d,g)>0});
+DMP_G.forEach(g=>PICKS[g.k]={n:g.name,f:t=>dmpSum(t.d,g)>0});
 document.getElementById('stats').addEventListener('click',e=>{
   const g=e.target.closest('[data-go]'); if(g){const t=towers[+g.dataset.go]; if(t){selectTower(t); renderHead();} return;}
   const k=e.target.closest('[data-pk]'); if(k){pickKey=pickKey===k.dataset.pk?null:k.dataset.pk; renderHead();}
@@ -1232,7 +1232,7 @@ function renderHead(){
     +(towers.some(PICKS.avEco.f)?' · '+pk('avEco','친환경 도색 '+towers.filter(PICKS.avEco.f).length+'기',towers.filter(PICKS.avEco.f).length):'')
     +' · '+pk('angle','각도주 '+towers.filter(PICKS.angle.f).length+'기',towers.filter(PICKS.angle.f).length)
     +'\n'+ARR_STAT.map(k=>{const n=towers.filter(PICKS['arr_'+k].f).length;return pk('arr_'+k,k+' '+n+'기',n);}).join(' · ')
-    +'\n댐퍼 '+dmpGroups(l).map(g=>{const n=towers.filter(PICKS[g.k].f).length;return pk(g.k,g.name+' '+towers.reduce((a,t)=>a+dmpSum(t.d,g),0)+'개',n);}).join(' · ')
+    +'\n'+dmpGroups(l).map(g=>{const n=towers.filter(PICKS[g.k].f).length;return pk(g.k,g.name+' '+towers.reduce((a,t)=>a+dmpSum(t.d,g),0)+'개',n);}).join(' · ')
     +(hit.length?`<span class="pklist"><b>${PICKS[pickKey].n} ${hit.length}기</b>${hit.map(t=>`<button type="button" data-go="${towers.indexOf(t)}"${selT===t?' class="on"':''}>${esc(H_(t))}</button>`).join('')}</span>`:'');
   lineSel.innerHTML=lines.slice().sort((a,b)=>(+b.kv||0)-(+a.kv||0)||String(LN(a)).localeCompare(String(LN(b)),'ko',{numeric:true})).map(x=>`<option value="${x.id}"${x.id===curId?' selected':''}>${esc(x.kv+'kV '+LN(x))}</option>`).join('');
 }
@@ -1351,8 +1351,11 @@ function renderCard(){
         ${t.d.angDir?`<div class="row2" style="margin-top:6px"><div class="unit" data-unit="도"><input id="fAngD" type="number" inputmode="numeric" min="0" max="90" step="1" value="${Math.floor((+t.d.angDeg||0)+1e-9)}" aria-label="각도 도"></div><div class="unit" data-unit="분"><input id="fAngM" type="number" inputmode="numeric" min="0" max="59" step="1" value="${Math.round(((+t.d.angDeg||0)-Math.floor((+t.d.angDeg||0)+1e-9))*60)}" aria-label="각도 분"></div></div>`:''}</div>`:''}
       <div class="field"><span class="lb">피뢰기 · 아킹혼·링 (회선별 · 전원측/부하측)</span>
         ${ARR_POS.map(x=>`<div class="arrrow"><span class="lb">${x.name}</span>${segHTML('data-arr-'+x.k,ARR_KINDS,arrN(t.d['arr'+x.k]),v=>v||'없음')}</div>`).join('')}</div>
-      <div class="field"><span class="lb">댐퍼 수량${l.kv==154?'':' · 가공지선'}</span>
-        ${dmpKinds(l).map(x=>`<div class="qty" style="margin-top:6px"><span class="lb" style="min-width:92px">${x.name}</span><div class="unit" data-unit="개" style="flex:1"><input type="number" inputmode="numeric" min="0" max="999" step="1" placeholder="0" data-dmp="${x.k}" value="${t.d[x.k]>0?t.d[x.k]:''}"></div></div>`).join('')}</div>
+      ${dmpGroups(l).map(g=>{const on=!!t.d['on_'+g.k]||dmpSum(t.d,g)>0, nm=g.name;
+        return `<div class="field"${g.k==='baitGW'?' style="margin-top:-6px"':''}>${g.k==='baitGW'?'':`<span class="lb">${g.k==='dmpGW'?'GW 댐퍼 · 배이트':g.name}</span>`}
+        <label class="check"><input type="checkbox" data-dmpon="${g.k}" ${on?'checked':''}>${nm} 설치</label>
+        ${g.keys.map(k=>`<div class="qty" aria-disabled="${!on}"><span class="lb">${/S$/.test(k)?'전원측':'부하측'}</span>
+          <div class="stepper"><button type="button" data-dstep="${k}" data-v="-1" aria-label="${nm} ${/S$/.test(k)?'전원측':'부하측'} 줄이기">−</button><output>${t.d[k]||0}개</output><button type="button" data-dstep="${k}" data-v="1" aria-label="${nm} 늘리기">+</button></div></div>`).join('')}</div>`;}).join('')}
       <div class="field"><span class="lb">철탑 도장</span>${segHTML('data-grn',['none','green'],t.d.green?'green':'none',v=>v==='green'?'<i class="sw" style="background:#5f8f6a;margin:0 4px 0 0"></i>친환경 녹색':'도장 없음 (아연도금)')}
         ${t.d.green&&t.aviation?'<p class="note" style="margin:6px 0 0">항공장애 도색 구간(상부)은 항공 도색이 우선이고, 그 아래가 녹색으로 보여요.</p>':''}</div>
       <div class="field"><span class="lb">모바일태그 설치각 (여러 개 선택 가능)</span>
@@ -1436,11 +1439,13 @@ function renderCard(){
   });
   q('#xKudzu').addEventListener('change',e=>{t.d.kudzu=e.target.checked;save();build();});
   ARR_POS.forEach(x=>card.querySelectorAll('[data-arr-'+x.k.toLowerCase()+']').forEach(b=>b.addEventListener('click',()=>{const v=b.getAttribute('data-arr-'+x.k.toLowerCase());if((t.d['arr'+x.k]||'')===v)return;t.d['arr'+x.k]=v;save();renderHead();renderRail();renderCard();})));
-  card.querySelectorAll('[data-dmp]').forEach(inp=>inp.addEventListener('change',e=>{
-    const raw=e.target.value.trim(), v=raw===''?0:Math.round(parseFloat(raw));
-    if(!(v>=0&&v<=999)){bad('댐퍼 수량은 0~999개 사이로 입력해 주세요.');return;}
-    t.d[inp.dataset.dmp]=v; save(); renderHead(); renderCard();
-  }));
+  card.querySelectorAll('[data-dmpon]').forEach(cb=>cb.addEventListener('change',()=>{const g=DMP_G.find(x=>x.k===cb.dataset.dmpon);
+    if(cb.checked)t.d['on_'+g.k]=true;else{delete t.d['on_'+g.k];g.keys.forEach(k=>delete t.d[k]);}
+    save();renderHead();renderCard();build();}));
+  card.querySelectorAll('[data-dstep]').forEach(b=>b.addEventListener('click',()=>{const k=b.dataset.dstep,g=DMP_G.find(x=>x.keys.includes(k));
+    if(!(t.d['on_'+g.k]||dmpSum(t.d,g)>0))return;
+    t.d[k]=Math.max(0,Math.min(999,(t.d[k]||0)+(+b.dataset.v)));if(!t.d[k])delete t.d[k];t.d['on_'+g.k]=true;
+    b.parentElement.querySelector('output').textContent=(t.d[k]||0)+'개';save();renderHead();clearTimeout(window.__dmpT);window.__dmpT=setTimeout(build,600);}));
   card.querySelectorAll('[data-land]').forEach(cb=>cb.addEventListener('change',()=>{t.d.land=cb.checked?cb.dataset.land:'';save();build();}));
   card.querySelectorAll('[data-pole]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.pole, curv=t.pole?1:0;if(v===curv)return;t.d.pole=v>0;t.d.poleKind='';save();build();}));
   card.querySelectorAll('[data-type]').forEach(b=>b.addEventListener('click',()=>{
