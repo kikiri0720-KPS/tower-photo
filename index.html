@@ -836,12 +836,22 @@ async function realLoad(lineId,key,bb){
     const z=pickZoom(bb,3072,13);
     const t=await tilesToCanvas(bb,z,(z,x,y)=>`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,3072);
     const d=t.ctx.getImageData(0,0,t.w,t.h).data,arr=new Float32Array(t.w*t.h);
-    for(let i=0;i<arr.length;i++)arr[i]=d[i*4]*256+d[i*4+1]+d[i*4+2]/256-32768;
-    R.dem={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,arr};R.st='실제 지형 (표고 자료 '+(t.miss?'일부 빠짐':'완료')+')';
+    // v19.1: 못 받은 타일(투명)은 -32768m 구덩이가 되므로 빈칸으로 두고, 나머지 값의 가운데 값으로 채움
+    const ok=[];
+    for(let i=0;i<arr.length;i++){if(d[i*4+3]<250){arr[i]=NaN;continue;}const v=d[i*4]*256+d[i*4+1]+d[i*4+2]/256-32768;if(v<-100||v>2500){arr[i]=NaN;continue;}arr[i]=v;if(i%37===0)ok.push(v);}
+    ok.sort((a,b)=>a-b); const base=ok.length?ok[ok.length>>1]:0;
+    for(let i=0;i<arr.length;i++)if(arr[i]!==arr[i])arr[i]=base;
+    // v19.1: 표고 자료의 잔물결(나무·건물 높이, 측정 오차)을 3×3 평균으로 두 번 다듬어 평지가 울퉁불퉁하지 않게
+    for(let pass=0;pass<2;pass++){const src=arr.slice(),W=t.w,H=t.h;
+      for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){let s2=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)s2+=src[(y+dy)*W+x+dx];arr[y*W+x]=s2/9;}}
+    R.dem={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,arr,base};R.st='실제 지형 (표고 자료 '+(t.miss?'일부 빠짐':'완료')+')';
   }catch(e){R.dem='fail';R.st='표고 자료를 받지 못해 가상 지형으로 보여요 ('+e.message+')';}
   if(surfSat()){
     try{const z=pickZoom(bb,4096,17);const t=await tilesToCanvas(bb,z,(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`,4096);
-      const tex=new T.CanvasTexture(t.cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();R.sat={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,tex};}
+      const tex=new T.CanvasTexture(t.cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();R.sat={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,tex};
+      // v19.1: 나무를 심을 곳을 고르려고 위성 사진을 작게 줄여 색을 읽어 둠
+      try{const sw=Math.min(1024,t.w),sh=Math.max(1,Math.round(t.h*sw/t.w)),c2=document.createElement('canvas');c2.width=sw;c2.height=sh;const x2=c2.getContext('2d',{willReadFrequently:true});x2.drawImage(t.cv,0,0,sw,sh);
+        R.sat.px={w:sw,h:sh,k:sw/t.w,data:x2.getImageData(0,0,sw,sh).data};}catch(e){}}
     catch(e){R.sat='fail';R.st+=' · 위성 사진 못 받음';}
   }
   if(cur().id===lineId){build();if(!card.hidden&&!selT&&!addMode&&!backupMode)renderCard();}
@@ -885,7 +895,8 @@ function build(){
     const bb={n:Math.max(...cs.map(c=>c[0])),s:Math.min(...cs.map(c=>c[0])),e:Math.max(...cs.map(c=>c[1])),w:Math.min(...cs.map(c=>c[1]))};
     const key=[bb.n,bb.s,bb.e,bb.w].map(v=>v.toFixed(4)).join(',')+(surfSat()?'s':'g');
     RR=REAL[l.id]; if(!RR||RR.key!==key){realLoad(l.id,key,bb);RR=REAL[l.id];}
-    elev=(x,z)=>{const g=toLL(x,z),h=demAt(RR,g[0],g[1]);return h==null?synth(x,z):h;};
+    const flat=()=>RR&&RR.dem&&RR.dem!=='fail'?RR.dem.base:0;   // v19.1: 자료가 없는 곳·받는 중에는 가짜 산 대신 평평하게
+    elev=(x,z)=>{const g=toLL(x,z),h=demAt(RR,g[0],g[1]);return h==null?(RR&&RR.dem==='fail'?synth(x,z):flat()):h;};
   }
   G={L,elev,real:RL,toLL};
   const steel=new T.Color(cssVar('--steel')), wireC=new T.Color(cssVar('--wire'));
@@ -1112,11 +1123,22 @@ function build(){
     // 숲: 선하지(전선 아래 폭 70m)와 철탑 주변은 비워 둠
     const dLine=(x,z)=>{let m=1e9;for(let i=0;i<towers.length-1;i++){const a=towers[i],b=towers[i+1],vx=b.x-a.x,vz=b.z-a.z,L2=vx*vx+vz*vz||1;let u=((x-a.x)*vx+(z-a.z)*vz)/L2;u=Math.max(0,Math.min(1,u));const d=Math.hypot(x-a.x-vx*u,z-a.z-vz*u);if(d<m)m=d;}return m;};
     const X0=-W/2, Z0=-D/2, area=W*D, step=Math.max(16,Math.sqrt(area/7000));
+    const SATPX=SAT&&SAT.px?SAT.px:null;
+    const vegAt=(x,z)=>{const g=toLL(x,z),P=SATPX,px=Math.floor((mX(g[1],SAT.z)-SAT.px0)*P.k),py=Math.floor((mY(g[0],SAT.z)-SAT.py0)*P.k);
+      if(px<0||py<0||px>=P.w||py>=P.h)return false;
+      let r=0,gg=0,b=0,n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const qx=Math.min(P.w-1,Math.max(0,px+dx)),qy=Math.min(P.h-1,Math.max(0,py+dy)),i=(qy*P.w+qx)*4;r+=P.data[i];gg+=P.data[i+1];b+=P.data[i+2];n++;}
+      r/=n;gg/=n;b/=n;const lum=(r+gg+b)/3,mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);
+      if(lum<48||lum>190)return false;            // 너무 어두움(물·그림자) / 너무 밝음(건물·모래)
+      if(b>gg&&b>r)return false;                  // 파란빛 = 물
+      if(mx-mn<16)return false;                   // 회색 = 도로·건물·콘크리트
+      return gg>=r+6&&gg>b+12;                   // 초록이 가장 강해야 숲 (청록빛 물은 파랑이 초록과 비슷해서 제외)
+    };
     const trees=[];
     for(let x=X0+step/2;x<X0+W;x+=step) for(let z=Z0+step/2;z<Z0+D;z+=step){
       const jx=x+(hash(x*.13,z*.07)-.5)*step*.9, jz=z+(hash(z*.11,x*.05)-.5)*step*.9;
       if(dLine(jx,jz)<38) continue;
-      if(fbm(jx/900+sx+7,jz/900+sz)<.42) continue;          // 숲이 있는 곳만
+      if(SATPX){if(!vegAt(jx,jz)) continue;}                 // v19.1: 실제 위성 사진에서 초록 숲인 곳만 (물·도로·건물·논밭 제외)
+      else if(fbm(jx/900+sx+7,jz/900+sz)<.42) continue;     // 가상 지형: 숲이 있는 곳만
       if(towers.some(t=>Math.hypot(t.x-jx,t.z-jz)<t.H*.7)) continue;
       trees.push([jx,jz]); if(trees.length>=7000) break;
     }
