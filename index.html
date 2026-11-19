@@ -1911,17 +1911,18 @@ async function xaFetch(pts){
   const la=pts.map(p=>p[0]),lo=pts.map(p=>p[1]),bb=[Math.min(...la)-.001,Math.min(...lo)-.001,Math.max(...la)+.001,Math.max(...lo)+.001].map(v=>v.toFixed(5)).join(',');
   const F=['["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track)(_link)?$"]','["waterway"~"^(river|stream|canal|drain|ditch)$"]','["natural"="water"]','["railway"~"^(rail|subway|light_rail|narrow_gauge|tram)$"]'];
   const q=`[out:json][timeout:25];(${boxes.map(x=>F.map(f=>`way${f}(${x});`).join('')).join('')});out tags geom(${bb});`;
-  let last=null;
-  for(let k=0;k<OVP.length;k++){
+  let last=null; const why=[];
+  for(let k=0;k<OVP.length*2;k++){
+    if(k===OVP.length)await new Promise(r=>setTimeout(r,3000));   // 한 바퀴 다 실패하면 3초 쉬고 한 번 더
     const si=(xaSrv+k)%OVP.length, ac=new AbortController(), to=setTimeout(()=>ac.abort(),30000);
     try{const r=await fetch(OVP[si],{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'},signal:ac.signal});
       clearTimeout(to);
       if(!r.ok)throw new Error(r.status===429?'지도 자료 서버가 바빠요':r.status===504?'지도 자료 서버 시간 초과(504)':'지도 자료 서버 오류 '+r.status);
       const j=await r.json(); xaSrv=si;
       return xaCache[key]=(j.elements||[]).filter(e=>e.geometry&&e.geometry.filter(Boolean).length>1);}   // 범위 밖으로 잘린 점은 null로 남겨 둠 (선을 잇지 않으려고)
-    catch(e){clearTimeout(to);last=e.name==='AbortError'?new Error('지도 자료 서버가 30초 안에 답을 안 줘요'):e;}
+    catch(e){clearTimeout(to);last=e.name==='AbortError'?new Error('30초 안에 답 없음'):e;why.push(OVP[si].split('/')[2].replace(/^overpass\.|^maps\./,'')+': '+(/Failed to fetch|Load failed|NetworkError/i.test(last.message)?'연결 안 됨':last.message));}
   }
-  throw last||new Error('지도 자료를 받지 못했어요');
+  const er=new Error('지도 자료를 받지 못했어요'); er.why=why; throw er;
 }
 function xaKind(t){
   if(t.railway)return {k:'rail',major:true,nm:t.name||'철도'};
@@ -1956,7 +1957,9 @@ async function crossAuto(){
     body.innerHTML='';body.append(el('p','note',`지도 자료를 받는 중… ${c+1}/${chunks.length} 구간`));
     try{(await xaFetch(chunks[c])).forEach(e=>byId.set(e.id,e));}catch(e){fail++;lastErr=e;}
   }
-  if(fail===chunks.length){body.innerHTML='';body.append(el('p','err',((lastErr&&lastErr.message)||lastErr)+' · 잠시 뒤 다시 눌러 주세요. (지도 자료 서버 문제예요)'));return;}
+  if(fail===chunks.length){body.innerHTML='';body.append(el('p','err','지도 자료를 받지 못했어요.'));
+    const w=(lastErr&&lastErr.why)||[];if(w.length){const ul=el('div','sq-list');[...new Set(w)].forEach(x=>ul.append(el('div','sq-row',x)));body.append(ul);}
+    body.append(el('p','note',w.every(x=>/연결 안 됨/.test(x))?'모든 서버에 연결이 안 돼요. 휴대폰 인터넷이나 앱의 저장 파일(sw.js)이 요청을 막고 있을 수 있어요.':'지도 자료 서버가 바쁜 것 같아요. 잠시 뒤 다시 눌러 주세요.'));return;}
   const els=[...byId.values()];
   const items=els.map(e=>{const k=xaKind(e.tags||{});if(!k)return null;const pts=e.geometry.map(g=>g?P([g.lat,g.lon]):null);
     const ok=pts.filter(Boolean),xs=ok.map(p=>p[0]),zs=ok.map(p=>p[1]);return {...k,pts,bb:[Math.min(...xs),Math.min(...zs),Math.max(...xs),Math.max(...zs)]};}).filter(Boolean);
@@ -2524,7 +2527,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.2`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.3`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
