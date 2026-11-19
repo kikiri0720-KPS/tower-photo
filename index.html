@@ -1895,21 +1895,27 @@ function realFieldHTML(l){
    · 도로·강·철도: 오픈스트리트맵(Overpass) 선 자료와 경간 선이 겹치는지 계산
    · 골짜기: 표고 자료로 경간 아래 땅 높이를 재서, 양쪽 철탑 땅을 이은 선보다 크게 꺼지면 골짜기
    · 바로 체크하지 않고 목록을 보여 주고 골라서 적용 */
-const OVP=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+const OVP=['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
 const XA_MAJOR=/^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$/;
 const XA_ROADK={motorway:'고속도로',trunk:'국도',primary:'국도·주요도로',secondary:'지방도',tertiary:'시군도',unclassified:'도로',residential:'마을길',living_street:'마을길',service:'진입로',track:'임도·농로'};
 const XA_ICON={road:'🛣',river:'🌊',rail:'🚆',valley:'⛰'};
 const xaCache={};
-async function xaFetch(bb){
-  const key=bb.join(','); if(xaCache[key])return xaCache[key];
-  const b=bb.join(',');
-  const q=`[out:json][timeout:50];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track)(_link)?$"](${b});way["waterway"~"^(river|stream|canal|drain|ditch)$"](${b});way["natural"="water"](${b});way["railway"~"^(rail|subway|light_rail|narrow_gauge|tram)$"](${b}););out tags geom;`;
+let xaSrv=0;   // 마지막으로 잘 된 서버부터 시도
+// v20.1: 선로를 따라 폭 40m 띠 안의 것만 요청 (큰 네모 범위 전체를 받으면 서버가 시간 초과 504)
+async function xaFetch(pts){
+  const key=pts.map(p=>p.join(',')).join(';'); if(xaCache[key])return xaCache[key];
+  const ln=pts.map(p=>p[0].toFixed(6)+','+p[1].toFixed(6)).join(','), A=`(around:20,${ln})`;
+  const la=pts.map(p=>p[0]),lo=pts.map(p=>p[1]),bb=[Math.min(...la)-.002,Math.min(...lo)-.002,Math.max(...la)+.002,Math.max(...lo)+.002].map(v=>v.toFixed(5)).join(',');
+  const q=`[out:json][timeout:25];(way${A}["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track)(_link)?$"];way${A}["waterway"~"^(river|stream|canal|drain|ditch)$"];way${A}["natural"="water"];way${A}["railway"~"^(rail|subway|light_rail|narrow_gauge|tram)$"];);out tags geom(${bb});`;
   let last=null;
-  for(const u of OVP){
-    try{const r=await fetch(u,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
-      if(!r.ok)throw new Error(r.status===429?'지도 자료 서버가 바빠요 (잠시 후 다시)':'지도 자료 서버 오류 '+r.status);
-      const j=await r.json(); return xaCache[key]=(j.elements||[]).filter(e=>e.geometry&&e.geometry.length>1);}
-    catch(e){last=e;}
+  for(let k=0;k<OVP.length;k++){
+    const si=(xaSrv+k)%OVP.length, ac=new AbortController(), to=setTimeout(()=>ac.abort(),20000);
+    try{const r=await fetch(OVP[si],{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'},signal:ac.signal});
+      clearTimeout(to);
+      if(!r.ok)throw new Error(r.status===429?'지도 자료 서버가 바빠요':r.status===504?'지도 자료 서버 시간 초과(504)':'지도 자료 서버 오류 '+r.status);
+      const j=await r.json(); xaSrv=si;
+      return xaCache[key]=(j.elements||[]).filter(e=>e.geometry&&e.geometry.filter(Boolean).length>1);}   // 범위 밖으로 잘린 점은 null로 남겨 둠 (선을 잇지 않으려고)
+    catch(e){clearTimeout(to);last=e.name==='AbortError'?new Error('지도 자료 서버가 20초 안에 답을 안 줘요'):e;}
   }
   throw last||new Error('지도 자료를 받지 못했어요');
 }
@@ -1937,12 +1943,19 @@ async function crossAuto(){
   close=seqModal((bx,cl)=>{bx.append(el('p',null,'🔍 횡단 자동 찾기'));body=el('div');body.append(el('p','note','지도 자료를 받는 중이에요… (10~30초)'));bx.append(body);const x=el('button','ghost','닫기');x.type='button';x.onclick=cl;bx.append(x);});
   const lat0=have.reduce((a,p)=>a+p.ll[0],0)/have.length, kx=111320*Math.cos(lat0*Math.PI/180), kz=110574;
   const P=g=>[g[1]*kx,g[0]*kz];
-  const la=have.map(p=>p.ll[0]),lo=have.map(p=>p.ll[1]),pad=.003;
-  let els;
-  try{els=await xaFetch([Math.min(...la)-pad,Math.min(...lo)-pad,Math.max(...la)+pad,Math.max(...lo)+pad].map(v=>+v.toFixed(5)));}
-  catch(e){body.innerHTML='';body.append(el('p','err',(e.message||e)+' · 인터넷 연결을 확인하고 다시 눌러 주세요.'));return;}
-  const items=els.map(e=>{const k=xaKind(e.tags||{});if(!k)return null;const pts=e.geometry.map(g=>P([g.lat,g.lon]));
-    const xs=pts.map(p=>p[0]),zs=pts.map(p=>p[1]);return {...k,pts,bb:[Math.min(...xs),Math.min(...zs),Math.max(...xs),Math.max(...zs)]};}).filter(Boolean);
+  // v20.1: 철탑 12기씩 나눠서 요청 (앞 묶음 마지막 철탑을 다음 묶음 첫 철탑으로 겹침)
+  const seq=LLs.map(p=>p&&p.ll), chunks=[];
+  for(let i=0;i<n-1;i+=11){const c=seq.slice(i,Math.min(n,i+12)).filter(Boolean);if(c.length>1)chunks.push(c);}
+  const byId=new Map(); let fail=0, lastErr=null;
+  const t0=Date.now();
+  for(let c=0;c<chunks.length;c++){
+    body.innerHTML='';body.append(el('p','note',`지도 자료를 받는 중… ${c+1}/${chunks.length} 구간`));
+    try{(await xaFetch(chunks[c])).forEach(e=>byId.set(e.id,e));}catch(e){fail++;lastErr=e;}
+  }
+  if(fail===chunks.length){body.innerHTML='';body.append(el('p','err',((lastErr&&lastErr.message)||lastErr)+' · 잠시 뒤 다시 눌러 주세요. (지도 자료 서버 문제예요)'));return;}
+  const els=[...byId.values()];
+  const items=els.map(e=>{const k=xaKind(e.tags||{});if(!k)return null;const pts=e.geometry.map(g=>g?P([g.lat,g.lon]):null);
+    const ok=pts.filter(Boolean),xs=ok.map(p=>p[0]),zs=ok.map(p=>p[1]);return {...k,pts,bb:[Math.min(...xs),Math.min(...zs),Math.max(...xs),Math.max(...zs)]};}).filter(Boolean);
   const R=REAL[l.id], demOk=R&&R.dem&&R.dem!=='fail';
   const out=[];
   for(let i=0;i<n-1;i++){
@@ -1951,7 +1964,7 @@ async function crossAuto(){
     const hit={};   // k -> {major, names:Set, stream}
     items.forEach(it=>{
       if(it.bb[2]<bb[0]||it.bb[0]>bb[2]||it.bb[3]<bb[1]||it.bb[1]>bb[3])return;
-      for(let j=0;j<it.pts.length-1;j++){if(xaHit(a,b,it.pts[j],it.pts[j+1])){
+      for(let j=0;j<it.pts.length-1;j++){if(it.pts[j]&&it.pts[j+1]&&xaHit(a,b,it.pts[j],it.pts[j+1])){
         const h=hit[it.k]||(hit[it.k]={major:false,names:new Set(),minor:new Set(),stream:false});
         if(it.major){h.major=true;h.names.add(it.nm);}else h.minor.add(it.nm);
         if(it.stream)h.stream=true; break;}}
@@ -1973,7 +1986,7 @@ async function crossAuto(){
   const nm=k=>CROSS.find(c=>c.k===k).name;
   body.innerHTML='';
   const found=out.filter(o=>!o.skip&&o.sug.length), skip=out.filter(o=>o.skip).length;
-  body.append(el('p','note',`경간 ${n-1}개 중 ${n-1-skip}개 확인${skip?` · 위치를 몰라 건너뛴 경간 ${skip}개`:''}${demOk?'':' · 3D 표고 자료가 없어 골짜기는 못 찾았어요 (선로 정보 → 3D 지형 "실제")'}`));
+  body.append(el('p','note',`경간 ${n-1}개 중 ${n-1-skip}개 확인 · ${Math.round((Date.now()-t0)/1000)}초${fail?` · ⚠ ${fail}/${chunks.length} 구간은 서버 문제로 못 받음 (다시 누르면 그 구간만 다시 받아요)`:''}${skip?` · 위치를 몰라 건너뛴 경간 ${skip}개`:''}${demOk?'':' · 3D 표고 자료가 없어 골짜기는 못 찾았어요 (선로 정보 → 3D 지형 "실제")'}`));
   if(!found.length){body.append(el('p',null,'겹치는 도로·강·철도·골짜기를 찾지 못했어요.'));return;}
   const list=el('div','sq-list');
   found.forEach(o=>{const d=l.towers[o.i],d2=l.towers[o.i+1];
@@ -2507,7 +2520,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.1`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
