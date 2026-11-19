@@ -1205,7 +1205,7 @@ function build(){
 function makeCrossTags(){
   spans.forEach(s=>{s.tags.forEach(el=>el.remove());s.tags=[];
     const d=towers[s.i].d;
-    CROSS.forEach(c=>{if(d[c.k]){const el=document.createElement('div');el.className='xtag '+c.cls;el.textContent=c.name;labelsEl.appendChild(el);s.tags.push(el);}});
+    CROSS.forEach(c=>{if(d[c.k]){const el=document.createElement('div');el.className='xtag '+c.cls;el.textContent=c.name+(d.xn&&d.xn[c.k]?' · '+d.xn[c.k]:'');labelsEl.appendChild(el);s.tags.push(el);}});
     if(d.ball&&((d.ball1R||0)+(d.ball1W||0)+(d.ball2R||0)+(d.ball2W||0)>0)){const ps=[];if(cur().gw===1)ps.push(`적${(d.ball1R||0)+(d.ball2R||0)}·백${(d.ball1W||0)+(d.ball2W||0)}`);else{if((d.ball1R||0)+(d.ball1W||0)>0)ps.push(`#1 적${d.ball1R||0}·백${d.ball1W||0}`);if((d.ball2R||0)+(d.ball2W||0)>0)ps.push(`#2 적${d.ball2R||0}·백${d.ball2W||0}`);}const el=document.createElement('div');el.className='xtag ball';el.textContent='항공구 '+ps.join(' ');labelsEl.appendChild(el);s.tags.push(el);}});
 }
 const crossOf=d=>CROSS.filter(c=>d[c.k]);
@@ -1370,6 +1370,8 @@ function renderCard(){
         <dt>선로길이</dt><dd>${(G.L/1000).toFixed(2)} km</dd>
       </dl>
       ${realFieldHTML(l)}
+      <div class="field"><span class="lb">🔍 횡단 자동 찾기 (도로·강·철도·골짜기)</span><button class="ghost" type="button" id="xaGo">지도 자료로 경간별 횡단 찾기</button>
+        <p class="note" style="margin:4px 0 0">위치(📍)를 찍은 철탑 사이 경간이 정확해요. 찾은 목록을 보고 골라서 적용해요.</p></div>
       ${gpsLineHTML(l)}
       <div class="actions">
         <button class="ghost" type="button" id="addEnd">+ 끝에 No.${nextAfterLast(l)} 추가</button>
@@ -1485,6 +1487,7 @@ function renderCard(){
     if(confirmDel!=='line'){confirmDel='line';renderCard();return;}
     confirmDel=null; dropPhotos(l.towers.map(d=>d.id)); lines=lines.filter(x=>x.id!==l.id); curId=lines[0].id; save(); selT=null; card.hidden=true; build(); refit();
   });
+  if(q('#xaGo')) q('#xaGo').addEventListener('click',crossAuto);
   if(!t){card.hidden=false;return;}
   // 철탑
   q('#openLedger').addEventListener('click',()=>openLedger(t));
@@ -1578,7 +1581,7 @@ function renderCard(){
   }));
   q('#xAv').addEventListener('change',e=>{const v=e.target.checked;t.d.av=(v===t.autoAv)?null:v;save();build();});
   card.querySelectorAll('[data-x]').forEach(cb=>cb.addEventListener('change',()=>{
-    t.d[cb.dataset.x]=cb.checked; save(); makeCrossTags(); renderHead(); renderRail();
+    t.d[cb.dataset.x]=cb.checked; if(!cb.checked&&t.d.xn){delete t.d.xn[cb.dataset.x];if(!Object.keys(t.d.xn).length)delete t.d.xn;} save(); makeCrossTags(); renderHead(); renderRail();
   }));
   if(q('#insAfter')) q('#insAfter').addEventListener('click',()=>{
     if(l.towers.length>=MAX_TOWERS){bad(`한 선로에 ${MAX_TOWERS}기까지 넣을 수 있어요.`);return;}
@@ -1887,6 +1890,102 @@ function realFieldHTML(l){
   return `<div class="field"><span class="lb">3D 지형</span>${segHTML('data-real',['0','1'],realOn()?'1':'0',v=>v==='1'?'실제 (GPS·표고)':'가상')}
     ${realOn()?`<div style="margin-top:6px">${segHTML('data-surf',['sat','green'],surfSat()?'sat':'green',v=>v==='sat'?'위성 사진':'녹색 지형')}</div>`:''}
     <p class="note" style="margin:4px 0 0">${!realOn()?'가상 지형으로 보여요.':nG<2?`철탑 위치가 ${nG}기만 기록돼 있어요. 순시에서 [✓ 도착]으로 기록하거나, 순시 지도의 [📌 위치]로 위성 사진을 보고 2기 이상 찍으면 실제 배치·지형으로 바뀌어요.`:`철탑 ${nG}기 위치 기록 · 나머지 ${l.towers.length-nG}기는 경간 비율로 추정 · ${esc(R?R.st:'지형 자료 준비 중')}`}</p></div>`;
+}
+/* ---------- v20: 횡단 자동 찾기 ----------
+   · 도로·강·철도: 오픈스트리트맵(Overpass) 선 자료와 경간 선이 겹치는지 계산
+   · 골짜기: 표고 자료로 경간 아래 땅 높이를 재서, 양쪽 철탑 땅을 이은 선보다 크게 꺼지면 골짜기
+   · 바로 체크하지 않고 목록을 보여 주고 골라서 적용 */
+const OVP=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+const XA_MAJOR=/^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$/;
+const XA_ROADK={motorway:'고속도로',trunk:'국도',primary:'국도·주요도로',secondary:'지방도',tertiary:'시군도',unclassified:'도로',residential:'마을길',living_street:'마을길',service:'진입로',track:'임도·농로'};
+const XA_ICON={road:'🛣',river:'🌊',rail:'🚆',valley:'⛰'};
+const xaCache={};
+async function xaFetch(bb){
+  const key=bb.join(','); if(xaCache[key])return xaCache[key];
+  const b=bb.join(',');
+  const q=`[out:json][timeout:50];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track)(_link)?$"](${b});way["waterway"~"^(river|stream|canal|drain|ditch)$"](${b});way["natural"="water"](${b});way["railway"~"^(rail|subway|light_rail|narrow_gauge|tram)$"](${b}););out tags geom;`;
+  let last=null;
+  for(const u of OVP){
+    try{const r=await fetch(u,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+      if(!r.ok)throw new Error(r.status===429?'지도 자료 서버가 바빠요 (잠시 후 다시)':'지도 자료 서버 오류 '+r.status);
+      const j=await r.json(); return xaCache[key]=(j.elements||[]).filter(e=>e.geometry&&e.geometry.length>1);}
+    catch(e){last=e;}
+  }
+  throw last||new Error('지도 자료를 받지 못했어요');
+}
+function xaKind(t){
+  if(t.railway)return {k:'rail',major:true,nm:t.name||'철도'};
+  if(t.highway){const h=t.highway.replace(/_link$/,'');return {k:'road',major:XA_MAJOR.test(t.highway),nm:t.name||t.ref||XA_ROADK[h]||'도로'};}
+  if(t.waterway==='river'||t.waterway==='canal')return {k:'river',major:true,nm:t.name||'하천'};
+  if(t.waterway)return {k:'river',major:false,stream:true,nm:t.name||'개울·도랑'};
+  if(t.natural==='water')return {k:'river',major:t.water==='river'||t.water==='canal',nm:t.name||(t.water==='river'?'하천':'저수지·연못')};
+  return null;
+}
+// 두 선분이 만나는지 (평면 좌표, m)
+function xaHit(a,b,c,d){
+  const cr=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);
+  const d1=cr(c,d,a),d2=cr(c,d,b),d3=cr(a,b,c),d4=cr(a,b,d);
+  return ((d1>0&&d2<0)||(d1<0&&d2>0))&&((d3>0&&d4<0)||(d3<0&&d4>0));
+}
+async function crossAuto(){
+  const l=cur(), n=l.towers.length;
+  // 철탑 위경도: 찍은 위치 우선, 없으면 3D에서 추정한 위치(실제 배치일 때만)
+  const LLs=l.towers.map((d,i)=>{if(d.gps)return {ll:d.gps,real:true};const t=towers[i];if(G&&G.real&&G.toLL&&t)return {ll:G.toLL(t.x,t.z),real:false};return null;});
+  const have=LLs.filter(Boolean);
+  if(have.length<2){alert('위치(📍)가 있는 철탑이 2기 이상 있어야 해요. 순시 지도의 📌 위치에서 철탑을 찍어 주세요.');return;}
+  let close=null, body=null;
+  close=seqModal((bx,cl)=>{bx.append(el('p',null,'🔍 횡단 자동 찾기'));body=el('div');body.append(el('p','note','지도 자료를 받는 중이에요… (10~30초)'));bx.append(body);const x=el('button','ghost','닫기');x.type='button';x.onclick=cl;bx.append(x);});
+  const lat0=have.reduce((a,p)=>a+p.ll[0],0)/have.length, kx=111320*Math.cos(lat0*Math.PI/180), kz=110574;
+  const P=g=>[g[1]*kx,g[0]*kz];
+  const la=have.map(p=>p.ll[0]),lo=have.map(p=>p.ll[1]),pad=.003;
+  let els;
+  try{els=await xaFetch([Math.min(...la)-pad,Math.min(...lo)-pad,Math.max(...la)+pad,Math.max(...lo)+pad].map(v=>+v.toFixed(5)));}
+  catch(e){body.innerHTML='';body.append(el('p','err',(e.message||e)+' · 인터넷 연결을 확인하고 다시 눌러 주세요.'));return;}
+  const items=els.map(e=>{const k=xaKind(e.tags||{});if(!k)return null;const pts=e.geometry.map(g=>P([g.lat,g.lon]));
+    const xs=pts.map(p=>p[0]),zs=pts.map(p=>p[1]);return {...k,pts,bb:[Math.min(...xs),Math.min(...zs),Math.max(...xs),Math.max(...zs)]};}).filter(Boolean);
+  const R=REAL[l.id], demOk=R&&R.dem&&R.dem!=='fail';
+  const out=[];
+  for(let i=0;i<n-1;i++){
+    const A=LLs[i],B=LLs[i+1]; if(!A||!B){out.push({i,skip:true});continue;}
+    const a=P(A.ll),b=P(B.ll),bb=[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])];
+    const hit={};   // k -> {major, names:Set, stream}
+    items.forEach(it=>{
+      if(it.bb[2]<bb[0]||it.bb[0]>bb[2]||it.bb[3]<bb[1]||it.bb[1]>bb[3])return;
+      for(let j=0;j<it.pts.length-1;j++){if(xaHit(a,b,it.pts[j],it.pts[j+1])){
+        const h=hit[it.k]||(hit[it.k]={major:false,names:new Set(),minor:new Set(),stream:false});
+        if(it.major){h.major=true;h.names.add(it.nm);}else h.minor.add(it.nm);
+        if(it.stream)h.stream=true; break;}}
+    });
+    // 골짜기: 경간 아래 땅이 양쪽 철탑 땅을 이은 선보다 얼마나 꺼졌는지
+    let depth=null;
+    if(demOk){const g0=demAt(R,A.ll[0],A.ll[1]),g1=demAt(R,B.ll[0],B.ll[1]);
+      if(g0!=null&&g1!=null){depth=0;for(let s=1;s<30;s++){const u=s/30,h=demAt(R,A.ll[0]+(B.ll[0]-A.ll[0])*u,A.ll[1]+(B.ll[1]-A.ll[1])*u);if(h!=null)depth=Math.max(depth,g0+(g1-g0)*u-h);}}}
+    const sug=[];
+    ['road','river','rail'].forEach(k=>{const h=hit[k];if(!h)return;
+      const nm=[...h.names].concat(h.major?[]:[...h.minor]).slice(0,3).join(', ');
+      sug.push({k,on:h.major,nm,why:h.major?'':(k==='road'?'작은 길만 지나감':'작은 물길만 지나감')});});
+    if(depth!=null){const st=hit.river&&hit.river.stream;
+      if(depth>=30||(depth>=15&&st))sug.push({k:'valley',on:true,nm:'깊이 약 '+Math.round(depth)+'m'+(st?' · 물길 있음':'')});
+      else if(depth>=15)sug.push({k:'valley',on:false,nm:'깊이 약 '+Math.round(depth)+'m',why:'얕은 편'});}
+    out.push({i,est:!(A.real&&B.real),sug,depth});
+  }
+  // 결과 그리기
+  const nm=k=>CROSS.find(c=>c.k===k).name;
+  body.innerHTML='';
+  const found=out.filter(o=>!o.skip&&o.sug.length), skip=out.filter(o=>o.skip).length;
+  body.append(el('p','note',`경간 ${n-1}개 중 ${n-1-skip}개 확인${skip?` · 위치를 몰라 건너뛴 경간 ${skip}개`:''}${demOk?'':' · 3D 표고 자료가 없어 골짜기는 못 찾았어요 (선로 정보 → 3D 지형 "실제")'}`));
+  if(!found.length){body.append(el('p',null,'겹치는 도로·강·철도·골짜기를 찾지 못했어요.'));return;}
+  const list=el('div','sq-list');
+  found.forEach(o=>{const d=l.towers[o.i],d2=l.towers[o.i+1];
+    list.append(el('div','lb',`No.${d.label} → No.${d2.label}${o.est?' · 위치 추정 구간':''}`));
+    o.sug.forEach(s=>{const already=!!d[s.k];const r=el('label','sq-row'+(already?' off':''));const cb=document.createElement('input');cb.type='checkbox';cb.checked=already||s.on;cb.disabled=already;cb.dataset.i=o.i;cb.dataset.k=s.k;cb.dataset.nm=s.nm;
+      r.append(cb,document.createTextNode(`${XA_ICON[s.k]} ${nm(s.k)} · ${s.nm}${already?' (이미 체크됨)':s.why?' ('+s.why+')':''}`));list.append(r);});
+  });
+  body.append(list);
+  const go=el('button','primary','선택한 것 적용');go.type='button';
+  go.onclick=()=>{let c=0;list.querySelectorAll('input:checked:not(:disabled)').forEach(cb=>{const d=l.towers[+cb.dataset.i];d[cb.dataset.k]=true;d.xn=d.xn||{};d.xn[cb.dataset.k]=cb.dataset.nm.slice(0,40);c++;});
+    if(c){save();build();}close();say(c?`횡단 ${c}곳을 체크했어요.`:'바꾼 것이 없어요.');};
+  body.append(go,el('p','note','지도 자료(오픈스트리트맵) 기준이라 산속 작은 길·개울은 빠질 수 있어요. 현장과 다르면 철탑 카드에서 고쳐 주세요.'));
 }
 function gpsBind(card,l,t){
   card.querySelectorAll('[data-gcar]').forEach(b=>b.addEventListener('click',()=>{if(GP){alert('이미 순시 기록 중이에요.');return;}gpsStart('하차',String(t.label));}));
@@ -2408,7 +2507,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v19`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
