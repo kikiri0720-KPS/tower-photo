@@ -799,6 +799,21 @@ const CROSS=[{k:'road',name:'도로횡단',cls:'road',c:'var(--road)'},{k:'river
    · 위치가 기록된 철탑이 2기 이상이면 그 좌표로 배치하고, 나머지는 앞뒤 기록 철탑 사이에 경간 길이 비율로 끼워 넣음
    · 지형 높이는 표고 타일(약 15~30m 간격)에서 읽음 · 위성 사진은 지형 위에 입힘 · 받아 온 자료는 선로별로 기억 */
 const REAL={};   // lineId → {key, dem, sat, st}
+// v20.5: 브이월드(국토부) 항공사진 — 우리나라는 이음매 없이 선명함. 안 되면 Esri로 자동 전환
+const VWORLD_KEY='8887E96B-6BBA-4ABD-AA5B-2873D0C14B77';
+const SAT_SRC=()=>[
+  ...(VWORLD_KEY?[{name:'브이월드 항공사진',zMax:19,url:(z,x,y)=>`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Satellite/${z}/${y}/${x}.jpeg`}]:[]),
+  {name:'Esri 위성',zMax:18,url:(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`}];
+async function satTiles(bb,maxPx,zCap){
+  let last=null;
+  for(const s of SAT_SRC()){
+    try{const z=pickZoom(bb,maxPx,Math.min(zCap,s.zMax));const r=await tilesToCanvas(bb,z,s.url,maxPx);
+      const all=(r.w/256)*(r.h/256); if(r.miss>all*.3)throw new Error(s.name+' 사진이 많이 빠짐');
+      r.src=s.name; return r;}
+    catch(e){last=e;}
+  }
+  throw last||new Error('위성 사진 없음');
+}
 const realOn=()=>lsGet('tower3d-real')!=='0', surfSat=()=>lsGet('tower3d-surf')!=='green';
 const mX=(lng,z)=>(lng+180)/360*256*2**z;
 const mY=(lat,z)=>{const s=Math.sin(lat*Math.PI/180);return (0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*256*2**z;};
@@ -847,8 +862,8 @@ async function realLoad(lineId,key,bb){
     R.dem={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,arr,base};R.st='실제 지형 (표고 자료 '+(t.miss?'일부 빠짐':'완료')+')';
   }catch(e){R.dem='fail';R.st='표고 자료를 받지 못해 가상 지형으로 보여요 ('+e.message+')';}
   if(surfSat()){
-    try{const z=pickZoom(bb,4096,17);const t=await tilesToCanvas(bb,z,(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`,4096);
-      const tex=new T.CanvasTexture(t.cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();R.sat={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,tex};
+    try{const t=await satTiles(bb,4096,17);
+      const tex=new T.CanvasTexture(t.cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();R.sat={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,tex,src:t.src};R.st+=' · '+t.src;
       // v19.1: 나무를 심을 곳을 고르려고 위성 사진을 작게 줄여 색을 읽어 둠
       try{const sw=Math.min(1024,t.w),sh=Math.max(1,Math.round(t.h*sw/t.w)),c2=document.createElement('canvas');c2.width=sw;c2.height=sh;const x2=c2.getContext('2d',{willReadFrequently:true});x2.drawImage(t.cv,0,0,sw,sh);
         R.sat.px={w:sw,h:sh,k:sw/t.w,data:x2.getImageData(0,0,sw,sh).data};}catch(e){}}
@@ -861,6 +876,68 @@ function demAt(R,lat,lng){
   const x=mX(lng,D.z)-D.px0,y=mY(lat,D.z)-D.py0;if(x<0||y<0||x>=D.w-1||y>=D.h-1)return null;
   const i=Math.floor(x),j=Math.floor(y),u=x-i,v=y-j,a=D.arr,w=D.w;
   return (a[j*w+i]*(1-u)+a[j*w+i+1]*u)*(1-v)+(a[(j+1)*w+i]*(1-u)+a[(j+1)*w+i+1]*u)*v;
+}
+
+/* ---------- v20.5: 고른 철탑 가까이 보기 ----------
+   · 철탑 둘레 약 300m만 가장 선명한 항공사진(약 0.3~0.6m급)을 따로 받아 지형 위에 덮음
+   · 철탑 부재를 가는 선 대신 실제 두께가 있는 ㄱ형강(앵글)으로 다시 그림 (주주재는 굵게) */
+const PATCH={};   // 철탑 id+범위 → Promise<{tex,z,px0,py0,w,h}>
+function dropNear(){
+  if(!world)return;
+  ['patch','steelD'].forEach(k=>{const o=world.userData[k];if(o){world.remove(o);if(o.geometry)o.geometry.dispose();if(o.material&&k==='steelD')o.material.dispose();if(o.material&&k==='patch')o.material.dispose();world.userData[k]=null;}});
+}
+function nearDetail(t){
+  dropNear();
+  if(!t||!world)return;
+  steelDetail(t);
+  if(G&&G.real&&G.toLL&&surfSat())satPatch(t);
+}
+function satPatch(t){
+  const r=Math.max(250,t.H*5), w0=world;
+  const cs=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>G.toLL(t.x+a*r,t.z+b*r));
+  const bb={n:Math.max(...cs.map(c=>c[0])),s:Math.min(...cs.map(c=>c[0])),e:Math.max(...cs.map(c=>c[1])),w:Math.min(...cs.map(c=>c[1]))};
+  const key=t.d.id+':'+[bb.n,bb.s,bb.e,bb.w].map(v=>v.toFixed(5)).join(',');
+  if(!PATCH[key])PATCH[key]=satTiles(bb,2048,19).then(s=>{const tex=new T.CanvasTexture(s.cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();return {tex,z:s.z,px0:s.px0,py0:s.py0,w:s.w,h:s.h,src:s.src};}).catch(e=>{delete PATCH[key];return null;});
+  const elev=G.elev, toLL=G.toLL;
+  PATCH[key].then(S=>{
+    if(!S||world!==w0||selT!==t||world.userData.patch)return;
+    const n=72, g=new T.PlaneGeometry(2*r,2*r,n,n); g.rotateX(-Math.PI/2);
+    const P=g.attributes.position, uv=g.attributes.uv;
+    for(let k=0;k<P.count;k++){const x=P.getX(k)+t.x,z=P.getZ(k)+t.z;P.setXYZ(k,x,elev(x,z)+.2,z);
+      const ll=toLL(x,z);uv.setXY(k,(mX(ll[1],S.z)-S.px0)/S.w,1-(mY(ll[0],S.z)-S.py0)/S.h);}
+    P.needsUpdate=true;uv.needsUpdate=true;g.computeVertexNormals();
+    const m=new T.Mesh(g,new T.MeshLambertMaterial({map:S.tex,polygonOffset:true,polygonOffsetFactor:0,polygonOffsetUnits:-1}));
+    m.renderOrder=-1; world.add(m); world.userData.patch=m;
+  });
+}
+let ANGLE_GEO=null;
+function steelDetail(t){
+  if(t.pole||t.segFrom==null||!G||!G.pos)return;
+  if(!ANGLE_GEO){const s=new T.Shape();const k=.14;s.moveTo(0,0);s.lineTo(1,0);s.lineTo(1,k);s.lineTo(k,k);s.lineTo(k,1);s.lineTo(0,1);s.lineTo(0,0);
+    ANGLE_GEO=new T.ExtrudeGeometry(s,{depth:1,bevelEnabled:false});}
+  const pos=G.pos, col=G.col, a0=t.segFrom, a1=t.segTo, N=Math.floor((a1-a0)/6); if(N<=0)return;
+  const H=t.H, ca=Math.cos(t.th||0), sa=Math.sin(t.th||0);
+  const wLeg=Math.min(.25,Math.max(.12,H*.006)), wMem=Math.min(.12,Math.max(.05,H*.0026));
+  const loc=(x,y,z)=>{const dx=x-t.x,dz=z-t.z;return [dx*sa-dz*ca,y-t.y,dx*ca+dz*sa];};
+  const atCorner=p=>{const hw=t.widthAt?t.widthAt(p[1])/2:0;return hw>0&&Math.abs(Math.abs(p[0])-hw)<hw*.06+.05&&Math.abs(Math.abs(p[2])-hw)<hw*.06+.05;};
+  const mesh=new T.InstancedMesh(ANGLE_GEO,new T.MeshLambertMaterial({color:0xffffff}),N);
+  const A=new T.Vector3(),B=new T.Vector3(),d=new T.Vector3(),u=new T.Vector3(),v=new T.Vector3(),up=new T.Vector3(0,1,0),M=new T.Matrix4(),C=new T.Color();
+  let n=0;
+  for(let i=a0;i+5<a1;i+=6){
+    A.set(pos[i],pos[i+1],pos[i+2]); B.set(pos[i+3],pos[i+4],pos[i+5]);
+    d.subVectors(B,A); const len=d.length(); if(len<.05)continue; d.divideScalar(len);
+    const pa=loc(A.x,A.y,A.z), pb=loc(B.x,B.y,B.z);
+    const leg=Math.abs(d.y)>.7&&atCorner(pa)&&atCorner(pb)&&Math.sign(pa[0])===Math.sign(pb[0])&&Math.sign(pa[2])===Math.sign(pb[2]);
+    const w=leg?wLeg:wMem;
+    if(Math.abs(d.y)<.98)u.crossVectors(d,up).normalize(); else u.set(1,0,0);
+    v.crossVectors(d,u).normalize();
+    // 주주재는 날개가 철탑 바깥을 보게
+    if(leg){const out=new T.Vector3(A.x-t.x,0,A.z-t.z).normalize();if(u.dot(out)>0)u.negate();if(v.dot(out)>0)v.negate();}
+    M.makeBasis(u.clone().multiplyScalar(w),v.clone().multiplyScalar(w),d.clone().multiplyScalar(len)).setPosition(A);
+    mesh.setMatrixAt(n,M); C.setRGB(col[i],col[i+1],col[i+2]); mesh.setColorAt(n,C); n++;
+  }
+  mesh.count=n; mesh.instanceMatrix.needsUpdate=true; if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+  world.add(mesh); world.userData.steelD=mesh;
 }
 
 function build(){
@@ -1199,6 +1276,7 @@ function build(){
   });
   makeCrossTags();
   if(selT){const keep=towers.find(t=>t.d.id===selT.d.id);selT=keep||towers[Math.min(selT.i,n-1)];}
+  nearDetail(selT);
   towers.forEach(updateTag);
   renderHead(); renderRail(); if(!card.hidden) renderCard(); updateMarker();
 }
@@ -1700,6 +1778,7 @@ function selectTower(t,openCard){
   chipsEl.firstChild.classList.toggle('on',!t);
   if(t&&t.chip) chipsEl.scrollLeft=t.chip.offsetLeft-chipsEl.clientWidth/2;
   updateMarker();
+  if(!old||!t||old!==t) nearDetail(t);
   if(t||openCard) renderCard(); else card.hidden=true;
   // 철탑 선택을 닫아도 카메라는 보던 자리에 그대로 둠
   if(t){const [p,tg]=towerPose(t);flyTo(p,tg);}
@@ -2527,7 +2606,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.4`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.5`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
