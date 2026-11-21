@@ -1043,35 +1043,57 @@ function buildAll(){
   const poleGrp=new T.Group(), matCache={};
   const mat=c=>{const k=c.getHexString();return matCache[k]||(matCache[k]=new T.MeshLambertMaterial({color:c.clone()}));};
   const all=[]; spans=[];
-  items.forEach((it,li)=>{
+  // 1) 선로별 철탑 자리·방향 계산
+  const TWS=items.map((it,li)=>{
     const l=it.l, n=l.towers.length, PX=it.px.map(x=>x-cx), PZ=it.pz.map(z=>z-cz), lc=new T.Color(ALL_COL[li%ALL_COL.length]);
     const HD=[];for(let i=0;i<n-1;i++)HD.push(Math.atan2(PZ[i+1]-PZ[i],PX[i+1]-PX[i]));
     const TH=PX.map((_,i)=>i===0?HD[0]||0:i===n-1?HD[n-2]:Math.atan2(Math.sin(HD[i-1])+Math.sin(HD[i]),Math.cos(HD[i-1])+Math.cos(HD[i])));
-    const tw=l.towers.map((d,i)=>{
+    return l.towers.map((d,i)=>{
       const x=PX[i], z=PZ[i];
       const auto=i===0||i===n-1||i%6===5||(i>0&&i<n-1&&angOf(d)!==0), tension=d.type!=null?d.type:auto;
       const autoH=Math.round(baseH(l.kv)*CIRC_MUL[cirOf(l,d)]+(hash(i*1.7,l.seed)-.5)*8+(tension?4:0));
       const H=d.h>0?d.h:autoH, aviation=d.av!=null?d.av:false, lamp=d.lamp!=null?d.lamp:false;
-      return {d,i,label:d.label,pole:!!d.pole,x,z,th:TH[i],ang:i>0&&i<n-1?angOf(d):0,y:elev(x,z),H,autoH,tension,auto,aviation,autoAv:false,lamp,lampN:lampCounts(d),autoSpan:defSpan(i,l.seed),line:l,lc};
+      return {d,i,label:d.label,pole:!!d.pole,x,z,th:TH[i],ang:i>0&&i<n-1?angOf(d):0,y:elev(x,z),H,autoH,tension,auto,aviation,autoAv:false,lamp,lampN:lampCounts(d),autoSpan:defSpan(i,l.seed),line:l,lc,li,uid:li+':'+i,share:[]};
     });
-    tw.forEach(t=>{const st=t.d.green?GREEN:steel;t.pole?poleInto(l,t,st,pos,col,poleGrp,mat):towerInto(l,t,st,pos,col);});
+  });
+  // 2) v20.8: 4회선 병가 — 다른 선로 철탑이 25m 안에 있고 어느 한쪽이 4회선이면 같은 철탑으로 보고 하나만 세움
+  const SH=25, cell=new Map(), ck=(x,z)=>Math.floor(x/SH)+','+Math.floor(z/SH);
+  TWS.forEach(tw=>tw.forEach(t=>{
+    let own=null,bd=SH;
+    const gx=Math.floor(t.x/SH), gz=Math.floor(t.z/SH);
+    for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){(cell.get((gx+dx)+','+(gz+dz))||[]).forEach(o=>{
+      if(o.li===t.li)return; const dd=Math.hypot(o.x-t.x,o.z-t.z);
+      if(dd<bd&&(cirOf(o.line,o.d)>=4||cirOf(t.line,t.d)>=4)){bd=dd;own=o;}});}
+    if(own){t.own=own; own.share.push(t); t.x=own.x; t.z=own.z; t.y=own.y;}
+    else{const k=ck(t.x,t.z); if(!cell.has(k))cell.set(k,[]); cell.get(k).push(t);}
+  }));
+  // 3) 세우기 · 전선 (같은 철탑 사이 경간은 한 번만)
+  const drawn=new Map();   // 경간 키 → 지나가는 선로 색들
+  const idOf=t=>(t.own||t).uid;
+  TWS.forEach((tw,li)=>{
+    const l=items[li].l, n=tw.length, lc=tw[0].lc;
+    tw.forEach(t=>{if(t.own){t.attach=t.own.attach;return;}const st=t.d.green?GREEN:steel;t.pole?poleInto(l,t,st,pos,col,poleGrp,mat):towerInto(l,t,st,pos,col);});
     for(let i=0;i<n-1;i++){
-      Object.keys(tw[i].attach).filter(k=>tw[i+1].attach[k]).forEach(k=>{
-        const A=tw[i].attach[k].fwd, Q=tw[i+1].attach[k].back, isG=tw[i].attach[k].gw, arr=isG?gwA:ph;
+      const a=tw[i], b=tw[i+1], k=[idOf(a),idOf(b)].sort().join('|');
+      if(drawn.has(k)){const cs=drawn.get(k);if(!cs.list.includes(lc))cs.list.push(lc);continue;}
+      drawn.set(k,{a,b,list:[lc]});
+      Object.keys(a.attach||{}).filter(q=>b.attach&&b.attach[q]).forEach(q=>{
+        const A=a.attach[q].fwd, Q=b.attach[q].back, isG=a.attach[q].gw, arr=isG?gwA:ph;
         const sp=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=sp*sp*.000075*(isG?.8:1); let pv=null;
         for(let s=0;s<=16;s++){const u=s/16,p=[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];if(pv)arr.push(...pv,...p);pv=p;}
       });
     }
-    // 선로 색 띠: 철탑을 잇는 땅 위 선
-    for(let i=0;i<n-1;i++){const a=tw[i],b=tw[i+1];let pv=null;
-      for(let s=0;s<=12;s++){const u=s/12,x=a.x+(b.x-a.x)*u,z=a.z+(b.z-a.z)*u,p=[x,elev(x,z)+3,z];if(pv){ring.push(...pv,...p);ringC.push(lc.r,lc.g,lc.b,lc.r,lc.g,lc.b);}pv=p;}}
-    // 선로 이름표: 가운데 철탑 위
+    // 선로 이름표: 가운데 철탑 위 (병가 철탑이면 조금 옆으로)
     const m=tw[Math.floor(n/2)], el=document.createElement('div');
     el.className='xtag'; el.style.background=ALL_COL[li%ALL_COL.length]; el.style.color='#fff';
     el.textContent=l.kv+'kV '+LN(l); labelsEl.appendChild(el);
-    spans.push({i:-1,x:m.x,z:m.z,y:m.y+m.H+60,tags:[el]});
-    all.push(...tw);
+    spans.push({i:-1,x:m.x,z:m.z,y:m.y+m.H+60+(m.own||m.share.length?40*(li%3):0),tags:[el]});
+    all.push(...tw.filter(t=>!t.own));
   });
+  // 선로 색 띠: 혼자 가는 경간은 한 색, 4회선으로 같이 가는 경간은 두 선로 색이 번갈아
+  drawn.forEach(({a,b,list})=>{const A=a.own||a,B=b.own||b;let pv=null;const N=list.length>1?24:12;
+    for(let s=0;s<=N;s++){const u=s/N,x=A.x+(B.x-A.x)*u,z=A.z+(B.z-A.z)*u,p=[x,elev(x,z)+3,z];
+      if(pv){const c=list[s%list.length];ring.push(...pv,...p);ringC.push(c.r,c.g,c.b,c.r,c.g,c.b);}pv=p;}});
   world.add(poleGrp);
   {const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('color',new T.Float32BufferAttribute(col,3));world.add(new T.LineSegments(g,new T.LineBasicMaterial({vertexColors:true})));}
   {const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(ring,3));g.setAttribute('color',new T.Float32BufferAttribute(ringC,3));world.add(new T.LineSegments(g,new T.LineBasicMaterial({vertexColors:true})));}
@@ -1082,17 +1104,18 @@ function buildAll(){
   // 번호표: 선로 색 + 번호, 누르면 그 선로로 들어감
   towers.forEach(t=>{
     const b=document.createElement('button'); b.type='button'; b.className='tag'+(t.tension?' ten':'');
-    b.style.borderColor=b.style.outlineColor=t.lc.getStyle(); b.style.boxShadow='inset 4px 0 0 '+t.lc.getStyle();
-    b.innerHTML=`<i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}${t.d.gps?' ✓':''}`;
-    b.title=t.line.kv+'kV '+LN(t.line)+' '+H_(t);
+    const grp=[t,...t.share];
+    b.style.borderColor=b.style.outlineColor=t.lc.getStyle(); b.style.boxShadow=grp.map((x,k)=>'inset '+(4*(k+1))+'px 0 0 '+x.lc.getStyle()).reverse().join(',');
+    b.innerHTML=`<i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}${t.d.gps?' ✓':''}${t.share.length?' <small>· 4회선 '+grp.map(x=>esc(LN(x.line).replace(/\s*T\/L$/,'')+' '+H_(x))).join(' / ')+'</small>':''}`;
+    b.title=grp.map(x=>x.line.kv+'kV '+LN(x.line)+' '+H_(x)).join(' · ');
     b.addEventListener('click',()=>allExit(t.line.id,t.d.id));
     labelsEl.appendChild(b); t.tag=b;
   });
   // 위쪽 안내 띠
   const bar=allBar(); bar.hidden=false;
-  const nChk=items.reduce((a,it)=>a+it.nGps,0), nAll=items.reduce((a,it)=>a+it.l.towers.length,0);
+  const nChk=items.reduce((a,it)=>a+it.nGps,0), nShare=all.filter(t=>t.share.length).length;
   bar.innerHTML=`<button class="btn" type="button" id="allBack">← 돌아가기</button>`
-    +`<b style="white-space:nowrap">🌐 ${items.length}개 선로 · ${nAll}기</b>`
+    +`<b style="white-space:nowrap">🌐 ${items.length}개 선로 · 철탑 ${all.length}기${nShare?' (4회선 같이 가는 철탑 '+nShare+'기)':''}</b>`
     +`<button class="btn" type="button" id="allLeg">색 구분 ▾</button>`
     +`<div id="allLegBox" hidden style="flex-basis:100%;max-height:40vh;overflow:auto;display:grid;gap:4px;padding-top:4px">`
     +items.map((it,li)=>`<span style="display:flex;align-items:center;gap:6px"><i style="width:12px;height:12px;border-radius:3px;background:${ALL_COL[li%ALL_COL.length]};display:inline-block;flex:none"></i>${esc(it.l.kv+'kV '+LN(it.l))}</span>`).join('')
@@ -2781,7 +2804,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.7`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.8`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
