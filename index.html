@@ -891,7 +891,6 @@ function nearDetail(t){
   dropNear();
   if(!t||!world)return;
   steelDetail(t);
-  if(G&&G.real&&G.toLL&&surfSat())satPatch(t);
 }
 function satPatch(t){
   const r=Math.max(250,t.H*5), w0=world;
@@ -911,6 +910,43 @@ function satPatch(t){
     m.renderOrder=-1; world.add(m); world.userData.patch=m;
   });
 }
+/* v20.7: 가까이 갈수록 선명하게 — 화면 가운데(보는 곳) 둘레만 고해상도 항공사진을 받아 지형 위에 덮음
+   · 가까울수록 좁고 선명하게(최대 약 0.3m급), 멀어지면 걷어냄 · 지형 격자 높이를 그대로 따라 그려서 땅에 딱 붙음 */
+const CP={busy:false,cx:0,cz:0,r:0,key:''};
+function terrH(x,z){
+  const R=G&&G.terr; if(!R)return G.elev(x,z);
+  const fx=(x+R.W/2)/R.W*R.nx, fz=(z+R.D/2)/R.D*R.nz;
+  const ix=Math.max(0,Math.min(R.nx-1,Math.floor(fx))), iz=Math.max(0,Math.min(R.nz-1,Math.floor(fz))), u=Math.min(1,Math.max(0,fx-ix)), v=Math.min(1,Math.max(0,fz-iz));
+  const P=R.pos, w=R.nx+1, ha=P.getY(iz*w+ix), hb=P.getY((iz+1)*w+ix), hc=P.getY((iz+1)*w+ix+1), hd=P.getY(iz*w+ix+1);
+  return u+v<=1? ha+(hd-ha)*u+(hb-ha)*v : hc+(hb-hc)*(1-u)+(hd-hc)*(1-v);
+}
+function camPatchDrop(){const o=world&&world.userData.camPatch;if(o){world.remove(o);o.geometry.dispose();if(o.material.map)o.material.map.dispose();o.material.dispose();world.userData.camPatch=null;}CP.r=0;}
+function camPatchTick(){
+  if(!world||!G||!G.toLL||!surfSat()||CP.busy||document.hidden)return;
+  const d=camera.position.distanceTo(controls.target);
+  if(d>3000){if(world.userData.camPatch)camPatchDrop();return;}
+  const r=Math.min(1500,Math.max(220,d*.9)), cx=controls.target.x, cz=controls.target.z;
+  const have=world.userData.camPatch;
+  if(have&&Math.hypot(cx-CP.cx,cz-CP.cz)<CP.r*.35&&r>CP.r*.6&&r<CP.r*1.6)return;
+  const w0=world, toLL=G.toLL;
+  const cs=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>toLL(cx+a*r,cz+b*r));
+  const bb={n:Math.max(...cs.map(c=>c[0])),s:Math.min(...cs.map(c=>c[0])),e:Math.max(...cs.map(c=>c[1])),w:Math.min(...cs.map(c=>c[1]))};
+  CP.busy=true;
+  satTiles(bb,2048,19).then(S=>{
+    if(world!==w0)return;
+    const tex=new T.CanvasTexture(S.cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();
+    const n=96, g=new T.PlaneGeometry(2*r,2*r,n,n); g.rotateX(-Math.PI/2);
+    const P=g.attributes.position, uv=g.attributes.uv;
+    for(let k=0;k<P.count;k++){const x=P.getX(k)+cx,z=P.getZ(k)+cz;P.setXYZ(k,x,terrH(x,z)+.15,z);
+      const ll=toLL(x,z);uv.setXY(k,(mX(ll[1],S.z)-S.px0)/S.w,1-(mY(ll[0],S.z)-S.py0)/S.h);}
+    P.needsUpdate=true;uv.needsUpdate=true;g.computeVertexNormals();
+    camPatchDrop();
+    const m=new T.Mesh(g,new T.MeshLambertMaterial({map:tex,polygonOffset:true,polygonOffsetFactor:0,polygonOffsetUnits:-2}));
+    w0.add(m); w0.userData.camPatch=m; CP.cx=cx; CP.cz=cz; CP.r=r;
+  }).catch(()=>{}).finally(()=>{CP.busy=false;});
+}
+setInterval(camPatchTick,700);
+
 let ANGLE_GEO=null;
 function steelDetail(t){
   if(t.pole||t.segFrom==null||!G||!G.pos)return;
@@ -948,7 +984,7 @@ const ALL_COL=['#e8833a','#2f6fd6','#2e9d5f','#d63a3a','#8b5cf6','#0891b2','#db2
 function allBar(){
   let b=document.getElementById('allBar');
   if(!b){b=document.createElement('div');b.id='allBar';b.className='panel';
-    b.style.cssText='position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:40;padding:8px 12px;display:flex;gap:10px;align-items:center;max-width:94vw;flex-wrap:wrap;font-size:14px';
+    b.style.cssText='position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:40;padding:6px 8px;display:flex;gap:8px;align-items:center;max-width:96vw;flex-wrap:wrap;font-size:14px';
     document.body.appendChild(b);}
   return b;
 }
@@ -998,6 +1034,7 @@ function buildAll(){
   for(let k=0;k<tp.count;k++){const x=tp.getX(k),z=tp.getZ(k),h=elev(x,z);tp.setY(k,h);
     const nn=Math.min(1,Math.max(0,(h-20)/380));if(nn<.4)tmp.copy(cLow).lerp(cMid,nn/.4);else tmp.copy(cMid).lerp(cHigh,(nn-.4)/.6);tcol.push(tmp.r,tmp.g,tmp.b);}
   tg.setAttribute('color',new T.Float32BufferAttribute(tcol,3)); tg.computeVertexNormals();
+  G.terr={W,D,nx,nz,pos:tp};
   const SAT=RR&&RR.sat&&RR.sat!=='fail'?RR.sat:null;
   if(SAT){const uv=tg.attributes.uv;for(let k=0;k<tp.count;k++){const g=toLL(tp.getX(k),tp.getZ(k));uv.setXY(k,(mX(g[1],SAT.z)-SAT.px0)/SAT.w,1-(mY(g[0],SAT.z)-SAT.py0)/SAT.h);}uv.needsUpdate=true;}
   world.add(new T.Mesh(tg,SAT?new T.MeshLambertMaterial({map:SAT.tex,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2}):new T.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2})));
@@ -1054,9 +1091,15 @@ function buildAll(){
   // 위쪽 안내 띠
   const bar=allBar(); bar.hidden=false;
   const nChk=items.reduce((a,it)=>a+it.nGps,0), nAll=items.reduce((a,it)=>a+it.l.towers.length,0);
-  bar.innerHTML=`<b>🌐 전체 선로</b><span>${items.length}개 선로 · 철탑 ${nAll}기 (위치 체크 ${nChk}기)</span>`
-    +items.map((it,li)=>`<span style="display:inline-flex;align-items:center;gap:4px"><i style="width:12px;height:12px;border-radius:3px;background:${ALL_COL[li%ALL_COL.length]};display:inline-block"></i>${esc(it.l.kv+'kV '+LN(it.l))}</span>`).join('')
-    +`<span style="opacity:.75">${RR&&RR.st?esc(RR.st):''}</span><button class="btn" type="button" id="allBack">← 선로로 돌아가기</button>`;
+  bar.innerHTML=`<button class="btn" type="button" id="allBack">← 돌아가기</button>`
+    +`<b style="white-space:nowrap">🌐 ${items.length}개 선로 · ${nAll}기</b>`
+    +`<button class="btn" type="button" id="allLeg">색 구분 ▾</button>`
+    +`<div id="allLegBox" hidden style="flex-basis:100%;max-height:40vh;overflow:auto;display:grid;gap:4px;padding-top:4px">`
+    +items.map((it,li)=>`<span style="display:flex;align-items:center;gap:6px"><i style="width:12px;height:12px;border-radius:3px;background:${ALL_COL[li%ALL_COL.length]};display:inline-block;flex:none"></i>${esc(it.l.kv+'kV '+LN(it.l))}</span>`).join('')
+    +`<span style="opacity:.7;font-size:12px">위치 체크 ${nChk}기${RR&&RR.st?' · '+esc(RR.st):''}</span></div>`;
+  {const lb=document.getElementById('allLeg'),bx=document.getElementById('allLegBox');
+   lb.onclick=()=>{bx.hidden=!bx.hidden;bx.style.display=bx.hidden?'none':'grid';lb.textContent=bx.hidden?'색 구분 ▾':'색 구분 ▴';};
+   bx.style.display='none';}
   document.getElementById('allBack').onclick=()=>allExit();
   chipsEl.hidden=true;
   return {y:all.reduce((a,t)=>a+t.y,0)/(all.length||1),span:Math.max(BW,BD,1500)};
@@ -1122,6 +1165,7 @@ function build(){
     const j=(hash(x*.05,z*.05)-.5)*.05; tcol.push(tmp.r+j,tmp.g+j,tmp.b+j);
   }
   tg.setAttribute('color',new T.Float32BufferAttribute(tcol,3)); tg.computeVertexNormals();
+  G.terr={W,D,nx,nz,pos:tp};
   const SAT=RR&&RR.sat&&RR.sat!=='fail'?RR.sat:null;
   if(SAT){const uv=tg.attributes.uv;for(let k=0;k<tp.count;k++){const g=toLL(tp.getX(k),tp.getZ(k));uv.setXY(k,(mX(g[1],SAT.z)-SAT.px0)/SAT.w,1-(mY(g[0],SAT.z)-SAT.py0)/SAT.h);}uv.needsUpdate=true;}
   world.add(new T.Mesh(tg,SAT?new T.MeshLambertMaterial({map:SAT.tex,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2}):new T.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2})));
@@ -2737,7 +2781,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.6`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.7`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
