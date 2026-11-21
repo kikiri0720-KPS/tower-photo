@@ -2025,7 +2025,7 @@ document.getElementById('gStop').addEventListener('click',gpsStop);
 
 /* ---------- 순시 지도 (v19: 카카오맵 · 키가 없으면 위성 Esri 지도) ----------
    지도 종류마다 똑같이 쓰도록 작은 연결부(MP)를 둠: 선·점·번호표·말풍선·화면 맞추기 */
-const KAKAO_KEY_FIXED='';   // ← 카카오 JavaScript 키를 여기에 넣으면 모든 직원 화면이 바로 카카오 지도로 열려요
+const KAKAO_KEY_FIXED='7bfdf9bc30d33be06aa76517a8a30f34';   // ← 카카오 JavaScript 키를 여기에 넣으면 모든 직원 화면이 바로 카카오 지도로 열려요
 const kakaoKey=()=>KAKAO_KEY_FIXED||lsGet('tower3d-kakao-key')||'';
 const mapWant=()=>kakaoKey()&&lsGet('tower3d-mapsrc')!=='esri'?'kakao':'esri';
 let mapOn=false, MP=null, mapLayer=null, liveLayer=null, mapFollow=true, mapErr='';
@@ -2527,7 +2527,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.3`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.4`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
