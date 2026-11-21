@@ -377,6 +377,7 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
     </div>
     <div class="tools">
       <select id="lineSel" aria-label="선로 선택"></select>
+      <button class="btn" id="allBtn" type="button">🌐 전체 선로</button>
       <button class="btn" id="addLine" type="button">+ 선로 추가</button>
       <button class="btn" id="delLine2" type="button">선로 삭제</button>
       <button class="btn" id="backup" type="button">백업</button>
@@ -433,7 +434,7 @@ function defaults(){
     {id:'c',name:'사상–북부산 T/L',kv:154,circuits:6,seed:3,towers:c}
   ];
 }
-let lines=null, curId=null;
+let lines=null, curId=null, ALL=false;   // ALL: v20.6 전체 선로 3D 보기 중
 try{const o=JSON.parse(localStorage.getItem(STORE)||'null');if(o&&Array.isArray(o.lines)&&o.lines.length){lines=o.lines;curId=o.cur;}}catch(e){}
 if(!lines){ // 이전 버전 데이터 옮기기
   try{const o=JSON.parse(localStorage.getItem(OLD)||'null');
@@ -498,7 +499,7 @@ let pendingRebuild=false;
 function rebuildSoon(){
   const a=document.activeElement;
   if(a&&card.contains(a)&&/^(INPUT|TEXTAREA)$/.test(a.tagName)){pendingRebuild=true;return;}
-  pendingRebuild=false; build(); renderLedger();
+  pendingRebuild=false; if(ALL){buildAll();return;} build(); renderLedger();
 }
 // 다른 사람이 고친 내용 가져오기 (10초마다, 화면으로 돌아올 때)
 async function pull(){
@@ -531,7 +532,7 @@ async function pull(){
     if(!lines.length){lines=[{id:'l'+rid(),name:'새 선로',kv:154,circuits:2,seed:7,towers:range(1,10)}];save();}
     if(!lines.find(l=>l.id===curId)){curId=lines[0].id;selT=null;card.hidden=true;touchCur=true;}
     writeCache();
-    if(touchCur) rebuildSoon(); else if(touched) renderHead();
+    if(ALL){if(touched)rebuildSoon();} else if(touchCur) rebuildSoon(); else if(touched) renderHead();
     await pullPhotos();
     if(!flushT&&!flushing){const d=new Date();syncState('ok','공유 중 · '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')+' 확인');}
   }catch(e){console.error(e);syncState('err','연결 끊김 · 다시 시도 중');}
@@ -940,7 +941,136 @@ function steelDetail(t){
   world.add(mesh); world.userData.steelD=mesh;
 }
 
+/* ---------- v20.6: 전체 선로 3D ----------
+   · 순시 [도착]으로 위치가 찍힌 철탑이 2기 이상인 선로를 모두 한 지형(표고+항공사진) 위에 세움
+   · 선로마다 색 띠로 구분, 번호표를 누르면 그 선로로 들어가 그 철탑을 보여 줌 */
+const ALL_COL=['#e8833a','#2f6fd6','#2e9d5f','#d63a3a','#8b5cf6','#0891b2','#db2777','#65a30d','#b45309','#475569'];
+function allBar(){
+  let b=document.getElementById('allBar');
+  if(!b){b=document.createElement('div');b.id='allBar';b.className='panel';
+    b.style.cssText='position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:40;padding:8px 12px;display:flex;gap:10px;align-items:center;max-width:94vw;flex-wrap:wrap;font-size:14px';
+    document.body.appendChild(b);}
+  return b;
+}
+function allExit(toLine,toTowerId){
+  ALL=false;
+  if(toLine){curId=toLine;lsSet('tower3d-cur',curId);save();}
+  build();
+  const t=toTowerId?towers.find(x=>x.d.id===toTowerId):null;
+  if(t)selectTower(t,true); else refit();
+}
+function buildAll(){
+  const LS=lines.filter(l=>l.towers.filter(d=>d.gps&&d.gps.length===2).length>=2);
+  if(!LS.length){say('위치가 찍힌 철탑이 2기 이상인 선로가 없어요. 🥾 순시 [도착]으로 위치를 먼저 찍어 주세요.',true);return;}
+  stopPatrol(); selT=null; card.hidden=true; addMode=false; backupMode=false;
+  if(world){scene.remove(world);world.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});}
+  labelsEl.innerHTML=''; ALL=true;
+  // 공통 기준점(모든 체크 철탑의 가운데)
+  const G0=[];LS.forEach(l=>l.towers.forEach(d=>{if(d.gps&&d.gps.length===2)G0.push(d.gps);}));
+  const lat0=G0.reduce((a,g)=>a+g[0],0)/G0.length, lng0=G0.reduce((a,g)=>a+g[1],0)/G0.length, kx=111320*Math.cos(lat0*Math.PI/180), kz=110574;
+  const items=[];
+  LS.forEach(l=>{
+    const spanOf=i=>{const d=l.towers[i];return d.span>0?d.span:defSpan(i,l.seed);};
+    const RL=realLayout(l,spanOf); if(!RL)return;
+    const ox=(RL.lng0-lng0)*kx, oz=-(RL.lat0-lat0)*kz;
+    items.push({l,px:RL.px.map(x=>x*kx/RL.kx+ox),pz:RL.pz.map(z=>z+oz),nGps:RL.nGps});
+  });
+  let mnx=1e9,mxx=-1e9,mnz=1e9,mxz=-1e9;
+  items.forEach(it=>{it.px.forEach(x=>{mnx=Math.min(mnx,x);mxx=Math.max(mxx,x);});it.pz.forEach(z=>{mnz=Math.min(mnz,z);mxz=Math.max(mxz,z);});});
+  const cx=(mnx+mxx)/2, cz=(mnz+mxz)/2, BW=mxx-mnx, BD=mxz-mnz;
+  const toLL=(x,z)=>[lat0-(z+cz)/kz,lng0+(x+cx)/kx];
+  const W=BW+3000, D=BD+3000;
+  const cs=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>toLL(a*W/2,b*D/2));
+  const bb={n:Math.max(...cs.map(c=>c[0])),s:Math.min(...cs.map(c=>c[0])),e:Math.max(...cs.map(c=>c[1])),w:Math.min(...cs.map(c=>c[1]))};
+  const key='ALL:'+[bb.n,bb.s,bb.e,bb.w].map(v=>v.toFixed(4)).join(',')+(surfSat()?'s':'g');
+  let RR=REAL.__all__;
+  if(!RR||RR.key!==key){realLoad('__all__',key,bb).then(()=>{if(ALL)buildAll();});RR=REAL.__all__;}
+  const flat=()=>RR&&RR.dem&&RR.dem!=='fail'?RR.dem.base:0;
+  const elev=(x,z)=>{const g=toLL(x,z),h=demAt(RR,g[0],g[1]);return h==null?flat():h;};
+  G={L:Math.max(BW,BD),elev,real:null,toLL,all:true};
+  const steel=new T.Color(cssVar('--steel')), wireC=new T.Color(cssVar('--wire'));
+  world=new T.Group();
+  {const sk=new T.Color(cssVar('--sky'));scene.fog=new T.Fog(sk,Math.max(8000,G.L*1.2),Math.max(30000,G.L*3.5));}
+  // 지형
+  const nx=Math.min(500,Math.max(80,Math.round(W/25))), nz=Math.min(500,Math.max(80,Math.round(D/25)));
+  const tg=new T.PlaneGeometry(W,D,nx,nz); tg.rotateX(-Math.PI/2);
+  const tp=tg.attributes.position, tcol=[];
+  for(let k=0;k<tp.count;k++){const x=tp.getX(k),z=tp.getZ(k),h=elev(x,z);tp.setY(k,h);
+    const nn=Math.min(1,Math.max(0,(h-20)/380));if(nn<.4)tmp.copy(cLow).lerp(cMid,nn/.4);else tmp.copy(cMid).lerp(cHigh,(nn-.4)/.6);tcol.push(tmp.r,tmp.g,tmp.b);}
+  tg.setAttribute('color',new T.Float32BufferAttribute(tcol,3)); tg.computeVertexNormals();
+  const SAT=RR&&RR.sat&&RR.sat!=='fail'?RR.sat:null;
+  if(SAT){const uv=tg.attributes.uv;for(let k=0;k<tp.count;k++){const g=toLL(tp.getX(k),tp.getZ(k));uv.setXY(k,(mX(g[1],SAT.z)-SAT.px0)/SAT.w,1-(mY(g[0],SAT.z)-SAT.py0)/SAT.h);}uv.needsUpdate=true;}
+  world.add(new T.Mesh(tg,SAT?new T.MeshLambertMaterial({map:SAT.tex,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2}):new T.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2})));
+  // 철탑·전선
+  const pos=[],col=[],ph=[],gwA=[],ring=[],ringC=[]; EXTRA={discs:[],feet:[],horns:[],rings:[],arrs:[],dmps:[]}; G.pos=pos; G.col=col;
+  const poleGrp=new T.Group(), matCache={};
+  const mat=c=>{const k=c.getHexString();return matCache[k]||(matCache[k]=new T.MeshLambertMaterial({color:c.clone()}));};
+  const all=[]; spans=[];
+  items.forEach((it,li)=>{
+    const l=it.l, n=l.towers.length, PX=it.px.map(x=>x-cx), PZ=it.pz.map(z=>z-cz), lc=new T.Color(ALL_COL[li%ALL_COL.length]);
+    const HD=[];for(let i=0;i<n-1;i++)HD.push(Math.atan2(PZ[i+1]-PZ[i],PX[i+1]-PX[i]));
+    const TH=PX.map((_,i)=>i===0?HD[0]||0:i===n-1?HD[n-2]:Math.atan2(Math.sin(HD[i-1])+Math.sin(HD[i]),Math.cos(HD[i-1])+Math.cos(HD[i])));
+    const tw=l.towers.map((d,i)=>{
+      const x=PX[i], z=PZ[i];
+      const auto=i===0||i===n-1||i%6===5||(i>0&&i<n-1&&angOf(d)!==0), tension=d.type!=null?d.type:auto;
+      const autoH=Math.round(baseH(l.kv)*CIRC_MUL[cirOf(l,d)]+(hash(i*1.7,l.seed)-.5)*8+(tension?4:0));
+      const H=d.h>0?d.h:autoH, aviation=d.av!=null?d.av:false, lamp=d.lamp!=null?d.lamp:false;
+      return {d,i,label:d.label,pole:!!d.pole,x,z,th:TH[i],ang:i>0&&i<n-1?angOf(d):0,y:elev(x,z),H,autoH,tension,auto,aviation,autoAv:false,lamp,lampN:lampCounts(d),autoSpan:defSpan(i,l.seed),line:l,lc};
+    });
+    tw.forEach(t=>{const st=t.d.green?GREEN:steel;t.pole?poleInto(l,t,st,pos,col,poleGrp,mat):towerInto(l,t,st,pos,col);});
+    for(let i=0;i<n-1;i++){
+      Object.keys(tw[i].attach).filter(k=>tw[i+1].attach[k]).forEach(k=>{
+        const A=tw[i].attach[k].fwd, Q=tw[i+1].attach[k].back, isG=tw[i].attach[k].gw, arr=isG?gwA:ph;
+        const sp=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=sp*sp*.000075*(isG?.8:1); let pv=null;
+        for(let s=0;s<=16;s++){const u=s/16,p=[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];if(pv)arr.push(...pv,...p);pv=p;}
+      });
+    }
+    // 선로 색 띠: 철탑을 잇는 땅 위 선
+    for(let i=0;i<n-1;i++){const a=tw[i],b=tw[i+1];let pv=null;
+      for(let s=0;s<=12;s++){const u=s/12,x=a.x+(b.x-a.x)*u,z=a.z+(b.z-a.z)*u,p=[x,elev(x,z)+3,z];if(pv){ring.push(...pv,...p);ringC.push(lc.r,lc.g,lc.b,lc.r,lc.g,lc.b);}pv=p;}}
+    // 선로 이름표: 가운데 철탑 위
+    const m=tw[Math.floor(n/2)], el=document.createElement('div');
+    el.className='xtag'; el.style.background=ALL_COL[li%ALL_COL.length]; el.style.color='#fff';
+    el.textContent=l.kv+'kV '+LN(l); labelsEl.appendChild(el);
+    spans.push({i:-1,x:m.x,z:m.z,y:m.y+m.H+60,tags:[el]});
+    all.push(...tw);
+  });
+  world.add(poleGrp);
+  {const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('color',new T.Float32BufferAttribute(col,3));world.add(new T.LineSegments(g,new T.LineBasicMaterial({vertexColors:true})));}
+  {const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(ring,3));g.setAttribute('color',new T.Float32BufferAttribute(ringC,3));world.add(new T.LineSegments(g,new T.LineBasicMaterial({vertexColors:true})));}
+  {const mk=(arr,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(arr,3));return new T.LineSegments(gg,new T.LineBasicMaterial({color}));};
+   const wires=new T.Group();wires.add(mk(ph,wireC));if(gwA.length)wires.add(mk(gwA,steel));wires.visible=showWires;world.add(wires);world.userData.wires=wires;}
+  scene.add(world);
+  towers=all; pathInfo=null; strobes=[];
+  // 번호표: 선로 색 + 번호, 누르면 그 선로로 들어감
+  towers.forEach(t=>{
+    const b=document.createElement('button'); b.type='button'; b.className='tag'+(t.tension?' ten':'');
+    b.style.borderColor=b.style.outlineColor=t.lc.getStyle(); b.style.boxShadow='inset 4px 0 0 '+t.lc.getStyle();
+    b.innerHTML=`<i class="sym ${t.tension?'ten':'sus'}"></i>${esc(H_(t))}${t.d.gps?' ✓':''}`;
+    b.title=t.line.kv+'kV '+LN(t.line)+' '+H_(t);
+    b.addEventListener('click',()=>allExit(t.line.id,t.d.id));
+    labelsEl.appendChild(b); t.tag=b;
+  });
+  // 위쪽 안내 띠
+  const bar=allBar(); bar.hidden=false;
+  const nChk=items.reduce((a,it)=>a+it.nGps,0), nAll=items.reduce((a,it)=>a+it.l.towers.length,0);
+  bar.innerHTML=`<b>🌐 전체 선로</b><span>${items.length}개 선로 · 철탑 ${nAll}기 (위치 체크 ${nChk}기)</span>`
+    +items.map((it,li)=>`<span style="display:inline-flex;align-items:center;gap:4px"><i style="width:12px;height:12px;border-radius:3px;background:${ALL_COL[li%ALL_COL.length]};display:inline-block"></i>${esc(it.l.kv+'kV '+LN(it.l))}</span>`).join('')
+    +`<span style="opacity:.75">${RR&&RR.st?esc(RR.st):''}</span><button class="btn" type="button" id="allBack">← 선로로 돌아가기</button>`;
+  document.getElementById('allBack').onclick=()=>allExit();
+  chipsEl.hidden=true;
+  return {y:all.reduce((a,t)=>a+t.y,0)/(all.length||1),span:Math.max(BW,BD,1500)};
+}
+function openAll(){
+  const r=buildAll(); if(!r)return;
+  const e=r.span*aspectK();
+  flyTo(new T.Vector3(-r.span*.05,r.y+e*.55+300,e*.8),new T.Vector3(0,r.y,0));
+}
+
 function build(){
+  ALL=false;
+  {const b=document.getElementById('allBar');if(b)b.hidden=true;}
+  {const c=document.getElementById('chips');if(c)c.hidden=false;}
   const l=cur();
   stopPatrol();
   if(world){scene.remove(world);world.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});}
@@ -2357,6 +2487,7 @@ function pathAt(d){const P=pathInfo.pts,C=pathInfo.cum;let i=0;while(i<C.length-
 function pathY_old(x){const P=pathInfo.pts,f=(x-pathInfo.x0)/20,i=Math.max(0,Math.min(P.length-2,Math.floor(f))),u=Math.min(1,Math.max(0,f-i));return P[i].y+(P[i+1].y-P[i].y)*u;}
 
 /* ---------- 조작 ---------- */
+document.getElementById('allBtn').addEventListener('click',()=>{if(ALL)allExit();else openAll();});
 lineSel.addEventListener('change',()=>{addMode=false;backupMode=false;curId=lineSel.value;lsSet('tower3d-cur',curId);selT=null;card.hidden=true;save();build();refit();});
 document.getElementById('addLine').addEventListener('click',()=>{
   if(play) stopPatrol();
@@ -2463,11 +2594,11 @@ renderer.domElement.addEventListener('pointerup',e=>{
   let best=null,bd=24;
   towers.forEach(t=>{for(const h of [0,t.H*.5,t.H]){pv.set(t.x,t.y+h,t.z).project(camera);if(pv.z>1)continue;
     const d=Math.hypot((pv.x+1)/2*r.width-mx,(1-pv.y)/2*r.height-my);if(d<bd){bd=d;best=t;}}});
-  if(best) selectTower(best);
+  if(best){if(ALL)allExit(best.line.id,best.d.id);else selectTower(best);}
 });
 function resize(){const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/Math.max(1,h);camera.updateProjectionMatrix();}
 window.addEventListener('resize',resize);
-function applyTheme(){scene.background=new T.Color(cssVar('--sky'));paintSky();const ac=cssVar('--accent');marker.material.color.set(ac);walker.material.color.set(ac);if(G)build();}
+function applyTheme(){scene.background=new T.Color(cssVar('--sky'));paintSky();const ac=cssVar('--accent');marker.material.color.set(ac);walker.material.color.set(ac);if(ALL)buildAll();else if(G)build();}
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);
 new MutationObserver(applyTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 
@@ -2606,7 +2737,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.5`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.6`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
