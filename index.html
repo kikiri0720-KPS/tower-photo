@@ -377,7 +377,6 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
     </div>
     <div class="tools">
       <select id="lineSel" aria-label="선로 선택"></select>
-      <button class="btn" id="allBtn" type="button">🌐 전체 선로</button>
       <button class="btn" id="addLine" type="button">+ 선로 추가</button>
       <button class="btn" id="delLine2" type="button">선로 삭제</button>
       <button class="btn" id="backup" type="button">백업</button>
@@ -386,6 +385,7 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
       <button class="btn" id="tTag" type="button" aria-pressed="true">번호</button>
       <button class="btn" id="gpsBtn" type="button">🥾 순시</button>
       <button class="btn" id="mapBtn" type="button">🗺 지도</button>
+      <button class="btn" id="allBtn" type="button">🌐 전체 선로</button>
       
     </div>
     <div class="chips panel" id="chips"></div>
@@ -1071,7 +1071,7 @@ function buildAll(){
     });
   });
   // 2) v20.8: 4회선 병가 — 다른 선로 철탑이 25m 안에 있고 어느 한쪽이 4회선이면 같은 철탑으로 보고 하나만 세움
-  const SH=25, cell=new Map(), ck=(x,z)=>Math.floor(x/SH)+','+Math.floor(z/SH);
+  const SH=40, cell=new Map(), ck=(x,z)=>Math.floor(x/SH)+','+Math.floor(z/SH);
   TWS.forEach(tw=>tw.forEach(t=>{
     let own=null,bd=SH;
     const gx=Math.floor(t.x/SH), gz=Math.floor(t.z/SH);
@@ -1081,6 +1081,19 @@ function buildAll(){
     if(own){t.own=own; own.share.push(t); t.x=own.x; t.z=own.z; t.y=own.y;}
     else{const k=ck(t.x,t.z); if(!cell.has(k))cell.set(k,[]); cell.get(k).push(t);}
   }));
+  // v20.12: 같이 가는 구간은 이웃 철탑끼리도 이어서 합침 (두 선로에서 따로 찍은 위치가 좀 달라도 90m 안이면 같은 철탑)
+  {let changed=true,guard=0;
+   const four=(a,b)=>cirOf(a.line,a.d)>=4||cirOf(b.line,b.d)>=4;
+   while(changed&&guard++<50){changed=false;
+     TWS.forEach(tw=>tw.forEach(t=>{if(!t.own)return;const o=t.own, lo=TWS[o.li], lt=TWS[t.li];
+       [-1,1].forEach(dt=>{const t2=lt[t.i+dt];if(!t2||t2.own||t2.share.length)return;
+         let best=null,bd=90;
+         [-1,1].forEach(dn=>{const o2=lo[o.i+dn];if(!o2)return;const O=o2.own||o2;if(O.li===t2.li)return;
+           const dd=Math.hypot(O.x-t2.x,O.z-t2.z);if(dd<bd&&four(O,t2)){bd=dd;best=O;}});
+         if(best){t2.own=best;best.share.push(t2);t2.x=best.x;t2.z=best.z;t2.y=best.y;changed=true;}
+       });
+     }));}
+  }
   // 3) 세우기 · 전선 (같은 철탑 사이 경간은 한 번만)
   const drawn=new Map();   // 경간 키 → 지나가는 선로 색들
   const idOf=t=>(t.own||t).uid;
@@ -2816,7 +2829,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.11`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.12`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
