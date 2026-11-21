@@ -1051,7 +1051,7 @@ function buildAll(){
   world.add(new T.Mesh(tg,SAT?new T.MeshLambertMaterial({map:SAT.tex,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2}):new T.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2})));
   {let mn=1e9;for(let k=0;k<tp.count;k+=7)mn=Math.min(mn,tp.getY(k));   // v20.9: 지형 밖으로 나가도 빈 하늘이 안 보이게 넓은 바닥
    const fg=new T.PlaneGeometry(Math.max(W,D)*8,Math.max(W,D)*8);fg.rotateX(-Math.PI/2);
-   const fm=new T.Mesh(fg,new T.MeshLambertMaterial({color:new T.Color(cssVar('--sky')).lerp(cMid,.55)}));fm.position.y=mn-25;world.add(fm);}
+   const fm=new T.Mesh(fg,new T.MeshLambertMaterial({color:new T.Color(cssVar('--sky')).lerp(cMid,.55),depthWrite:false}));fm.position.y=mn-200;fm.renderOrder=-10;world.add(fm);}   // 배경처럼 맨 먼저 그려서 지형을 절대 가리지 않음
   // 철탑·전선
   const pos=[],col=[],ph=[],gwA=[],ring=[],ringC=[]; EXTRA={discs:[],feet:[],horns:[],rings:[],arrs:[],dmps:[]}; G.pos=pos; G.col=col;
   const poleGrp=new T.Group(), matCache={};
@@ -1203,7 +1203,7 @@ function build(){
   world.add(new T.Mesh(tg,SAT?new T.MeshLambertMaterial({map:SAT.tex,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2}):new T.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2})));
   {let mn=1e9;for(let k=0;k<tp.count;k+=7)mn=Math.min(mn,tp.getY(k));   // v20.9: 지형 밖으로 나가도 빈 하늘이 안 보이게 넓은 바닥
    const fg=new T.PlaneGeometry(Math.max(W,D)*8,Math.max(W,D)*8);fg.rotateX(-Math.PI/2);
-   const fm=new T.Mesh(fg,new T.MeshLambertMaterial({color:new T.Color(cssVar('--sky')).lerp(cMid,.55)}));fm.position.y=mn-25;world.add(fm);}
+   const fm=new T.Mesh(fg,new T.MeshLambertMaterial({color:new T.Color(cssVar('--sky')).lerp(cMid,.55),depthWrite:false}));fm.position.y=mn-200;fm.renderOrder=-10;world.add(fm);}   // 배경처럼 맨 먼저 그려서 지형을 절대 가리지 않음
 
   // 철탑
   towers=l.towers.map((d,i)=>{
@@ -2816,7 +2816,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.10`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.11`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
