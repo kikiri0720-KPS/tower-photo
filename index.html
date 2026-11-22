@@ -1671,7 +1671,9 @@ function makeCrossTags(){
 }
 const crossOf=d=>CROSS.filter(c=>d[c.k]);
 const SANBOK_ST=['','양호','관찰','보강 필요'];   // v19: 산복개소 상태
-const H_=t=>'No.'+t.label;   // v15: 1호 → No.1 표기
+const isCT=lb=>/^C\/T/i.test(String(lb));   // v21.13: 변전소 철골타워는 번호 대신 C/T
+const NO=lb=>isCT(lb)?String(lb):'No.'+lb;
+const H_=t=>NO(t.label);   // v15: 1호 → No.1 표기
 const LAMP_KINDS=[{k:'high',name:'고광도',desc:'백색 섬광',c:'#ffffff'},{k:'mid',name:'중광도',desc:'적색 섬광',c:'#ff3b2f'},{k:'low',name:'저광도',desc:'적색 점멸',c:'#ff2a2a'}];
 const HI_FACE=['A-B','B-C','C-D','D-A'], HI_LV=['상부','중부','하부'];
 const hiList=d=>{const s=new Set(d.hiPos||[]);const out=[];HI_LV.forEach(v=>HI_FACE.forEach(f=>{if(s.has(f+' '+v))out.push(f+'각 '+v);}));return out;};
@@ -1695,8 +1697,10 @@ function nextBranch(l,lb){ // 22 → 22-1, 22-1 → 22-2
   l.towers.forEach(t=>{const p=String(t.label).split('-');if(p[0]===b&&p.length>1){const k=parseInt(p[1],10);if(k>mx)mx=k;}});
   return b+'-'+(mx+1);
 }
-function chLab(l,dir){const t=l.towers[dir<0?0:l.towers.length-1],n=parseInt(baseNo(t.label),10);return isNaN(n)?(dir<0?'0':String(l.towers.length+1)):String(Math.max(0,n+dir));}
-function nextAfterLast(l){const last=l.towers[l.towers.length-1];const n=parseInt(baseNo(last.label),10);return isNaN(n)?String(l.towers.length+1):String(n+1);}
+function ctLab(l,self){const has=v=>l.towers.some(x=>x!==self&&String(x.label)===v);if(!has('C/T'))return 'C/T';let k=2;while(has('C/T'+k))k++;return 'C/T'+k;}
+function chLab(l){return ctLab(l);}   // v21.13: 맨 앞·맨 뒤 철골타워 이름은 C/T
+function numNear(l,d){const ts=l.towers,i=ts.indexOf(d);for(let j=i-1;j>=0;j--){const n=parseInt(baseNo(ts[j].label),10);if(!isNaN(n))return String(n+(i-j));}for(let j=i+1;j<ts.length;j++){const n=parseInt(baseNo(ts[j].label),10);if(!isNaN(n))return String(Math.max(0,n-(j-i)));}return String(i+1);}
+function nextAfterLast(l){const num=l.towers.filter(d=>!isCT(d.label)),last=num[num.length-1];const n=last?parseInt(baseNo(last.label),10):NaN;return isNaN(n)?String(num.length+1):String(n+1);}
 
 /* ---------- UI ---------- */
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1743,7 +1747,7 @@ function renderHead(){
   const pk=(k,txt,n)=>n>0?`<span class="pk${pickKey===k?' on':''}" data-pk="${k}" role="button">${txt}</span>`:txt;
   const lampSum=towers.filter(t=>t.lamp).reduce((a,t)=>({high:a.high+t.lampN.high,mid:a.mid+t.lampN.mid,low:a.low+t.lampN.low}),{high:0,mid:0,low:0});
   const hit=pickKey&&PICKS[pickKey]?towers.filter(PICKS[pickKey].f):[];
-  document.getElementById('stats').innerHTML=`No.${esc(first)}~No.${esc(last)} · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · ${pk('aviation','도색 '+towers.filter(PICKS.aviation.f).length,towers.filter(PICKS.aviation.f).length)} · ${pk('lamp','항공등 '+esc(lampTxt(lampSum,true)),towers.filter(PICKS.lamp.f).length)} · ${pk('ball','✈ 항공구 설치개소 '+towers.filter(PICKS.ball.f).length+'곳 ('+ballSum(l)+'개)',towers.filter(PICKS.ball.f).length)} · `
+  document.getElementById('stats').innerHTML=`${NO(esc(first))}~${NO(esc(last))} · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · ${pk('aviation','도색 '+towers.filter(PICKS.aviation.f).length,towers.filter(PICKS.aviation.f).length)} · ${pk('lamp','항공등 '+esc(lampTxt(lampSum,true)),towers.filter(PICKS.lamp.f).length)} · ${pk('ball','✈ 항공구 설치개소 '+towers.filter(PICKS.ball.f).length+'곳 ('+ballSum(l)+'개)',towers.filter(PICKS.ball.f).length)} · `
     +(SHOW_CROSS?CROSS.map(c=>{const n=towers.filter(PICKS[c.k].f).length;return pk(c.k,c.name.replace('횡단','')+' '+n,n);}).join(' · ')+'\n':'')
     +LAND.map(x=>{const n=towers.filter(PICKS[x.k].f).length;return pk(x.k,x.name+' '+n+'기',n);}).join(' · ')
     +' · '+pk('kudzu','칡넝쿨 '+towers.filter(PICKS.kudzu.f).length+'기',towers.filter(PICKS.kudzu.f).length)
@@ -1791,8 +1795,8 @@ function renderAdd(){
       <div class="row2"><div class="unit" data-unit="번부터"><input id="fFrom" type="number" inputmode="numeric" min="1" value="${d.from}" aria-label="시작 호수"></div>
       <div class="unit" data-unit="번까지"><input id="fTo" type="number" inputmode="numeric" min="1" value="${d.to}" aria-label="끝 호수"></div></div></div>
     <div class="field"><span class="lb">🏭 변전소 철골타워 (선로 맨 앞·맨 뒤)</span>
-      <div class="checks"><label class="check"><input type="checkbox" id="chS" ${d.chS?'checked':''}>시작 앞에 (No.${(d.from>1?d.from-1:0)})<i class="sw" style="background:#8a8f93"></i></label>
-      <label class="check"><input type="checkbox" id="chE" ${d.chE?'checked':''}>끝 뒤에 (No.${(d.to>0?d.to+1:'')})<i class="sw" style="background:#8a8f93"></i></label></div>
+      <div class="checks"><label class="check"><input type="checkbox" id="chS" ${d.chS?'checked':''}>시작 앞에 (C/T)<i class="sw" style="background:#8a8f93"></i></label>
+      <label class="check"><input type="checkbox" id="chE" ${d.chE?'checked':''}>끝 뒤에 (C/T)<i class="sw" style="background:#8a8f93"></i></label></div>
       <p class="note" style="margin:6px 0 0">체크하면 그 자리에 변전소 철골타워가 하나 더 생겨요. GPS를 찍으면 지도에도 떠요.</p></div>
     <p class="err" id="addErr" hidden></p>
     <p class="note">22-1호처럼 중간 철탑은 추가한 뒤 22호를 눌러 끼워넣을 수 있어요.</p>
@@ -1812,7 +1816,7 @@ function renderAdd(){
     if(!(d.to>d.from)) return bad('끝 호수가 시작 호수보다 커야 해요.','#fTo');
     if(d.to-d.from+1>MAX_TOWERS) return bad(`한 선로에 ${MAX_TOWERS}기까지 넣을 수 있어요.`,'#fTo');
     const id='l'+Date.now().toString(36);
-    lines.push({id,name:stripTL(d.name),kv:d.kv,circuits:d.circuits,gw:d.gw||defGW(d.kv),seed:Math.round(Math.random()*90)+4,towers:(()=>{const ts=range(d.from,d.to);const ch=lab=>{const t=newTower(lab);t.gantry=true;return t;};if(d.chS)ts.unshift(ch(d.from>1?d.from-1:0));if(d.chE)ts.push(ch(d.to+1));return ts;})()});
+    lines.push({id,name:stripTL(d.name),kv:d.kv,circuits:d.circuits,gw:d.gw||defGW(d.kv),seed:Math.round(Math.random()*90)+4,towers:(()=>{const ts=range(d.from,d.to);const ch=lab=>{const t=newTower(lab);t.gantry=true;return t;};if(d.chS)ts.unshift(ch('C/T'));if(d.chE)ts.push(ch(d.chS?'C/T2':'C/T'));return ts;})()});
     addMode=false; curId=id; selT=null; save(); build(); refit(); renderCard();
   });
   card.hidden=false;
@@ -1833,7 +1837,7 @@ function renderCard(){
         <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
         ${l.gw===1?'':`<div class="row2" style="align-items:center;margin-top:6px"><span class="lb" style="min-width:44px">#2</span>${segHTML('data-wt2',WT,l.gw2,v=>v)}</div>`}</div>
       <dl>
-        <dt>철탑</dt><dd>No.${towers[0].label}~No.${towers[towers.length-1].label} · ${towers.length}기</dd>
+        <dt>철탑</dt><dd>${NO(towers[0].label)}~${NO(towers[towers.length-1].label)} · ${towers.length}기</dd>
         <dt>선로길이</dt><dd>${(G.L/1000).toFixed(2)} km</dd>
       </dl>
       ${realFieldHTML(l)}
@@ -1932,18 +1936,18 @@ function renderCard(){
           <div class="unit" data-unit="" style="margin-top:6px"><input id="fLowMemo" type="text" placeholder="예: 경간 중앙 농로 위, 수목 근접" value="${esc(t.d.lowMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
       <div class="field"><span class="lb">🏭 변전소 철골타워 · 변전소 인출 구조물 (선로 맨 앞·맨 뒤)</span>
         <label class="check"><input type="checkbox" id="xGan" ${t.d.gantry?'checked':''}>변전소 철골타워<i class="sw" style="background:#6d7a82"></i></label>
-        ${(()=>{const ix=l.towers.indexOf(t.d),lastI=l.towers.length-1;return (ix===0?`<button class="ghost" type="button" id="chFront" style="margin-top:6px">+ 앞에 변전소 철골타워 No.${chLab(l,-1)} 추가</button>`:'')+(ix===lastI?`<button class="ghost" type="button" id="chBack" style="margin-top:6px">+ 뒤에 변전소 철골타워 No.${chLab(l,1)} 추가</button>`:'');})()}
+        ${(()=>{const ix=l.towers.indexOf(t.d),lastI=l.towers.length-1;return (ix===0?`<button class="ghost" type="button" id="chFront" style="margin-top:6px">+ 앞에 변전소 철골타워 ${chLab(l)} 추가</button>`:'')+(ix===lastI?`<button class="ghost" type="button" id="chBack" style="margin-top:6px">+ 뒤에 변전소 철골타워 ${chLab(l)} 추가</button>`:'');})()}
         <p class="note" style="margin:6px 0 0">체크하면 철탑 대신 철골 기둥 2개와 가로 보로 된 3D 구조물로 보여요.</p></div>
       ${next?`${SHOW_CROSS?`<div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 횡단</span>
         <div class="checks">${CROSS.map(c=>`<label class="check"><input type="checkbox" data-x="${c.k}" ${t.d[c.k]?'checked':''}>${c.name}<i class="sw" style="background:${c.c}"></i></label>`).join('')}</div></div>`:''}
 `:''}
       <div class="actions">
-        ${next?`<button class="ghost" type="button" id="insAfter">+ ${esc(H_(t))} 다음에 No.${esc(br)} 끼워넣기</button>`:`<button class="ghost" type="button" id="addEnd">+ 끝에 No.${nextAfterLast(l)} 추가</button>`}
+        ${next?`<button class="ghost" type="button" id="insAfter">+ ${esc(H_(t))} 다음에 ${NO(esc(br))} 끼워넣기</button>`:`<button class="ghost" type="button" id="addEnd">+ 끝에 No.${nextAfterLast(l)} 추가</button>`}
         <button class="ghost danger" type="button" id="delTower">${confirmDel===t.d.id?'한 번 더 누르면 삭제됩니다':esc(H_(t))+' 삭제'}</button>
       </div>
       <p class="note">높이·경간을 비워 두면 기본값(회색 숫자)을 씁니다.</p>
       <div style="border-top:2px solid var(--line);margin-top:14px;padding-top:10px"><span class="lb" style="font-weight:700">🥾 순시</span>
-      ${GP?'':`<button class="primary ledger-btn" type="button" data-gcar="1" style="background:#2f6fd6;border-color:#2f6fd6;color:#fff">🚗 차에서 내린 곳부터 순시 시작 → No.${esc(t.label)}</button>`+(towers[t.i+1]?`<button class="primary ledger-btn" type="button" data-gstart="1" style="background:#2e7d4f;border-color:#2e7d4f;color:#fff">🥾 No.${esc(t.label)}에서 순시 시작 → No.${esc(towers[t.i+1].label)}</button>`:'')}
+      ${GP?'':`<button class="primary ledger-btn" type="button" data-gcar="1" style="background:#2f6fd6;border-color:#2f6fd6;color:#fff">🚗 차에서 내린 곳부터 순시 시작 → ${NO(esc(t.label))}</button>`+(towers[t.i+1]?`<button class="primary ledger-btn" type="button" data-gstart="1" style="background:#2e7d4f;border-color:#2e7d4f;color:#fff">🥾 ${NO(esc(t.label))}에서 순시 시작 → ${NO(esc(towers[t.i+1].label))}</button>`:'')}
       ${gpsTowerHTML(l,t)}</div>`;
   }
   const q=s=>card.querySelector(s);
@@ -1967,12 +1971,13 @@ function renderCard(){
   gpsBind(card,l,t);
   [['#chFront',-1],['#chBack',1]].forEach(([id,dir])=>{if(!q(id))return;q(id).addEventListener('click',()=>{
     if(l.towers.length>=MAX_TOWERS)return;
-    const nt=newTower(chLab(l,dir)); nt.gantry=true; if(dir<0)l.towers.unshift(nt);else l.towers.push(nt);
+    const nt=newTower(chLab(l)); nt.gantry=true; if(dir<0)l.towers.unshift(nt);else l.towers.push(nt);
     save(); build(); selectTower(towers[dir<0?0:towers.length-1]);});});
   if(q('#addEnd')) q('#addEnd').addEventListener('click',()=>{
     if(l.towers.length>=MAX_TOWERS) return;
-    const nt=newTower(nextAfterLast(l)); l.towers.push(nt); save(); build();
-    selectTower(towers[towers.length-1]);
+    const nt=newTower(nextAfterLast(l)); let k=l.towers.length; while(k>0&&isCT(l.towers[k-1].label))k--;   // v21.13: 끝 C/T 앞에 넣기
+    l.towers.splice(k,0,nt); save(); build();
+    selectTower(towers[k]);
   });
   if(q('#delLine')) q('#delLine').addEventListener('click',()=>{
     if(!isAdmin()){q('#delLine').textContent=ADM_MSG;say(ADM_MSG);return;}
@@ -1990,7 +1995,7 @@ function renderCard(){
   q('#fLabel').addEventListener('change',e=>{
     const v=e.target.value.trim().replace(/호$/,'');
     if(!v){bad('철탑 번호를 입력해 주세요.');e.target.value=t.label;return;}
-    if(l.towers.some(x=>x!==t.d&&x.label===v)){bad(`No.${v}는 이미 있어요.`);e.target.value=t.label;return;}
+    if(l.towers.some(x=>x!==t.d&&x.label===v)){bad(`${NO(v)}는 이미 있어요.`);e.target.value=t.label;return;}
     t.d.label=v; save(); build();
   });
   q('#fH').addEventListener('change',e=>{
@@ -2012,14 +2017,18 @@ function renderCard(){
   card.querySelectorAll('[data-sbst]').forEach(b=>b.addEventListener('click',()=>{const v=b.dataset.sbst;if(v)t.d.sanbokSt=v;else delete t.d.sanbokSt;save();build();}));
   if(q('#fSanbokMemo'))q('#fSanbokMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.sanbokMemo=v;else delete t.d.sanbokMemo;save();renderHead();});
   // v20.15: 저지상고
-  q('#xGan').addEventListener('change',e=>{t.d.gantry=e.target.checked;if(!t.d.gantry)delete t.d.gantry;save();build();renderCard();});
+  q('#xGan').addEventListener('change',e=>{t.d.gantry=e.target.checked;if(!t.d.gantry)delete t.d.gantry;
+    const ix=l.towers.indexOf(t.d),edge=ix===0||ix===l.towers.length-1;   // v21.13: 맨 앞·맨 뒤에서 체크하면 이름을 C/T로, 풀면 번호로
+    if(t.d.gantry&&edge&&!isCT(t.d.label))t.d.label=ctLab(l,t.d);
+    else if(!t.d.gantry&&isCT(t.d.label))t.d.label=numNear(l,t.d);
+    save();build();renderCard();});
   q('#xLow').addEventListener('change',e=>{t.d.lowClr=e.target.checked;if(!t.d.lowClr){delete t.d.lowH;delete t.d.lowStd;delete t.d.lowMemo;}save();build();});
   [['#fLowH','lowH']].forEach(([id,k])=>{if(q(id))q(id).addEventListener('change',e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=0)t.d[k]=Math.round(v*10)/10;else delete t.d[k];save();build();});});
   if(q('#fLowMemo'))q('#fLowMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.lowMemo=v;else delete t.d.lowMemo;save();renderHead();});
   // v19: 위치 직접 입력 (찍어 둔 값은 그대로 보여 주고, 고치면 그 값으로)
   q('#fGps').addEventListener('change',e=>{
     const raw=e.target.value.trim();
-    if(!raw){if(t.d.gps&&!confirm(`No.${t.label} 위치를 지울까요?`)){e.target.value=t.d.gps[0].toFixed(6)+', '+t.d.gps[1].toFixed(6);return;}delete t.d.gps;delete t.d.gpsN;delete t.d.gpsSrc;save();build();return;}
+    if(!raw){if(t.d.gps&&!confirm(`${NO(t.label)} 위치를 지울까요?`)){e.target.value=t.d.gps[0].toFixed(6)+', '+t.d.gps[1].toFixed(6);return;}delete t.d.gps;delete t.d.gpsN;delete t.d.gpsSrc;save();build();return;}
     const m=raw.match(/(-?\d+(?:\.\d+)?)[^\d\-]+(-?\d+(?:\.\d+)?)/);
     let a=m?+m[1]:NaN, b=m?+m[2]:NaN; if(a>100&&b<90){const x=a;a=b;b=x;}   // 경도, 위도 순서로 넣어도 받아 줌
     if(!(a>=33&&a<=39&&b>=124&&b<=132)){bad('위도 33~39, 경도 124~132 사이 숫자로 넣어 주세요. 예: 35.312345, 129.012345');return;}
@@ -2132,7 +2141,7 @@ function updateDetail(){
   const face=y=>t.pole?(t.poleR(y)+.08):(t.widthAt(y)/2+.08);    // 카메라 쪽 면까지 거리
   const plate=(tex,w,h,y)=>{const m=new T.Mesh(new T.PlaneGeometry(w,h),new T.MeshBasicMaterial({map:tex,side:T.DoubleSide}));const p=W([-face(y),y,0]);m.position.set(p[0],p[1],p[2]);m.rotation.y=-(t.th||0);g.add(m);};
   const l=cur();
-  plate(plateTex(['No.'+t.label,stripTL(l.name)],'#ffffff','#111111','#1f4fa0'),1.7,1.06,4.4);
+  plate(plateTex([NO(t.label),stripTL(l.name)],'#ffffff','#111111','#1f4fa0'),1.7,1.06,4.4);
   const line=(pts,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(pts,3));g.add(new T.LineSegments(gg,new T.LineBasicMaterial({color})));};
   // 수직구명줄: 전원측 다리(A각)를 따라 주황색 줄
   const lp=[], top=t.H*.93, N=40;
@@ -2242,7 +2251,7 @@ const hav=(a,b)=>{const R=6371000,r=Math.PI/180,dl=(b[0]-a[0])*r,dn=(b[1]-a[1])*
 const hms=sec=>{sec=Math.max(0,Math.round(sec));const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s2=sec%60;return h?h+'시간 '+m+'분':m?m+'분 '+String(s2).padStart(2,'0')+'초':s2+'초';};
 const kmT=m=>m>=1000?(m/1000).toFixed(2)+' km':Math.round(m)+' m';
 const gpsYmd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-const FT=x=>x==='하차'?'🚗 하차 지점':'No.'+esc(x);   // 출발점 표시
+const FT=x=>x==='하차'?'🚗 하차 지점':NO(esc(x));   // 출발점 표시
 const gpsLine=()=>GP&&lines.find(x=>x.id===GP.lineId);
 const gpsTw=(l,lab)=>l&&l.towers.find(d=>String(d.label)===String(lab));
 function gpsNextLab(l,lab,dir){const i=l.towers.findIndex(d=>String(d.label)===String(lab)),j=i+dir;return i<0||j<0||j>=l.towers.length?null:String(l.towers[j].label);}
@@ -2256,10 +2265,10 @@ function gpsDraw(){
   gpsBar.hidden=false;
   const m=GP.walk+GP.car;
   document.getElementById('gKm').textContent=kmT(m);
-  document.getElementById('gText').innerHTML=`${GP.paused?'⏸ ':'● '}${FT(GP.from)} → No.${esc(GP.to)} · <span>${hms(gpsSec())}${GP.up>=3?' · 오르막 '+Math.round(GP.up)+'m':''}</span>`;
+  document.getElementById('gText').innerHTML=`${GP.paused?'⏸ ':'● '}${FT(GP.from)} → ${NO(esc(GP.to))} · <span>${hms(gpsSec())}${GP.up>=3?' · 오르막 '+Math.round(GP.up)+'m':''}</span>`;
   const accT=GP.lastAcc==null?'위치 찾는 중…':GP.lastAcc>GPS_MAX_ACC?`신호 약함 ±${Math.round(GP.lastAcc)}m`:`±${Math.round(GP.lastAcc)}m`;
   document.getElementById('gSub').innerHTML=`<span>점 ${GP.trk.length}개 · ${GP.done.length?'오늘 '+GP.done.length+'경간 '+kmT(GP.done.reduce((a,r)=>a+r.m,0))+' · ':''}${GP.car>0?'차량 '+kmT(GP.car)+' 포함 · ':''}${accT} · ${BGEO?'화면 꺼도 기록돼요':'화면 켜 두기'}</span>`;
-  document.getElementById('gArrive').textContent='✓ No.'+GP.to+' 도착';
+  document.getElementById('gArrive').textContent='✓ '+NO(GP.to)+' 도착';
   document.getElementById('gPause').textContent=GP.paused?'▶':'❚❚';
   if(mapOn) mapLive();
 }
@@ -2306,7 +2315,7 @@ function gpsStart(fromLab,dir){
   if(!('geolocation' in navigator)){alert('이 브라우저는 위치 기능을 쓸 수 없어요.');return;}
   const l=cur(), to=fromLab==='하차'?String(dir):gpsNextLab(l,fromLab,dir);   // 하차 출발일 때 dir 자리에 도착 철탑 번호
   if(fromLab==='하차')dir=1;
-  if(!to){alert('No.'+fromLab+'에서 '+(dir>0?'다음':'앞')+' 철탑이 없어요.');return;}
+  if(!to){alert(NO(fromLab)+'에서 '+(dir>0?'다음':'앞')+' 철탑이 없어요.');return;}
   if(play)stopPatrol();
   GP={lineId:l.id,dir,paused:false,watch:null,last:null,lastT:0,lastAcc:null,pos:null,done:[]};
   gpsSegReset(String(fromLab),to);
@@ -2342,14 +2351,14 @@ function gpsArrive(stopAfter){
   save();
   if(stopAfter){gpsLastDone=GP.done;return;}
   const nx=gpsNextLab(l,GP.to,GP.dir);
-  if(!nx){const done=GP.done;gpsEnd();gpsSummary(done,'마지막 철탑 No.'+rec.to+'까지 왔어요.');return;}
+  if(!nx){const done=GP.done;gpsEnd();gpsSummary(done,'마지막 철탑 '+NO(rec.to)+'까지 왔어요.');return;}
   gpsSegReset(GP.to,nx); if(GP.paused)gpsPause(false);
   gpsKeep(); gpsDraw(); if(selT)renderCard();
 }
 function gpsStop(){
   if(!GP)return;
   const part=GP.walk+GP.car;
-  if(GP.trk.length>1&&confirm(`${FT(GP.from).replace('🚗 ','')} → No.${GP.to} 구간을 여기까지 저장할까요? (${kmT(part)}, 점 ${GP.trk.length}개)\n\n확인: 저장하고 끝내기 · 취소: 저장하지 않고 끝내기`)){GP.partial=true;gpsArrive(true);}
+  if(GP.trk.length>1&&confirm(`${FT(GP.from).replace('🚗 ','')} → ${NO(GP.to)} 구간을 여기까지 저장할까요? (${kmT(part)}, 점 ${GP.trk.length}개)\n\n확인: 저장하고 끝내기 · 취소: 저장하지 않고 끝내기`)){GP.partial=true;gpsArrive(true);}
   const done=GP?GP.done:gpsLastDone; if(GP)gpsEnd(); gpsSummary(done,'');
 }
 function gpsSummary(done,msg){
@@ -2359,7 +2368,7 @@ function gpsSummary(done,msg){
   card.innerHTML=`<div class="card-top"><h2>오늘 순시</h2><button class="close" type="button" aria-label="닫기">×</button></div>
     ${msg?`<p class="note">${esc(msg)}</p>`:''}
     <dl><dt>경간</dt><dd>${done.length}경간 · ${kmT(tm)} · ${hms(ts)}</dd></dl>
-    ${done.map(r=>`<div class="gpsrec" style="grid-template-columns:1fr auto"><span>${FT(r.from)} → No.${esc(r.to)}${r.part?' (도착 전까지)':''}</span><b>${kmT(r.m)} · ${hms(r.sec)}</b></div>`).join('')}
+    ${done.map(r=>`<div class="gpsrec" style="grid-template-columns:1fr auto"><span>${FT(r.from)} → ${NO(esc(r.to))}${r.part?' (도착 전까지)':''}</span><b>${kmT(r.m)} · ${hms(r.sec)}</b></div>`).join('')}
     <div class="actions"><button class="primary" type="button" id="gMap">🗺 지도에서 보기</button></div>`;
   card.querySelector('.close').addEventListener('click',()=>{card.hidden=true;});
   card.querySelector('#gMap').addEventListener('click',()=>openMap());
@@ -2372,13 +2381,13 @@ function gpsSvg(trk,style){
   const P=trk.map(p=>[4+(p[1]-x0)*k*sc+(56-w*sc)/2,4+(y1-p[0])*sc+(40-h*sc)/2]);
   return `<svg viewBox="0 0 64 48" style="${style||''}" preserveAspectRatio="xMidYMid meet"><polyline points="${P.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/><circle cx="${P[0][0]}" cy="${P[0][1]}" r="2.2" fill="#2e7d4f"/><circle cx="${P[P.length-1][0]}" cy="${P[P.length-1][1]}" r="2.2" fill="var(--danger)"/></svg>`;
 }
-const walkRecHTML=(w,dirTxt)=>w&&w.last?`<div class="gpsrec">${gpsSvg(w.last.trk)}<div><b>${kmT(w.last.m)}</b> · ${hms(w.last.sec)}${w.last.up>=3?' · 오르막 '+w.last.up+'m':''}<br><span class="lb">${esc(w.last.date)} · ${FT(w.last.from)}→No.${esc(w.last.to)}${w.last.part?' (도착 전까지)':''}${w.last.car>0?' · 차량 '+kmT(w.last.car)+' 포함':''}${w.hist&&w.hist.length?' · 지난 기록 '+w.hist.length+'건 (평균 '+kmT((w.hist.reduce((a,r)=>a+r.m,0)+w.last.m)/(w.hist.length+1))+')':''}</span></div><button class="ghost" type="button" data-gmap style="padding:4px 8px">🗺</button></div>`:`<p class="note" style="margin:4px 0">${dirTxt==='진입로'?'아직 진입로 기록이 없어요.':dirTxt+' 경간은 아직 순시 기록이 없어요.'}</p>`;
+const walkRecHTML=(w,dirTxt)=>w&&w.last?`<div class="gpsrec">${gpsSvg(w.last.trk)}<div><b>${kmT(w.last.m)}</b> · ${hms(w.last.sec)}${w.last.up>=3?' · 오르막 '+w.last.up+'m':''}<br><span class="lb">${esc(w.last.date)} · ${FT(w.last.from)}→${NO(esc(w.last.to))}${w.last.part?' (도착 전까지)':''}${w.last.car>0?' · 차량 '+kmT(w.last.car)+' 포함':''}${w.hist&&w.hist.length?' · 지난 기록 '+w.hist.length+'건 (평균 '+kmT((w.hist.reduce((a,r)=>a+r.m,0)+w.last.m)/(w.hist.length+1))+')':''}</span></div><button class="ghost" type="button" data-gmap style="padding:4px 8px">🗺</button></div>`:`<p class="note" style="margin:4px 0">${dirTxt==='진입로'?'아직 진입로 기록이 없어요.':dirTxt+' 경간은 아직 순시 기록이 없어요.'}</p>`;
 function gpsTowerHTML(l,t){
   const nx=towers[t.i+1], pv=towers[t.i-1];
-  return `<div class="field"><span class="lb">🚗 진입로 (차에서 내린 곳 → No.${esc(t.label)})</span>${walkRecHTML(t.d.access,'진입로')}</div>
+  return `<div class="field"><span class="lb">🚗 진입로 (차에서 내린 곳 → ${NO(esc(t.label))})</span>${walkRecHTML(t.d.access,'진입로')}</div>
     <div class="field"><span class="lb">🥾 경간 순시 길 (GPS)</span>
-    ${nx?walkRecHTML(t.d.walk,'No.'+esc(t.label)+' → No.'+esc(nx.label)):''}
-    <div class="row2" style="margin-top:6px">${pv&&!GP?`<button class="ghost" type="button" data-gstart="-1">◀ 거꾸로 No.${esc(pv.label)} 쪽으로 출발</button>`:''}${GP?'<span class="note">순시 기록 중이에요</span>':''}</div>
+    ${nx?walkRecHTML(t.d.walk,NO(esc(t.label))+' → '+NO(esc(nx.label))):''}
+    <div class="row2" style="margin-top:6px">${pv&&!GP?`<button class="ghost" type="button" data-gstart="-1">◀ 거꾸로 ${NO(esc(pv.label))} 쪽으로 출발</button>`:''}${GP?'<span class="note">순시 기록 중이에요</span>':''}</div>
     ${t.d.gps?`<p class="note" style="margin:4px 0 0">📍 철탑 위치 기록됨 (${t.d.gpsN||1}번 도착 평균)</p>`:''}</div>`;
 }
 // v20.20: 찍어 둔 철탑 위치로 경간 길이 넣기
@@ -2406,7 +2415,7 @@ function gpsLineHTML(l){
   const W=l.towers.slice(0,-1).filter(d=>d.walk&&d.walk.last), tot=W.reduce((a,d)=>a+d.walk.last.m,0), ts=W.reduce((a,d)=>a+d.walk.last.sec,0), gp=l.towers.filter(d=>d.gps).length;
   return `<div class="field"><span class="lb">🥾 경간 순시 길 (GPS)</span>
     <p class="note" style="margin:4px 0">${W.length}/${l.towers.length-1}경간 기록 · 합계 ${kmT(tot)} · ${hms(ts)} · 철탑 위치 ${gp}기</p>
-    <div class="row2"><button class="ghost" type="button" data-gstart="first">▶ No.${esc(l.towers[0].label)}부터 순시 시작</button><button class="ghost" type="button" data-gmap>🗺 지도</button></div></div>`;
+    <div class="row2"><button class="ghost" type="button" data-gstart="first">▶ ${NO(esc(l.towers[0].label))}부터 순시 시작</button><button class="ghost" type="button" data-gmap>🗺 지도</button></div></div>`;
 }
 function realFieldHTML(l){
   const nG=l.towers.filter(d=>d.gps).length, R=REAL[l.id];
@@ -2520,7 +2529,7 @@ async function crossAuto(){
   if(!found.length){body.append(el('p',null,'겹치는 도로·강·철도·골짜기를 찾지 못했어요.'));return;}
   const list=el('div','sq-list');
   found.forEach(o=>{const d=l.towers[o.i],d2=l.towers[o.i+1];
-    list.append(el('div','lb',`No.${d.label} → No.${d2.label}${o.est?' · 위치 추정 구간':''}`));
+    list.append(el('div','lb',`${NO(d.label)} → ${NO(d2.label)}${o.est?' · 위치 추정 구간':''}`));
     o.sug.forEach(s=>{const already=!!d[s.k];const r=el('label','sq-row'+(already?' off':''));const cb=document.createElement('input');cb.type='checkbox';cb.checked=already||s.on;cb.disabled=already;cb.dataset.i=o.i;cb.dataset.k=s.k;cb.dataset.nm=s.nm;
       r.append(cb,document.createTextNode(`${XA_ICON[s.k]} ${nm(s.k)} · ${s.nm}${already?' (이미 체크됨)':s.why?' ('+s.why+')':''}`));list.append(r);});
   });
@@ -2659,12 +2668,12 @@ async function openMap(){
   const all=[];
   l.towers.forEach((d,i)=>{
     const w=d.walk&&d.walk.last;
-    if(w&&w.trk&&w.trk.length>1){MP.line(mapLayer,w.trk,{color:i%2?'#e8833a':'#2f6fd6',weight:4,opacity:.85},`${FT(w.from)} → No.${esc(w.to)}<br><b>${kmT(w.m)}</b> · ${hms(w.sec)}${w.up>=3?' · 오르막 '+w.up+'m':''}<br>${esc(w.date)}`);w.trk.forEach(p=>all.push(p));}
+    if(w&&w.trk&&w.trk.length>1){MP.line(mapLayer,w.trk,{color:i%2?'#e8833a':'#2f6fd6',weight:4,opacity:.85},`${FT(w.from)} → ${NO(esc(w.to))}<br><b>${kmT(w.m)}</b> · ${hms(w.sec)}${w.up>=3?' · 오르막 '+w.up+'m':''}<br>${esc(w.date)}`);w.trk.forEach(p=>all.push(p));}
     const ac=d.access&&d.access.last;
-    if(ac&&ac.trk&&ac.trk.length>1){MP.line(mapLayer,ac.trk,{color:'#2e7d4f',weight:4,opacity:.9,dash:true},`🚗 진입로 → No.${esc(d.label)}<br><b>${kmT(ac.m)}</b> · ${hms(ac.sec)}<br>${esc(ac.date)}`);ac.trk.forEach(p=>all.push(p));
-      MP.dot(mapLayer,ac.trk[0],{r:6,fill:'#2f6fd6'},'🚗 No.'+esc(d.label)+' 차 세우는 곳');}
+    if(ac&&ac.trk&&ac.trk.length>1){MP.line(mapLayer,ac.trk,{color:'#2e7d4f',weight:4,opacity:.9,dash:true},`🚗 진입로 → ${NO(esc(d.label))}<br><b>${kmT(ac.m)}</b> · ${hms(ac.sec)}<br>${esc(ac.date)}`);ac.trk.forEach(p=>all.push(p));
+      MP.dot(mapLayer,ac.trk[0],{r:6,fill:'#2f6fd6'},'🚗 '+NO(esc(d.label))+' 차 세우는 곳');}
     if(d.gps){const nx=l.towers[i+1],pv=l.towers[i-1];
-      MP.label(mapLayer,d.gps,'<div class="tlab">No.'+esc(d.label)+(d.gantry?' 🏭':'')+(d.sanbok?' ⛰':'')+(d.lowClr?' ⚠':'')+'</div>',{pop:`<div class="tpop"><b>No.${esc(d.label)}</b>${d.sanbok?' <span style="color:#8a5a2b">⛰ 산복개소'+(d.sanbokSt?' · '+esc(d.sanbokSt):'')+'</span>':''}${d.lowClr?' <span style="color:#c0392b">⚠ 저지상고'+(d.lowH!=null?' '+d.lowH+'m':'')+'</span>':''}<br><span style="font-size:12px;color:#555">${d.gps[0].toFixed(6)}, ${d.gps[1].toFixed(6)}</span>${GP?'<br>순시 기록 중':(nx?`<button data-ms="${esc(d.label)}" data-md="1">▶ 여기서 No.${esc(nx.label)} 쪽 출발</button>`:'')+(pv?`<button class="b2" data-ms="${esc(d.label)}" data-md="-1">◀ No.${esc(pv.label)} 쪽 출발</button>`:'')+`<button class="b2" data-ms="하차" data-md="${esc(d.label)}">🚗 차에서 내린 곳 → 여기까지</button>`}</div>`});
+      MP.label(mapLayer,d.gps,'<div class="tlab">'+NO(esc(d.label))+(d.gantry?' 🏭':'')+(d.sanbok?' ⛰':'')+(d.lowClr?' ⚠':'')+'</div>',{pop:`<div class="tpop"><b>${NO(esc(d.label))}</b>${d.sanbok?' <span style="color:#8a5a2b">⛰ 산복개소'+(d.sanbokSt?' · '+esc(d.sanbokSt):'')+'</span>':''}${d.lowClr?' <span style="color:#c0392b">⚠ 저지상고'+(d.lowH!=null?' '+d.lowH+'m':'')+'</span>':''}<br><span style="font-size:12px;color:#555">${d.gps[0].toFixed(6)}, ${d.gps[1].toFixed(6)}</span>${GP?'<br>순시 기록 중':(nx?`<button data-ms="${esc(d.label)}" data-md="1">▶ 여기서 ${NO(esc(nx.label))} 쪽 출발</button>`:'')+(pv?`<button class="b2" data-ms="${esc(d.label)}" data-md="-1">◀ ${NO(esc(pv.label))} 쪽 출발</button>`:'')+`<button class="b2" data-ms="하차" data-md="${esc(d.label)}">🚗 차에서 내린 곳 → 여기까지</button>`}</div>`});
       all.push(d.gps);}
   });
   // 위치가 있는 철탑끼리 선로를 이어서 표시
@@ -2691,7 +2700,7 @@ document.getElementById('mapBox').addEventListener('click',mapPopClick);
 document.getElementById('mapGo').addEventListener('click',()=>{
   if(GP){gpsStop();return;}
   const l=cur(), pk=document.getElementById('mapPick'), sel=document.getElementById('mpFrom');
-  sel.innerHTML=l.towers.map(d=>`<option value="${esc(d.label)}">No.${esc(d.label)}${d.gps?' 📍':''}</option>`).join('');
+  sel.innerHTML=l.towers.map(d=>`<option value="${esc(d.label)}">${NO(esc(d.label))}${d.gps?' 📍':''}</option>`).join('');
   const lastTo=l.towers.slice().reverse().find(d=>d.walk&&d.walk.last);   // 지난번에 멈춘 다음 철탑부터
   if(selT)sel.value=String(selT.label);else if(lastTo){const i=l.towers.indexOf(lastTo);sel.value=String(lastTo.walk.last.to||l.towers[Math.min(i+1,l.towers.length-1)].label);}
   pk.hidden=!pk.hidden;
@@ -2724,7 +2733,7 @@ function mapSetDraw(){
 document.getElementById('mapSetBtn').addEventListener('click',()=>{const b=document.getElementById('mapSet');b.hidden=!b.hidden;if(!b.hidden)mapSetDraw();});
 // 새로고침·화면 꺼짐으로 페이지가 다시 열려도 기록을 이어감
 try{const v=JSON.parse(lsGet(GPS_LIVE)||'null');if(v&&v.lineId&&v.to){GP=v;GP.watch=null;if(!GP.paused){GP.acc+=Math.max(0,((GP.lastT||GP.runFrom)-GP.runFrom)/1000);GP.paused=true;}gpsDraw();
-  setTimeout(()=>{if(GP&&confirm(`${FT(GP.from).replace('🚗 ','')} → No.${GP.to} 순시 기록 중이었어요 (${kmT(GP.walk+GP.car)}). 이어서 기록할까요?\n취소를 누르면 일시정지 상태로 둬요.`)){gpsPause(false);clearInterval(gpsTick);gpsTick=setInterval(gpsDraw,1000);}},800);}}catch(e){}
+  setTimeout(()=>{if(GP&&confirm(`${FT(GP.from).replace('🚗 ','')} → ${NO(GP.to)} 순시 기록 중이었어요 (${kmT(GP.walk+GP.car)}). 이어서 기록할까요?\n취소를 누르면 일시정지 상태로 둬요.`)){gpsPause(false);clearInterval(gpsTick);gpsTick=setInterval(gpsDraw,1000);}},800);}}catch(e){}
 
 
 /* ---------- 철탑 위치 찍기 (위성 지도에서 직접 지정) ----------
@@ -2734,10 +2743,10 @@ let posMode=false, posLayer=null, posIdx=0;
 function posTowers(){return cur().towers;}
 function posFill(){
   const T_=posTowers(), sel=document.getElementById('posSel');
-  sel.innerHTML=T_.map((d,i)=>`<option value="${i}">No.${esc(d.label)}${d.gps?(d.gpsSrc==='map'?' 📌':' 📍'):''}</option>`).join('');
+  sel.innerHTML=T_.map((d,i)=>`<option value="${i}">${NO(esc(d.label))}${d.gps?(d.gpsSrc==='map'?' 📌':' 📍'):''}</option>`).join('');
   sel.value=String(posIdx);
   const n=T_.filter(d=>d.gps).length, d=T_[posIdx];
-  document.getElementById('posMsg').innerHTML=d?`<b>No.${esc(d.label)}</b> ${d.gps?'위치가 있어요. 다시 누르면 옮겨져요.':'자리를 위성 지도에서 누르세요.'} · 위치 있는 철탑 <b>${n}/${T_.length}</b>기${n<2?' (2기 이상이면 3D가 실제 지형으로 바뀌어요)':''}`:'철탑이 없어요';
+  document.getElementById('posMsg').innerHTML=d?`<b>${NO(esc(d.label))}</b> ${d.gps?'위치가 있어요. 다시 누르면 옮겨져요.':'자리를 위성 지도에서 누르세요.'} · 위치 있는 철탑 <b>${n}/${T_.length}</b>기${n<2?' (2기 이상이면 3D가 실제 지형으로 바뀌어요)':''}`:'철탑이 없어요';
 }
 function posDraw(){
   if(!MP)return;
@@ -2746,7 +2755,7 @@ function posDraw(){
   T_.forEach((d,i)=>{
     if(!d.gps)return; pts.push(d.gps);
     const on=i===posIdx;
-    MP.label(posLayer,d.gps,`<div class="tlab" style="${on?'background:#f5b301;color:#000;':''}${d.gpsSrc==='map'?'outline:2px dashed #f5b301;':''}">No.${esc(d.label)}</div>`,{
+    MP.label(posLayer,d.gps,`<div class="tlab" style="${on?'background:#f5b301;color:#000;':''}${d.gpsSrc==='map'?'outline:2px dashed #f5b301;':''}">${NO(esc(d.label))}</div>`,{
       click:()=>{posIdx=i;posFill();posDraw();},
       drag:q=>{d.gps=[+q[0].toFixed(6),+q[1].toFixed(6)];d.gpsN=0;d.gpsSrc='map';posIdx=i;save();posFill();posDraw();}});
   });
@@ -2772,7 +2781,7 @@ document.getElementById('posEnd').addEventListener('click',posStop);
 document.getElementById('posPrev').addEventListener('click',()=>posMove(-1));
 document.getElementById('posNext').addEventListener('click',()=>posMove(1));
 document.getElementById('posSel').addEventListener('change',e=>{posIdx=+e.target.value;posFill();posDraw();const d=posTowers()[posIdx];if(d&&d.gps&&MP)MP.pan(d.gps);});
-document.getElementById('posDel').addEventListener('click',()=>{const d=posTowers()[posIdx];if(!d||!d.gps)return;if(!confirm(`No.${d.label} 위치를 지울까요?`))return;delete d.gps;delete d.gpsN;delete d.gpsSrc;save();posFill();posDraw();});
+document.getElementById('posDel').addEventListener('click',()=>{const d=posTowers()[posIdx];if(!d||!d.gps)return;if(!confirm(`${NO(d.label)} 위치를 지울까요?`))return;delete d.gps;delete d.gpsN;delete d.gpsSrc;save();posFill();posDraw();});
 function posOnMapClick(pt){
   if(!posMode)return;
   const T_=posTowers(), d=T_[posIdx]; if(!d)return;
@@ -3055,7 +3064,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.12`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.13`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
