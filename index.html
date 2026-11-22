@@ -228,6 +228,8 @@ body.headmin .head h1{font-size:15px}
 .lotpop .lotb{display:flex;gap:6px;margin-top:6px}
 .lotpop .lotb button{flex:1;font:600 12.5px/1 var(--ui);padding:7px 6px;border-radius:6px;border:1px solid #2f6fd6;background:#2f6fd6;color:#fff}
 .lotpop .lotb button.b2{background:#fff;color:#2f6fd6}
+.lot3{position:fixed;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top,0px));z-index:75;margin:0 auto;max-width:380px;background:#fff;border-radius:10px;padding:10px 12px;box-shadow:0 4px 18px rgba(0,0,0,.28)}
+.lot3 .lot3x{position:absolute;top:4px;right:6px;border:0;background:none;font:20px/1 var(--ui);color:#777;padding:4px 6px}
 .kpop .kx{position:absolute;top:2px;right:4px;border:0;background:transparent;font-size:18px;color:#666;padding:2px 6px}
 .kpop::after{content:'';position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:#fff}
 #mapPick[hidden]{display:none}
@@ -1284,7 +1286,7 @@ function buildAll(){
   {const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(ring,3));g.setAttribute('color',new T.Float32BufferAttribute(ringC,3));world.add(new T.LineSegments(g,new T.LineBasicMaterial({vertexColors:true})));}
   {const mk=(arr,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(arr,3));return new T.LineSegments(gg,new T.LineBasicMaterial({color}));};
    const wires=new T.Group();wires.add(mk(ph,wireC));if(gwA.length)wires.add(mk(gwA,steel));wires.visible=showWires;world.add(wires);world.userData.wires=wires;}
-  scene.add(world);
+  scene.add(world); try{lot3Redraw();}catch(e){}
   towers=all; pathInfo=null; strobes=[];
   // 번호표: 선로 색 + 번호, 누르면 그 선로로 들어감
   towers.forEach(t=>{
@@ -1657,7 +1659,7 @@ function build(){
   const pl=new T.Line(new T.BufferGeometry().setFromPoints(pts),new T.LineDashedMaterial({color:new T.Color(cssVar('--accent')),dashSize:20,gapSize:12}));
   pl.computeLineDistances(); pl.visible=showPath; world.add(pl); world.userData.path=pl;
   pathInfo={pts,cum,dirs,towerS,total:cum[cum.length-1]||1};
-  scene.add(world);
+  scene.add(world); try{lot3Redraw();}catch(e){}
 
   // 라벨
   towers.forEach(t=>{
@@ -3008,6 +3010,7 @@ document.getElementById('title').addEventListener('click',()=>headMin(!document.
 renderer.domElement.addEventListener('pointerdown',()=>headMin(true));
 renderer.domElement.addEventListener('pointerdown',e=>{down=[e.clientX,e.clientY];anim=null;if(play&&!play.paused)pausePatrol(true);});
 renderer.domElement.addEventListener('pointerup',e=>{
+  if(Date.now()-LP3_AT<900){down=null;return;}   // v21.16: 꾸욱 누른 뒤에는 철탑 선택 안 함
   if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>6) return;
   const r=renderer.domElement.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
   let best=null,bd=24;
@@ -3015,6 +3018,119 @@ renderer.domElement.addEventListener('pointerup',e=>{
     const d=Math.hypot((pv.x+1)/2*r.width-mx,(1-pv.y)/2*r.height-my);if(d<bd){bd=d;best=t;}}});
   if(best){if(ALL)allExit(best.line.id,best.d.id);else selectTower(best);}
 });
+/* ---------- v21.16 3D 지도 꾸욱 누르면 지번 주소 + 필지 경계 ----------
+   · 손가락을 움직이지 않고 0.55초 누르면 (컴퓨터는 마우스로 꾸욱) 누른 땅의 위경도를 구함
+   · 주소: 카카오 주소 변환 (없으면 브이월드 지적도 주소) · 경계: 브이월드 연속지적도 → 산 지형 높이에 맞춰 빨간 테두리로 그림
+   · 철탑 위치가 2기 이상 찍혀 실제 지형으로 나올 때만 됨 */
+var LP3_AT=0, LOT3=null, lot3Seq=0;
+const lot3Ray=new T.Raycaster(), lot3V=new T.Vector2();
+// 화면 좌표 → 지형 위 점 (광선을 따라가며 지형 높이와 만나는 곳을 찾음)
+function lot3Hit(cx,cy){
+  if(!G||!G.toLL)return null;
+  const r=renderer.domElement.getBoundingClientRect();
+  lot3V.set((cx-r.left)/r.width*2-1,-(cy-r.top)/r.height*2+1);
+  lot3Ray.setFromCamera(lot3V,camera);
+  const o=lot3Ray.ray.origin, d=lot3Ray.ray.direction, H=(x,z)=>terrH(x,z);
+  if(o.y<H(o.x,o.z))return null;
+  let a=0, step=4, t=0;
+  for(let k=0;k<20000&&t<120000;k++){
+    t=a+step; const x=o.x+d.x*t, y=o.y+d.y*t, z=o.z+d.z*t;
+    if(y<=H(x,z)){let lo=a,hi=t;for(let j=0;j<30;j++){const m=(lo+hi)/2;if(o.y+d.y*m<=H(o.x+d.x*m,o.z+d.z*m))hi=m;else lo=m;}
+      const x2=o.x+d.x*hi, z2=o.z+d.z*hi; return {x:x2,z:z2};}
+    a=t; step=Math.min(60,step*1.08);
+  }
+  return null;
+}
+// 위경도 → 3D 좌표 (toLL은 1차 변환이라 세 점으로 거꾸로 구함)
+function lot3From(){
+  const p0=G.toLL(0,0), px=G.toLL(1,0), pz=G.toLL(0,1);
+  const a=px[0]-p0[0], b=pz[0]-p0[0], c=px[1]-p0[1], dd=pz[1]-p0[1], det=a*dd-b*c;
+  return (lat,lng)=>{const u=lat-p0[0], v=lng-p0[1];return [(dd*u-b*v)/det,(-c*u+a*v)/det];};
+}
+function k3Addr(pt){return new Promise(async res=>{
+  try{const k=kakaoKey();if(!k)return res(null);await loadKakao(k);
+    new kakao.maps.services.Geocoder().coord2Address(pt[1],pt[0],(r,s)=>{if(s!==kakao.maps.services.Status.OK||!r[0])return res(null);
+      res({jibun:r[0].address&&r[0].address.address_name||'',road:r[0].road_address&&r[0].road_address.address_name||''});});
+  }catch(e){res(null);}});}
+function lot3Drop(){
+  const o=world&&world.userData.lot3;
+  if(o){world.remove(o);o.traverse(m=>{if(m.geometry)m.geometry.dispose();if(m.material)m.material.dispose();});world.userData.lot3=null;}
+}
+function lot3Clear(){lot3Seq++;lot3Drop();LOT3=null;const b=document.getElementById('lot3');if(b)b.remove();}
+function lot3Draw(){
+  lot3Drop(); if(!LOT3||!world||!G||!G.toLL)return;
+  const F=lot3From(), grp=new T.Group(), red=0xff3b30;
+  // 누른 자리: 빨간 기둥
+  {const q=F(LOT3.pt[0],LOT3.pt[1]), y=terrH(q[0],q[1]);
+   const c=new T.Mesh(new T.CylinderGeometry(1.2,1.2,18,8),new T.MeshBasicMaterial({color:red}));c.position.set(q[0],y+9,q[1]);grp.add(c);
+   const b=new T.Mesh(new T.SphereGeometry(3.2,12,8),new T.MeshBasicMaterial({color:red}));b.position.set(q[0],y+19,q[1]);grp.add(b);}
+  (LOT3.rings||[]).forEach(ring=>{
+    const Q=ring.map(c=>F(c[0],c[1])); if(Q.length<2)return;
+    let mnx=1e9,mxx=-1e9,mnz=1e9,mxz=-1e9;Q.forEach(q=>{mnx=Math.min(mnx,q[0]);mxx=Math.max(mxx,q[0]);mnz=Math.min(mnz,q[1]);mxz=Math.max(mxz,q[1]);});
+    const rad=Math.min(4,Math.max(.7,Math.hypot(mxx-mnx,mxz-mnz)/250));
+    // 변을 2m 간격으로 잘게 나눠 산 경사면에 붙임
+    const V=[];
+    for(let i=0;i<Q.length-1;i++){const a=Q[i],b=Q[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.max(1,Math.ceil(L/2));
+      for(let k=0;k<n;k++){const x=a[0]+(b[0]-a[0])*k/n,z=a[1]+(b[1]-a[1])*k/n;V.push(new T.Vector3(x,terrH(x,z)+rad+.6,z));}}
+    {const l=Q[Q.length-1];V.push(new T.Vector3(l[0],terrH(l[0],l[1])+rad+.6,l[1]));}
+    const path=new T.CurvePath(); for(let i=0;i<V.length-1;i++)path.add(new T.LineCurve3(V[i],V[i+1]));
+    grp.add(new T.Mesh(new T.TubeGeometry(path,Math.min(4000,V.length*2),rad,5,false),new T.MeshBasicMaterial({color:red})));
+    // 지형에 가려도 보이게 얇은 선도 같이
+    const ln=new T.Line(new T.BufferGeometry().setFromPoints(V),new T.LineBasicMaterial({color:red,transparent:true,opacity:.55,depthTest:false}));ln.renderOrder=5;grp.add(ln);
+  });
+  world.add(grp); world.userData.lot3=grp;
+}
+function lot3Redraw(){if(LOT3&&LOT3.key===(ALL?'__all__':(cur()&&cur().id)))lot3Draw();else if(LOT3)lot3Clear();}
+function lot3Box(html){
+  let b=document.getElementById('lot3');
+  if(!b){b=document.createElement('div');b.id='lot3';b.className='lot3';document.body.appendChild(b);
+    b.addEventListener('click',e=>{const x=e.target.closest('[data-l3]');if(!x)return;
+      if(x.dataset.l3==='clear'){lot3Clear();return;}
+      if(x.dataset.l3==='copy'&&LOT3){const v=LOT3.jibun+(LOT3.road?'\n(도로명) '+LOT3.road:'')+'\n'+LOT3.pt[0].toFixed(6)+', '+LOT3.pt[1].toFixed(6);
+        try{navigator.clipboard.writeText(v).then(()=>say('주소를 복사했어요.'),()=>say('복사하지 못했어요.'));}catch(_){say('복사하지 못했어요.');}}
+      if(x.dataset.l3==='fly'&&LOT3){const F=lot3From(),q=F(LOT3.pt[0],LOT3.pt[1]),y=terrH(q[0],q[1]);
+        const d=Math.max(250,Math.min(1500,(LOT3.size||200)*2.2));flyTo(new T.Vector3(q[0]+d*.35,y+d*.8,q[1]+d*.6),new T.Vector3(q[0],y,q[1]));}
+    });}
+  b.innerHTML='<button type="button" class="lot3x" data-l3="clear" aria-label="닫기">×</button><div class="lotpop">'+html+'</div>';
+}
+async function lot3Lookup(cx,cy){
+  if(!G||!G.toLL){say('철탑 위치가 2기 이상 찍혀서 실제 지형으로 나올 때 지번을 볼 수 있어요.');return;}
+  const h=lot3Hit(cx,cy); if(!h){say('땅을 눌러 주세요.');return;}
+  const g=G.toLL(h.x,h.z), pt=[+g[0].toFixed(7),+g[1].toFixed(7)];
+  const my=++lot3Seq; lot3Drop();
+  LOT3={key:ALL?'__all__':(cur()&&cur().id),pt,rings:[],jibun:'',road:''}; lot3Draw();
+  const ll=`<span class="lotll">${pt[0].toFixed(6)}, ${pt[1].toFixed(6)}</span>`;
+  lot3Box('<b>📍 주소 찾는 중…</b>'+ll);
+  const [ka,vw]=await Promise.all([k3Addr(pt),vwLot(pt).then(f=>({f}),e=>({err:e.message||String(e)}))]);
+  if(my!==lot3Seq)return;
+  const f=vw.f, P=f&&f.properties||{};
+  let jibun=(ka&&ka.jibun)||P.addr||'', jimok='', area=0, rings=[], size=0;
+  if(P.jibun){const m=String(P.jibun).match(/([가-힣]+)\s*$/);if(m)jimok=JIMOK[m[1]]||m[1];}
+  if(f&&f.geometry){const gm=f.geometry, polys=gm.type==='Polygon'?[gm.coordinates]:gm.type==='MultiPolygon'?gm.coordinates:[];
+    polys.forEach(pl=>{const rs=pl.map(r=>r.map(c=>[c[1],c[0]]));rings.push(...rs);
+      area+=ringArea(rs[0])-rs.slice(1).reduce((a,r)=>a+ringArea(r),0);});
+    size=Math.sqrt(area);}
+  Object.assign(LOT3,{rings,jibun,road:ka&&ka.road||'',size}); lot3Draw();
+  let t='';
+  t+=jibun?`<b class="lotj">${esc(jibun)}</b>`:'<b>주소를 찾지 못했어요</b>';
+  if(ka&&ka.road)t+=`<div class="lotr">도로명 ${esc(ka.road)}</div>`;
+  if(jimok||area)t+=`<div class="lotm">${jimok?'지목 <b>'+esc(jimok)+'</b>':''}${jimok&&area?' · ':''}${area?'면적 약 <b>'+Math.round(area).toLocaleString()+'㎡</b> ('+Math.round(area/3.3058).toLocaleString()+'평)':''}</div>`;
+  if(vw.err)t+=`<div class="lotw">필지 경계를 못 불러왔어요 (${esc(vw.err)})</div>`;
+  else if(!f)t+='<div class="lotw">이 자리는 지적도 필지가 없어요</div>';
+  t+=ll+'<div class="lotb">'+(jibun?'<button type="button" data-l3="copy">📋 지번 복사</button>':'')+(rings.length?'<button type="button" class="b2" data-l3="fly">🔍 필지로 가기</button>':'')+'<button type="button" class="b2" data-l3="clear">지우기</button></div>';
+  lot3Box(t);
+}
+{ // 꾸욱 누르기 감지 (한 손가락, 움직이지 않고 0.55초)
+  const el=renderer.domElement, P=new Map(); let tm=null, st=null;
+  const stop=()=>{clearTimeout(tm);tm=null;};
+  el.addEventListener('pointerdown',e=>{P.set(e.pointerId,1);if(P.size>1||(e.pointerType==='mouse'&&e.button!==0)){stop();return;}
+    st={x:e.clientX,y:e.clientY};stop();
+    tm=setTimeout(()=>{tm=null;if(P.size!==1)return;LP3_AT=Date.now();try{navigator.vibrate&&navigator.vibrate(25);}catch(_){}lot3Lookup(st.x,st.y);},550);});
+  el.addEventListener('pointermove',e=>{if(tm&&st&&Math.hypot(e.clientX-st.x,e.clientY-st.y)>10)stop();});
+  const up=e=>{P.delete(e.pointerId);stop();};
+  el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+}
 function resize(){const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/Math.max(1,h);camera.updateProjectionMatrix();}
 window.addEventListener('resize',resize);
 function applyTheme(){scene.background=new T.Color(cssVar('--sky'));paintSky();const ac=cssVar('--accent');marker.material.color.set(ac);walker.material.color.set(ac);if(ALL)buildAll();else if(G)build();}
