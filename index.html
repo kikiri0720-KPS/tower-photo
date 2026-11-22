@@ -1496,8 +1496,8 @@ function build(){
   towers.forEach(t=>{
     const b=document.createElement('button'); b.type='button';
     b.addEventListener('click',()=>selectTower(t)); labelsEl.appendChild(b); t.tag=b;
-    const lo=landOf(t.d); if(lo){const g=document.createElement('div');g.className='ground';g.style.background=lo.c;g.textContent=lo.name;labelsEl.appendChild(g);t.landTag=g;}
-    if(t.d.kudzu){const g=document.createElement('div');g.className='ground';g.style.background='var(--kudzu)';g.textContent='칡넝쿨';labelsEl.appendChild(g);t.kudzuTag=g;}
+    // v20.17: 땅 표시는 산복개소·저지상고만 (지목·칡넝쿨 이름표는 숨김, 값은 그대로)
+    if(t.d.lowClr){const g=document.createElement('div');g.className='ground';g.style.background='var(--danger)';g.textContent='⚠ 저지상고'+(t.d.lowH!=null?' '+t.d.lowH+'m':'');labelsEl.appendChild(g);t.lowTag=g;}
     if(t.d.sanbok){const g=document.createElement('div');g.className='ground';g.style.background=t.d.sanbokSt==='보강 필요'?'var(--danger)':'var(--slope)';g.textContent='⛰ 산복'+(t.d.sanbokSt?' · '+t.d.sanbokSt:'');labelsEl.appendChild(g);t.slopeTag=g;}
   });
   makeCrossTags();
@@ -1509,7 +1509,6 @@ function build(){
 function makeCrossTags(){
   spans.forEach(s=>{s.tags.forEach(el=>el.remove());s.tags=[];
     const d=towers[s.i].d;
-    if(d.lowClr){const el=document.createElement('div');el.className='xtag';el.style.background='var(--danger)';el.textContent='⚠ 저지상고'+(d.lowH!=null?' '+d.lowH+'m':''); labelsEl.appendChild(el);s.tags.push(el);}
     if(SHOW_CROSS)CROSS.forEach(c=>{if(d[c.k]){const el=document.createElement('div');el.className='xtag '+c.cls;el.textContent=c.name+(d.xn&&d.xn[c.k]?' · '+d.xn[c.k]:'');labelsEl.appendChild(el);s.tags.push(el);}});
     if(d.ball&&((d.ball1R||0)+(d.ball1W||0)+(d.ball2R||0)+(d.ball2W||0)>0)){const ps=[];if(cur().gw===1)ps.push(`적${(d.ball1R||0)+(d.ball2R||0)}·백${(d.ball1W||0)+(d.ball2W||0)}`);else{if((d.ball1R||0)+(d.ball1W||0)>0)ps.push(`#1 적${d.ball1R||0}·백${d.ball1W||0}`);if((d.ball2R||0)+(d.ball2W||0)>0)ps.push(`#2 적${d.ball2R||0}·백${d.ball2W||0}`);}const el=document.createElement('div');el.className='xtag ball';el.textContent='항공구 '+ps.join(' ');labelsEl.appendChild(el);s.tags.push(el);}});
 }
@@ -2852,7 +2851,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.16`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.17`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
@@ -3371,7 +3370,7 @@ function loop(now){
     const take=(x0,y0,x1,y1)=>{const r=[x0,y0,x1,y1];for(let gx=Math.floor(x0/GR);gx<=Math.floor(x1/GR);gx++)for(let gy=Math.floor(y0/GR);gy<=Math.floor(y1/GR);gy++){const k=gx+','+gy;if(!grid.has(k))grid.set(k,[]);grid.get(k).push(r);}};
     const place=(el,p,dy,force)=>{const [ew,eh]=sz(el),x0=p[0]-ew/2-pad,x1=p[0]+ew/2+pad,y1=p[1]+(dy||0)+pad,y0=y1-eh-2*pad;
       if(!force&&!free(x0,y0,x1,y1)){show(el,false);return false;}take(x0,y0,x1,y1);show(el,true);put(el,p,dy);return true;};
-    const hideT=t=>{show(t.tag,false);if(t.landTag)show(t.landTag,false);if(t.kudzuTag)show(t.kudzuTag,false);if(t.slopeTag)show(t.slopeTag,false);};
+    const hideT=t=>{show(t.tag,false);if(t.landTag)show(t.landTag,false);if(t.kudzuTag)show(t.kudzuTag,false);if(t.slopeTag)show(t.slopeTag,false);if(t.lowTag)show(t.lowTag,false);};
     // 선택한 철탑 → (전체 선로 보기면 선로 이름) → 가까운 철탑 순
     if(selT&&selT.tag){const p=proj(selT.x,selT.y+selT.H+8,selT.z,w,h);if(p)place(selT.tag,p,0,true);else hideT(selT);}
     if(ALL)spans.forEach(s=>{const p=proj(s.x,s.y-8,s.z,w,h);s.tags.forEach((el,k)=>{if(!p)show(el,false);else place(el,p,k*24);});});
@@ -3382,8 +3381,8 @@ function loop(now){
     cand.forEach(([d2,t,p])=>{
       if(ALL){const near=d2<1600*1600?1:0;if(t._near!==near){t._near=near;t.tag.innerHTML=allTagHTML(t,near);t.tag._w=0;}}
       if(!place(t.tag,p,0)){hideT(t);return;}
-      if(t.landTag||t.kudzuTag||t.slopeTag){const g=proj(t.x,t.y,t.z,w,h);let dy=26;
-        [t.landTag,t.kudzuTag,t.slopeTag].forEach(el=>{if(!el)return;if(g){show(el,true);put(el,g,dy);dy+=22;}else show(el,false);});}
+      if(t.landTag||t.kudzuTag||t.slopeTag||t.lowTag){const g=proj(t.x,t.y,t.z,w,h);let dy=26;
+        [t.landTag,t.kudzuTag,t.slopeTag,t.lowTag].forEach(el=>{if(!el)return;if(g){show(el,true);put(el,g,dy);dy+=22;}else show(el,false);});}
     });
     if(!ALL)spans.forEach(s=>{
       const p=s.tags.length?proj(s.x,s.y-8,s.z,w,h):null;
