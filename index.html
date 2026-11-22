@@ -1734,7 +1734,8 @@ function renderCard(){
         ${t.d.green&&t.aviation?'<p class="note" style="margin:6px 0 0">항공장애 도색 구간(상부)은 항공 도색이 우선이고, 그 아래가 녹색으로 보여요.</p>':''}</div>
       <div class="field"><span class="lb">모바일태그 설치각 (여러 개 선택 가능)</span>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">${MT_LEGS.map(k=>`<label class="check" style="flex:1;min-width:64px"><input type="checkbox" data-mtag="${k}" ${(t.d.mtag||[]).includes(k)?'checked':''}>${k}각</label>`).join('')}</div></div>
-      <div class="field"><span class="lb">항공장애표시 · 선택한 철탑에만 표시</span>
+      <div style="border:1px solid var(--line);border-radius:12px;padding:4px 10px 8px;margin:10px 0"><span class="lb" style="font-weight:700;display:block;margin-top:6px">✈ 항공장애표시 · 도색 · 항공등 · 항공구</span>
+      <div class="field"><span class="lb">항공 도색 · 선택한 철탑에만 표시</span>
         <label class="check"><input type="checkbox" id="xAv" ${t.aviation?'checked':''}>항공장애 도색<i class="sw" style="background:repeating-linear-gradient(90deg,${t.d.avEco?'#e8a283':'#e2581b'} 0 3px,#f2f2ee 3px 6px)"></i></label>
         ${t.aviation?`<div style="margin-top:6px">${segHTML('data-avt',['std','eco'],t.d.avEco?'eco':'std',v=>v==='eco'?'친환경 (연주황·백색)':'주황·백색')}</div>`:''}
         <div class="lampbox">
@@ -1746,6 +1747,14 @@ function renderCard(){
           <details class="lampmk"><summary>제조사 ${(t.d.lampMk||[]).length?'<b>'+esc(t.d.lampMk.join(' · '))+'</b>':'<span class="lb">선택 안 함</span>'}</summary>
             <div class="mkgrid">${LAMP_MAKERS.map(m=>`<label class="check"><input type="checkbox" data-lmk="${m}" ${(t.d.lampMk||[]).includes(m)?'checked':''}>${m}</label>`).join('')}</div></details>
         </div></div>
+      ${next?`      <div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 항공장애표시구 (항공구)</span>
+        <label class="check"><input type="checkbox" id="xBall" ${t.d.ball?'checked':''}>항공구 설치<i class="sw" style="background:#e2581b;border-radius:50%;width:10px;height:10px"></i></label>
+        ${gwOf(l,t.d)===1?'<p class="note" style="margin:6px 0 0">가공지선 1조 구간이라 꼭대기 가운데 지선 하나에 달려요.</p>':`<div class="seg" style="margin-top:6px"><button type="button" data-ballside="1" aria-pressed="${ballSide==='1'}">#1</button><button type="button" data-ballside="2" aria-pressed="${ballSide==='2'}">#2</button></div>`}
+        <div class="qty" aria-disabled="${!t.d.ball}"><span class="lb">${gwOf(l,t.d)===1?'':'#'+ballSide+' '}적색 <i class="sw" style="background:#e2581b;border-radius:50%;width:9px;height:9px;vertical-align:middle"></i></span>
+          <div class="stepper"><button type="button" id="bRMinus" aria-label="적색 줄이기">−</button><output>${t.d['ball'+ballSide+'R']||0}개</output><button type="button" id="bRPlus" aria-label="적색 늘리기">+</button></div></div>
+        <div class="qty" aria-disabled="${!t.d.ball}"><span class="lb">${gwOf(l,t.d)===1?'':'#'+ballSide+' '}백색 <i class="sw" style="background:#f2f2ee;border:1px solid var(--muted);border-radius:50%;width:9px;height:9px;vertical-align:middle"></i></span>
+          <div class="stepper"><button type="button" id="bWMinus" aria-label="백색 줄이기">−</button><output>${t.d['ball'+ballSide+'W']||0}개</output><button type="button" id="bWPlus" aria-label="백색 늘리기">+</button></div></div></div>`:''}
+      </div>
       <div class="field"><span class="lb">철탑 밑 표시 (하나만 선택)</span>
         <div class="checks">${LAND.map(x=>`<label class="check"><input type="checkbox" data-land="${x.k}" ${t.d.land===x.k?'checked':''}>${x.name}<i class="sw" style="background:${x.c}"></i></label>`).join('')}</div></div>
       <label class="check"><input type="checkbox" id="xKudzu" ${t.d.kudzu?'checked':''}>칡넝쿨<i class="sw" style="background:var(--kudzu)"></i></label>
@@ -1760,13 +1769,7 @@ function renderCard(){
           <div class="unit" data-unit="" style="margin-top:6px"><input id="fLowMemo" type="text" placeholder="예: 경간 중앙 농로 위, 수목 근접" value="${esc(t.d.lowMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
       ${next?`${SHOW_CROSS?`<div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 횡단</span>
         <div class="checks">${CROSS.map(c=>`<label class="check"><input type="checkbox" data-x="${c.k}" ${t.d[c.k]?'checked':''}>${c.name}<i class="sw" style="background:${c.c}"></i></label>`).join('')}</div></div>`:''}
-      <div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 항공장애표시구</span>
-        <label class="check"><input type="checkbox" id="xBall" ${t.d.ball?'checked':''}>항공구 설치<i class="sw" style="background:#e2581b;border-radius:50%;width:10px;height:10px"></i></label>
-        ${l.gw===1?'<p class="note" style="margin:6px 0 0">가공지선 1조 선로라 꼭대기 가운데 지선 하나에 달려요.</p>':`<div class="seg" style="margin-top:6px"><button type="button" data-ballside="1" aria-pressed="${ballSide==='1'}">#1</button><button type="button" data-ballside="2" aria-pressed="${ballSide==='2'}">#2</button></div>`}
-        <div class="qty" aria-disabled="${!t.d.ball}"><span class="lb">${l.gw===1?'':'#'+ballSide+' '}적색 <i class="sw" style="background:#e2581b;border-radius:50%;width:9px;height:9px;vertical-align:middle"></i></span>
-          <div class="stepper"><button type="button" id="bRMinus" aria-label="적색 줄이기">−</button><output>${t.d['ball'+ballSide+'R']||0}개</output><button type="button" id="bRPlus" aria-label="적색 늘리기">+</button></div></div>
-        <div class="qty" aria-disabled="${!t.d.ball}"><span class="lb">${l.gw===1?'':'#'+ballSide+' '}백색 <i class="sw" style="background:#f2f2ee;border:1px solid var(--muted);border-radius:50%;width:9px;height:9px;vertical-align:middle"></i></span>
-          <div class="stepper"><button type="button" id="bWMinus" aria-label="백색 줄이기">−</button><output>${t.d['ball'+ballSide+'W']||0}개</output><button type="button" id="bWPlus" aria-label="백색 늘리기">+</button></div></div></div>`:''}
+`:''}
       <div class="actions">
         ${next?`<button class="ghost" type="button" id="insAfter">+ ${esc(H_(t))} 다음에 No.${esc(br)} 끼워넣기</button>`:`<button class="ghost" type="button" id="addEnd">+ 끝에 No.${nextAfterLast(l)} 추가</button>`}
         <button class="ghost danger" type="button" id="delTower">${confirmDel===t.d.id?'한 번 더 누르면 삭제됩니다':esc(H_(t))+' 삭제'}</button>
@@ -2851,7 +2854,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.17`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.18`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
