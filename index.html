@@ -334,15 +334,13 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
   <header class="head panel">
     <div class="eyebrow" id="eyebrow">154kV · 2회선</div>
     <span class="sync busy" id="sync" role="button" title="눌러서 서버와 다시 맞추기" style="cursor:pointer">연결 중…</span>
+    <span class="sync busy" id="authBtn" role="button" style="cursor:pointer;margin-left:6px">🔑 로그인</span>
     <h1 id="title" style="display:flex;align-items:center;gap:8px;cursor:pointer" title="눌러서 접기·펴기"><span id="titleTx">선로</span><span id="headTog" style="margin-left:auto;font-size:13px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:2px 8px">접기 ▴</span></h1>
     <p class="stats" id="stats"></p>
     <div class="legend">
       <span><i class="sym sus"></i>현수형</span>
       <span><i class="sym ten"></i>내장형</span>
       <span>│ 관형주</span>
-      <span><i class="sw" style="background:var(--road)"></i>도로</span>
-      <span><i class="sw" style="background:var(--river)"></i>강</span>
-      <span><i class="sw" style="background:var(--railc)"></i>철도</span>
       <span><i class="sw" style="background:var(--urban)"></i>도심지</span>
       <span><i class="sw" style="background:var(--paddy)"></i>논</span>
       <span><i class="sw" style="background:var(--field)"></i>밭</span>
@@ -455,7 +453,7 @@ if(!lines) lines=defaults();
 function normalize(l){l.towers.forEach(d=>{if(!d.id)d.id=rid();if(d.angDir==null)d.angDir='';if(d.angDeg==null)d.angDeg=0;if(['S','L'].some(x=>d['baitGW'+x]>0)){['S','L'].forEach(x=>{if(d['baitGW'+x]>0&&!(d['dmpGW'+x]>0))d['dmpGW'+x]=d['baitGW'+x];});d.gwKind='bait';}['S','L'].forEach(x=>delete d['baitGW'+x]);if(d.on_baitGW){d.on_dmpGW=true;delete d.on_baitGW;}if(d.dmpP>0&&d.dmpPS==null)d.dmpPS=d.dmpP;delete d.dmpP;if(d.dmpGW>0&&d.dmpGWS==null)d.dmpGWS=d.dmpGW;if(d.dmpOP>0&&d.dmpOPS==null)d.dmpOPS=d.dmpOP;delete d.dmpGW;delete d.dmpOP;if(d.danger==null)d.danger=false;d.label=String(d.label);if(d.kudzu==null)d.kudzu=false;if(d.sanbok==null)d.sanbok=false;if(d.land==null)d.land=d.urban?'urban':d.paddy?'paddy':'';delete d.urban;delete d.paddy;if(d.form==null)d.form='';if(d.ball==null)d.ball=false;if(d.ballN==null)d.ballN=0;if(d.ball1R==null&&d.ball1W==null&&d.ball2R==null&&d.ball2W==null){const r=d.ballR!=null?d.ballR:Math.ceil((d.ballN||0)/2),w=d.ballW!=null?d.ballW:Math.floor((d.ballN||0)/2);d.ball1R=r;d.ball1W=w;d.ball2R=0;d.ball2W=0;}['ball1R','ball1W','ball2R','ball2W'].forEach(k=>{if(d[k]==null)d[k]=0;});d.ballN=d.ball1R+d.ball1W+d.ball2R+d.ball2W;delete d.ballR;delete d.ballW;if(d.lamp===undefined)d.lamp=null;if(d.lamp==null)d.lampN=null;else if(!d.lampN)d.lampN=d.lampKind==='high'?{high:1,mid:0,low:0}:null;});l.name=stripTL(l.name);if(!KV_QUICK.includes(l.kv))l.kv=KV_QUICK.reduce((a,b)=>Math.abs(b-l.kv)<Math.abs(a-l.kv)?b:a);if(![2,4,6].includes(l.circuits))l.circuits=2;if(![1,2].includes(l.gw))l.gw=defGW(l.kv);if(!WT.includes(l.gw1))l.gw1='GW';if(!WT.includes(l.gw2))l.gw2='OPGW';if(!l.seed)l.seed=Math.round(Math.random()*90)+4;return l;}
 lines.forEach(normalize);
 if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
-/* ---------- 저장 (Supabase 서버 · 로그인 없이 주소만 알면 같이 씀) ---------- */
+/* ---------- 저장 (Supabase 서버 · 보기는 누구나, 고치기는 승인된 회원) ---------- */
 const SUPABASE_URL="https://cyctshvdqhgdglkdehba.supabase.co";
 const SUPABASE_KEY="sb_publishable_AyUXHnUPDy26XSHCINLZJg_h9EKL6Dx";
 const T_LINES="tower3d_lines", T_PHOTOS="tower3d_photos", BUCKET="tower-photos";
@@ -463,20 +461,105 @@ const CLIENT='c'+Math.random().toString(36).slice(2,10);
 const CACHE='tower3d-open-cache';
 const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
-const sb=window.supabase?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false}}):null;
+const sb=window.supabase?window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'tower3d-auth'}}):null;
+/* ---------- v21: 회원 (아이디+비밀번호 · 관리자 승인 후 수정 · 비회원은 보기만) ---------- */
+const ID_DOMAIN='tower3d.kps', T_MEM='tower3d_members';
+const RO_MSG='보기 전용이에요 · 🔑 로그인(관리자 승인된 회원)하면 고칠 수 있어요';
+let ME=null;   // {uid,login,name,approved,admin}
+const canEdit=()=>!!(ME&&ME.approved);
+function authBtnPaint(){const b=document.getElementById('authBtn');if(!b)return;
+  b.textContent=!ME?'🔑 로그인':ME.approved?'👤 '+(ME.name||ME.login):'⏳ 승인 대기';
+  b.className='sync '+(!ME?'busy':ME.approved?'ok':'err');document.body.classList.toggle('ro',!canEdit());}
+async function loadMe(){
+  if(!sb){ME=null;authBtnPaint();return;}
+  try{const {data:{session}}=await sb.auth.getSession();
+    if(!session){ME=null;authBtnPaint();return;}
+    const {data}=await sb.from(T_MEM).select('*').eq('user_id',session.user.id).maybeSingle();
+    const lg=String(session.user.email||'').split('@')[0];
+    ME=data?{uid:data.user_id,login:data.login,name:data.name,approved:!!data.approved,admin:!!data.is_admin}:{uid:session.user.id,login:lg,name:'',approved:false,admin:false,noRow:true};
+  }catch(e){console.warn(e);ME=null;}
+  authBtnPaint();}
+function authModal(html){let m=document.getElementById('authMask');if(m)m.remove();
+  m=document.createElement('div');m.id='authMask';m.style.cssText='position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML=`<div class="panel" style="width:100%;max-width:360px;padding:16px;max-height:86vh;overflow:auto">${html}</div>`;
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});document.body.append(m);return m;}
+const inp=(id,ph,type)=>`<input id="${id}" type="${type||'text'}" placeholder="${ph}" autocomplete="off" style="width:100%;font-size:15px;padding:10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);margin-top:8px">`;
+function openAuth(mode){
+  if(ME){return openMe();}
+  const sign=mode==='sign';
+  const m=authModal(`<h2 style="margin:0 0 4px;font-size:18px">${sign?'회원가입':'🔑 로그인'}</h2>
+    <p class="note" style="margin:0 0 6px">${sign?'가입하면 관리자가 승인한 뒤에 고칠 수 있어요. 아이디는 영문·숫자(사번 추천).':'로그인 안 해도 보기는 돼요. 고치려면 승인된 회원으로 로그인하세요.'}</p>
+    ${inp('aId','아이디 (영문·숫자 3~20자)')}${sign?inp('aName','이름 (예: 홍길동)'):''}${inp('aPw','비밀번호 (6자 이상)','password')}${sign?inp('aPw2','비밀번호 확인','password'):''}
+    <p class="err" id="aErr" hidden style="margin:8px 0 0"></p>
+    <div class="row2" style="margin-top:12px"><button class="primary" type="button" id="aGo">${sign?'가입 신청':'로그인'}</button><button class="ghost" type="button" id="aSw">${sign?'로그인으로':'회원가입'}</button></div>`);
+  const q=s=>m.querySelector(s), err=s=>{const e=q('#aErr');e.textContent=s;e.hidden=false;};
+  q('#aSw').onclick=()=>openAuth(sign?'login':'sign');
+  q('#aGo').onclick=async()=>{
+    const id=q('#aId').value.trim().toLowerCase(), pw=q('#aPw').value;
+    if(!/^[a-z0-9._-]{3,20}$/.test(id))return err('아이디는 영문 소문자·숫자 3~20자로 해 주세요.');
+    if(pw.length<6)return err('비밀번호는 6자 이상이에요.');
+    if(!sb)return err('서버에 연결되지 않았어요.');
+    q('#aGo').disabled=true;
+    try{
+      const email=id+'@'+ID_DOMAIN;
+      if(sign){
+        const nm=q('#aName').value.trim(); if(!nm){q('#aGo').disabled=false;return err('이름을 넣어 주세요.');}
+        if(pw!==q('#aPw2').value){q('#aGo').disabled=false;return err('비밀번호 확인이 달라요.');}
+        const {data,error}=await sb.auth.signUp({email,password:pw});
+        if(error)throw error;
+        if(!data.session){q('#aGo').disabled=false;return err('가입은 됐지만 바로 로그인이 안 돼요. Supabase 설정에서 이메일 확인(Confirm email)을 꺼 주세요.');}
+        const r=await sb.rpc('tower3d_register',{p_login:id,p_name:nm}); if(r.error)throw r.error;
+      }else{
+        const {error}=await sb.auth.signInWithPassword({email,password:pw}); if(error)throw error;
+        await sb.rpc('tower3d_register',{p_login:id,p_name:''}).then(()=>{},()=>{});
+      }
+      await loadMe(); m.remove();
+      say(ME&&ME.approved?((ME.admin?'관리자 ':'')+(ME.name||ME.login)+'님, 이제 고칠 수 있어요'+(ME.admin&&sign?' (첫 가입자라 관리자로 정했어요)':'')):'가입 신청됐어요 · 관리자가 승인하면 고칠 수 있어요',true);
+      build(); if(!card.hidden)renderCard();
+    }catch(e){q('#aGo').disabled=false;const msg=(e&&e.message)||String(e);
+      err(/Invalid login/i.test(msg)?'아이디나 비밀번호가 틀렸어요.':/already registered|exists/i.test(msg)?'이미 있는 아이디예요.':/signups? not allowed|disabled/i.test(msg)?'Supabase 설정에서 회원가입이 꺼져 있어요.':'오류: '+msg);}
+  };
+}
+async function openMe(){
+  const m=authModal(`<h2 style="margin:0 0 6px;font-size:18px">👤 ${esc(ME.name||ME.login)}</h2>
+    <p class="note" style="margin:0">아이디 ${esc(ME.login)} · ${ME.approved?(ME.admin?'관리자':'승인된 회원 (고칠 수 있음)'):'⏳ 관리자 승인 대기 중 (보기만 가능)'}</p>
+    ${ME.admin?'<div id="memList" style="margin-top:12px"><p class="note">회원 목록 불러오는 중…</p></div>':''}
+    <div class="row2" style="margin-top:12px"><button class="ghost" type="button" id="aOut">로그아웃</button><button class="primary" type="button" id="aClose">닫기</button></div>`);
+  m.querySelector('#aClose').onclick=()=>m.remove();
+  m.querySelector('#aOut').onclick=async()=>{try{await sb.auth.signOut();}catch(e){}ME=null;authBtnPaint();m.remove();say('로그아웃했어요 · 보기만 가능해요');build();if(!card.hidden)renderCard();};
+  if(ME.admin)drawMembers(m);
+}
+async function drawMembers(m){
+  const box=m.querySelector('#memList');if(!box)return;
+  const {data,error}=await sb.from(T_MEM).select('*').order('approved',{ascending:true}).order('created_at',{ascending:true});
+  if(error){box.innerHTML='<p class="err">회원 목록 오류: '+esc(error.message)+'</p>';return;}
+  const wait=data.filter(r=>!r.approved).length;
+  box.innerHTML=`<b style="font-size:14px">👥 회원 관리 · ${data.length}명${wait?' · 승인 대기 '+wait:''}</b>`+data.map(r=>`<div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px">
+      <div style="flex:1;min-width:0"><b>${esc(r.name||'-')}</b> <span class="note">${esc(r.login)}</span><br><span style="font-size:12px;color:${r.approved?'var(--muted)':'var(--danger)'}">${r.approved?(r.is_admin?'관리자':'승인됨'):'승인 대기'}</span></div>
+      ${r.user_id===ME.uid?'<span class="note">나</span>':`<button class="${r.approved?'ghost':'primary'}" type="button" data-ap="${r.user_id}" data-v="${r.approved?0:1}" style="flex:none;padding:6px 10px">${r.approved?'승인 취소':'승인'}</button>${r.approved?`<button class="ghost" type="button" data-ad="${r.user_id}" data-v="${r.is_admin?0:1}" style="flex:none;padding:6px 8px">${r.is_admin?'관리자 빼기':'관리자로'}</button>`:''}`}</div>`).join('');
+  box.querySelectorAll('[data-ap]').forEach(b=>b.onclick=async()=>{const r=data.find(x=>x.user_id===b.dataset.ap);const {error}=await sb.rpc('tower3d_set_member',{p_uid:r.user_id,p_approved:b.dataset.v==='1',p_admin:b.dataset.v==='1'?!!r.is_admin:false});if(error)say('오류: '+error.message);drawMembers(m);});
+  box.querySelectorAll('[data-ad]').forEach(b=>b.onclick=async()=>{const r=data.find(x=>x.user_id===b.dataset.ad);const {error}=await sb.rpc('tower3d_set_member',{p_uid:r.user_id,p_approved:true,p_admin:b.dataset.v==='1'});if(error)say('오류: '+error.message);drawMembers(m);});
+}
+// 보기 전용일 때 고친 내용은 서버 값으로 되돌림
+function revertLocal(){
+  if(!Object.keys(serverHash).length)return;
+  lines=lines.filter(l=>serverHash[l.id]).map(l=>{const d=normalize(JSON.parse(serverHash[l.id]));d.id=l.id;return d;});
+  if(!lines.find(l=>l.id===curId))curId=lines[0].id;
+}
 let DB=null, AS=null, DL=true, serverHash={}, serverStamp={}, flushT=null, flushing=false, again=false, cloudReady=false, pulling=false;
 let photos=[], photoStamp='';   // 기별사진: {id,towerId,lineId,slot,path,name,at}
 const urlCache={};
 function syncState(c,msg){const e=document.getElementById('sync');if(e){e.className='sync '+c;e.textContent=msg;}}
 function writeCache(){lsSet(CACHE,JSON.stringify({lines,cur:curId}));}
 function save(){
+  if(sb&&!canEdit()){revertLocal();writeCache();say(RO_MSG);setTimeout(()=>{build();if(!card.hidden)renderCard();},0);return;}
   writeCache();
   if(!cloudReady){syncState('ok','이 기기에만 저장됨');return;}
   clearTimeout(flushT); flushT=setTimeout(flush,500); syncState('busy','저장 중…');
 }
 const isDirty=id=>{const l=lines.find(x=>x.id===id);return !!l&&JSON.stringify(l)!==serverHash[id];};
 async function flush(){
-  if(!sb||!cloudReady) return;
+  if(!sb||!cloudReady||!canEdit()) return;
   if(flushing){again=true;return;}
   flushing=true; clearTimeout(flushT); flushT=null;
   try{
@@ -1174,7 +1257,7 @@ function openAll(){
 // v20.23: 각도주 입력값 지움 (찍은 위치로 꺾임을 그리므로 필요 없음)
 function clearAngles(){if(!lines)return 0;let n=0;lines.forEach(l=>l.towers.forEach(d=>{if(d.angDir||+d.angDeg){d.angDir='';d.angDeg=0;n++;}}));return n;}
 function build(){
-  if(autoGpsSpans()+clearAngles())save();
+  if(canEdit()&&autoGpsSpans()+clearAngles())save();
   ALL=false;
   {const b=document.getElementById('allBar');if(b)b.hidden=true;}
   {const c=document.getElementById('chips');if(c)c.hidden=false;}
@@ -2384,6 +2467,7 @@ function gpsBind(card,l,t){
   card.querySelectorAll('[data-gmap]').forEach(b=>b.addEventListener('click',()=>openMap()));
 }
 document.getElementById('gpsBtn').addEventListener('click',()=>{
+  if(!canEdit()){say(RO_MSG);return;}
   if(GP){gpsStop();return;}
   const l=cur(); const from=selT?String(selT.label):String(l.towers[0].label);
   gpsStart(from,1);
@@ -2669,6 +2753,7 @@ delBtn.addEventListener('click',()=>{
 let bkConfirm=false;
 let pushConfirm=false;
 async function pushAll(){
+  if(!canEdit()){say(RO_MSG);return;}
   clearTimeout(flushT); flushT=null;
   while(flushing) await new Promise(ok=>setTimeout(ok,200));
   const now={}; lines.forEach(l=>now[l.id]=JSON.stringify(l));
@@ -2897,7 +2982,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.28`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.2`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
@@ -3103,6 +3188,7 @@ async function shrink(file){
   }catch(e){return file;}
 }
 async function addPhoto(f){
+  if(!canEdit()){say(RO_MSG);return;}
   let files=[...(f.files||[])].filter(x=>!x.type||x.type.startsWith('image/'));
   const job=pending; f.value='';
   if(!files.length||!job) return;
@@ -3136,6 +3222,7 @@ async function addPhoto(f){
   }
 }
 async function deletePhoto(p,noPull){
+  if(!canEdit()){say(RO_MSG);return;}
   const {error}=await sb.from(T_PHOTOS).delete().eq('id',p.id); if(error) throw error;
   try{await sb.storage.from(BUCKET).remove([p.path]);}catch(e){console.warn(e);}
   if(!noPull) await pullPhotos(true);
@@ -3232,6 +3319,7 @@ seqIn.addEventListener('change',async()=>{
   if(!job||!files.length) return;
   const t=towers.find(x=>x.d.id===job.tid); if(!t) return;
   if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요.');
+  if(!canEdit()){say(RO_MSG);return;}
   const left=seqLeft(t,job.scope), targets=left.slice(0,files.length);
   const extra=files.length-targets.length, done=[];
   let step='사진 줄이기';
@@ -3325,6 +3413,9 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState!==
 window.addEventListener('pagehide',()=>{if(flushT) flush();});
 gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syncState('busy','서버와 맞추는 중…');flush().then(()=>{for(const k in serverStamp)delete serverStamp[k];return pull();});});
 (async function start(){
+  gid('authBtn')&&gid('authBtn').addEventListener('click',()=>openAuth('login'));
+  await loadMe();
+  if(sb)sb.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'||ev==='TOKEN_REFRESHED')loadMe();});
   let c=null; try{c=JSON.parse(lsGet(CACHE)||'null');}catch(e){}
   if(c&&Array.isArray(c.lines)&&c.lines.length){lines=c.lines.map(normalize); if(c.cur&&lines.find(l=>l.id===c.cur)) curId=c.cur;}
   if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
