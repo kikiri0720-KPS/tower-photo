@@ -1163,6 +1163,7 @@ function openAll(){
 }
 
 function build(){
+  if(autoGpsSpans())save();
   ALL=false;
   {const b=document.getElementById('allBar');if(b)b.hidden=true;}
   {const c=document.getElementById('chips');if(c)c.hidden=false;}
@@ -1702,7 +1703,7 @@ function renderCard(){
         <div class="field"><label for="fH">철탑 높이</label><div class="unit" data-unit="m"><input id="fH" type="number" inputmode="decimal" min="10" max="250" step="0.1" placeholder="${t.autoH}" value="${t.d.h>0?t.d.h:''}"></div></div>
       </div>
       <div class="field"><label for="fForm">철탑 형</label><div class="unit" data-unit="형"><input id="fForm" type="text" placeholder="예: A, B, SA, D" value="${esc(stripForm(t.d.form))}"></div></div>
-      ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.span===gpsSpan(t.d,next.d)?' · 적용됨':''}</span>${t.d.span===gpsSpan(t.d,next.d)?'':`<button class="ghost" type="button" id="spanGps" style="flex:none">이 값 넣기</button>`}</div>`:''}</div>`:''}
+      ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.spanSrc==='manual'?' · 직접 고친 값을 쓰는 중':' · 자동 적용됨'}</span>${t.d.spanSrc==='manual'?`<button class="ghost" type="button" id="spanGps" style="flex:none">위치값으로 되돌리기</button>`:''}</div>`:''}</div>`:''}
       <p class="err" id="tErr" hidden></p>
       <dl>
         <dt>후경간</dt><dd>${prev?Math.round(spans[t.i-1].len)+' m':'—'}</dd>
@@ -1832,12 +1833,12 @@ function renderCard(){
     const v=parseFloat(raw); if(!(v>=10&&v<=250)){bad('철탑 높이는 10~250m 사이로 입력해 주세요.');return;}
     t.d.h=v; save(); build();
   });
-  if(q('#spanGps')) q('#spanGps').addEventListener('click',()=>{const m=gpsSpan(t.d,towers[t.i+1]&&towers[t.i+1].d);if(m){t.d.span=m;save();build();renderCard();say('경간 '+m+' m 넣었어요');}});
+  if(q('#spanGps')) q('#spanGps').addEventListener('click',()=>{const m=gpsSpan(t.d,towers[t.i+1]&&towers[t.i+1].d);if(m){t.d.span=m;t.d.spanSrc='gps';save();build();renderCard();say('경간 '+m+' m 넣었어요');}});
   if(q('#fSpan')) q('#fSpan').addEventListener('change',e=>{
     const raw=e.target.value.trim();
-    if(raw===''){t.d.span=null;save();build();return;}
+    if(raw===''){t.d.span=null;delete t.d.spanSrc;save();build();return;}
     const v=parseFloat(raw); if(!(v>=30&&v<=3000)){bad('경간은 30~3000m 사이로 입력해 주세요.');return;}
-    t.d.span=v; save(); build();
+    t.d.span=v; t.d.spanSrc='manual'; save(); build();
   });
   q('#xKudzu').addEventListener('change',e=>{t.d.kudzu=e.target.checked;save();build();});
   // v19: 산복개소
@@ -2219,12 +2220,19 @@ function gpsSpanFieldHTML(l){
   let both=0,empty=0,diff=0;
   for(let i=0;i<l.towers.length-1;i++){const m=gpsSpan(l.towers[i],l.towers[i+1]);if(m==null)continue;both++;const d=l.towers[i];if(!(d.span>0))empty++;else if(Math.abs(d.span-m)>=1)diff++;}
   return `<div class="field"><span class="lb">📏 찍은 위치로 경간 길이 넣기</span>
-    <p class="note" style="margin:4px 0">양쪽 철탑 위치(📍)가 다 있는 경간 ${both}곳 · 경간이 비어 있는 곳 ${empty} · 값이 다른 곳 ${diff}</p>
-    <div class="row2"><button class="ghost" type="button" data-gspan="empty" ${empty?'':'disabled'}>빈 경간만 채우기 (${empty})</button><button class="ghost" type="button" data-gspan="all" ${both?'':'disabled'}>모두 위치값으로 (${both})</button></div></div>`;
+    <p class="note" style="margin:4px 0">양쪽 위치(📍)가 다 있는 경간 ${both}곳은 위치 거리가 자동으로 들어가요 · 직접 고친 경간 ${l.towers.filter(d=>d.spanSrc==='manual').length}곳은 그대로 둬요</p>
+    <div class="row2"><button class="ghost" type="button" data-gspan="empty" ${empty?'':'disabled'} hidden></button><button class="ghost" type="button" data-gspan="all" ${l.towers.some(d=>d.spanSrc==='manual')?'':'disabled'}>직접 고친 경간도 위치값으로 되돌리기</button></div></div>`;
+}
+// v20.21: 양쪽 위치가 찍힌 경간은 자동으로 위치 거리를 경간으로 (직접 고친 경간은 spanSrc='manual'로 그대로 둠)
+function autoGpsSpans(){
+  if(!lines)return 0;let n=0;
+  lines.forEach(l=>{for(let i=0;i<l.towers.length-1;i++){const d=l.towers[i];if(d.spanSrc==='manual')continue;
+    const m=gpsSpan(d,l.towers[i+1]);if(m==null||m<10||m>5000)continue;if(d.span!==m||d.spanSrc!=='gps'){d.span=m;d.spanSrc='gps';n++;}}});
+  return n;
 }
 function applyGpsSpan(l,mode){
   let n=0;for(let i=0;i<l.towers.length-1;i++){const m=gpsSpan(l.towers[i],l.towers[i+1]);if(m==null||m<10||m>5000)continue;const d=l.towers[i];
-    if(mode==='empty'&&d.span>0)continue;if(d.span!==m){d.span=m;n++;}}
+    if(mode==='empty'&&d.span>0)continue;if(d.span!==m||d.spanSrc==='manual'){d.span=m;d.spanSrc='gps';n++;}}
   save();build();renderCard();say(n?'경간 '+n+'곳을 찍은 위치 거리로 넣었어요':'바꿀 경간이 없어요');
 }
 function gpsLineHTML(l){
@@ -2876,7 +2884,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.20`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.21`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
