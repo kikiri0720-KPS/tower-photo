@@ -1682,6 +1682,7 @@ function renderCard(){
       ${SHOW_CROSS?`      <div class="field"><span class="lb">🔍 횡단 자동 찾기 (도로·강·철도·골짜기)</span><button class="ghost" type="button" id="xaGo">지도 자료로 경간별 횡단 찾기</button>
         <p class="note" style="margin:4px 0 0">위치(📍)를 찍은 철탑 사이 경간이 정확해요. 찾은 목록을 보고 골라서 적용해요.</p></div>`:''}
       ${gpsLineHTML(l)}
+      ${gpsSpanFieldHTML(l)}
       <div class="actions">
         <button class="ghost" type="button" id="addEnd">+ 끝에 No.${nextAfterLast(l)} 추가</button>
         <button class="ghost danger" type="button" id="delLine">${confirmDel==='line'?'한 번 더 누르면 선로가 삭제됩니다':'이 선로 삭제'}</button>
@@ -1701,7 +1702,7 @@ function renderCard(){
         <div class="field"><label for="fH">철탑 높이</label><div class="unit" data-unit="m"><input id="fH" type="number" inputmode="decimal" min="10" max="250" step="0.1" placeholder="${t.autoH}" value="${t.d.h>0?t.d.h:''}"></div></div>
       </div>
       <div class="field"><label for="fForm">철탑 형</label><div class="unit" data-unit="형"><input id="fForm" type="text" placeholder="예: A, B, SA, D" value="${esc(stripForm(t.d.form))}"></div></div>
-      ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div></div>`:''}
+      ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.span===gpsSpan(t.d,next.d)?' · 적용됨':''}</span>${t.d.span===gpsSpan(t.d,next.d)?'':`<button class="ghost" type="button" id="spanGps" style="flex:none">이 값 넣기</button>`}</div>`:''}</div>`:''}
       <p class="err" id="tErr" hidden></p>
       <dl>
         <dt>후경간</dt><dd>${prev?Math.round(spans[t.i-1].len)+' m':'—'}</dd>
@@ -1813,6 +1814,8 @@ function renderCard(){
     confirmDel=null; dropPhotos(l.towers.map(d=>d.id)); lines=lines.filter(x=>x.id!==l.id); curId=lines[0].id; save(); selT=null; card.hidden=true; build(); refit();
   });
   if(q('#xaGo')) q('#xaGo').addEventListener('click',crossAuto);
+  card.querySelectorAll('[data-gspan]').forEach(b=>b.addEventListener('click',()=>{const mode=b.dataset.gspan;
+    if(mode==='all'&&!confirm('직접 넣어 둔 경간 값도 찍은 위치 거리로 바꿀까요?'))return; applyGpsSpan(cur(),mode);}));
   if(!t){card.hidden=false;return;}
   // 철탑
   q('#openLedger').addEventListener('click',()=>openLedger(t));
@@ -1829,6 +1832,7 @@ function renderCard(){
     const v=parseFloat(raw); if(!(v>=10&&v<=250)){bad('철탑 높이는 10~250m 사이로 입력해 주세요.');return;}
     t.d.h=v; save(); build();
   });
+  if(q('#spanGps')) q('#spanGps').addEventListener('click',()=>{const m=gpsSpan(t.d,towers[t.i+1]&&towers[t.i+1].d);if(m){t.d.span=m;save();build();renderCard();say('경간 '+m+' m 넣었어요');}});
   if(q('#fSpan')) q('#fSpan').addEventListener('change',e=>{
     const raw=e.target.value.trim();
     if(raw===''){t.d.span=null;save();build();return;}
@@ -2208,6 +2212,20 @@ function gpsTowerHTML(l,t){
     ${nx?walkRecHTML(t.d.walk,'No.'+esc(t.label)+' → No.'+esc(nx.label)):''}
     <div class="row2" style="margin-top:6px">${pv&&!GP?`<button class="ghost" type="button" data-gstart="-1">◀ 거꾸로 No.${esc(pv.label)} 쪽으로 출발</button>`:''}${GP?'<span class="note">순시 기록 중이에요</span>':''}</div>
     ${t.d.gps?`<p class="note" style="margin:4px 0 0">📍 철탑 위치 기록됨 (${t.d.gpsN||1}번 도착 평균)</p>`:''}</div>`;
+}
+// v20.20: 찍어 둔 철탑 위치로 경간 길이 넣기
+const gpsSpan=(a,b)=>a&&b&&a.gps&&b.gps?Math.round(hav(a.gps,b.gps)):null;
+function gpsSpanFieldHTML(l){
+  let both=0,empty=0,diff=0;
+  for(let i=0;i<l.towers.length-1;i++){const m=gpsSpan(l.towers[i],l.towers[i+1]);if(m==null)continue;both++;const d=l.towers[i];if(!(d.span>0))empty++;else if(Math.abs(d.span-m)>=1)diff++;}
+  return `<div class="field"><span class="lb">📏 찍은 위치로 경간 길이 넣기</span>
+    <p class="note" style="margin:4px 0">양쪽 철탑 위치(📍)가 다 있는 경간 ${both}곳 · 경간이 비어 있는 곳 ${empty} · 값이 다른 곳 ${diff}</p>
+    <div class="row2"><button class="ghost" type="button" data-gspan="empty" ${empty?'':'disabled'}>빈 경간만 채우기 (${empty})</button><button class="ghost" type="button" data-gspan="all" ${both?'':'disabled'}>모두 위치값으로 (${both})</button></div></div>`;
+}
+function applyGpsSpan(l,mode){
+  let n=0;for(let i=0;i<l.towers.length-1;i++){const m=gpsSpan(l.towers[i],l.towers[i+1]);if(m==null||m<10||m>5000)continue;const d=l.towers[i];
+    if(mode==='empty'&&d.span>0)continue;if(d.span!==m){d.span=m;n++;}}
+  save();build();renderCard();say(n?'경간 '+n+'곳을 찍은 위치 거리로 넣었어요':'바꿀 경간이 없어요');
 }
 function gpsLineHTML(l){
   const W=l.towers.slice(0,-1).filter(d=>d.walk&&d.walk.last), tot=W.reduce((a,d)=>a+d.walk.last.m,0), ts=W.reduce((a,d)=>a+d.walk.last.sec,0), gp=l.towers.filter(d=>d.gps).length;
@@ -2858,7 +2876,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.19`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.20`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
