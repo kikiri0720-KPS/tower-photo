@@ -94,6 +94,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 body.split .arrrow .seg{flex:1 1 100%}
 .qty .stepper,.qty .seg{flex:1}
 .lampbox{display:grid;gap:8px;padding:10px;border:1px solid var(--line);border-radius:8px}
+/* v20.19: 고광도·중광도·저광도 세 칸을 같은 너비로, 좁아도 다 보이게 */
+.lampbox .seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));min-width:0}
+.lampbox .seg button{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;padding:9px 2px;font-size:13px;white-space:nowrap;overflow:hidden}
+.lampbox .seg button .ldot{flex:none}
 .ldot{display:inline-block;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 1px var(--line);margin-right:5px;vertical-align:-1px}
 .lamplist{display:flex;flex-wrap:wrap;gap:6px}
 .lampmk{border-top:1px dashed var(--line);padding-top:8px}
@@ -2854,7 +2858,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.18`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.19`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
