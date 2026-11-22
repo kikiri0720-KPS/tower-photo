@@ -220,6 +220,14 @@ body.headmin .head h1{font-size:15px}
 .kbar button{font:600 12.5px/1 var(--ui);padding:7px 9px;border-radius:6px;border:1px solid #9aa;background:#fff;color:#222;box-shadow:0 1px 3px rgba(0,0,0,.25)}
 .kbar button.on{background:#e8833a;color:#fff;border-color:#e8833a}
 .kpop{position:relative;background:#fff;color:#14213d;border-radius:10px;padding:10px 12px 8px;min-width:170px;max-width:240px;box-shadow:0 3px 12px rgba(0,0,0,.35);font:13px/1.4 var(--ui)}
+.lotpop{font:13px/1.45 var(--ui);color:#14213d;padding-right:14px}
+.lotpop .lotj{font-size:14.5px;display:block}
+.lotpop .lotr,.lotpop .lotm{font-size:12.5px;color:#333;margin-top:2px}
+.lotpop .lotw{font-size:12px;color:#b35b00;margin-top:3px}
+.lotpop .lotll{display:block;font-size:11.5px;color:#777;margin-top:3px}
+.lotpop .lotb{display:flex;gap:6px;margin-top:6px}
+.lotpop .lotb button{flex:1;font:600 12.5px/1 var(--ui);padding:7px 6px;border-radius:6px;border:1px solid #2f6fd6;background:#2f6fd6;color:#fff}
+.lotpop .lotb button.b2{background:#fff;color:#2f6fd6}
 .kpop .kx{position:absolute;top:2px;right:4px;border:0;background:transparent;font-size:18px;color:#666;padding:2px 6px}
 .kpop::after{content:'';position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:#fff}
 #mapPick[hidden]{display:none}
@@ -2577,7 +2585,7 @@ function loadKakao(key){
   if(kakaoP)return kakaoP;
   kakaoP=new Promise((res,rej)=>{
     const to=setTimeout(()=>rej(new Error('카카오 지도가 응답하지 않아요')),10000);
-    const s=document.createElement('script');s.src='https://dapi.kakao.com/v2/maps/sdk.js?appkey='+encodeURIComponent(key)+'&autoload=false';
+    const s=document.createElement('script');s.src='https://dapi.kakao.com/v2/maps/sdk.js?appkey='+encodeURIComponent(key)+'&libraries=services&autoload=false';
     s.onload=()=>{try{kakao.maps.load(()=>{clearTimeout(to);res();});}catch(e){clearTimeout(to);rej(e);}};
     s.onerror=()=>{clearTimeout(to);rej(new Error('카카오 지도를 불러오지 못했어요'));};
     document.head.appendChild(s);
@@ -2599,7 +2607,10 @@ function mkLeaflet(el){
       if(o.pop)mk.bindPopup(o.pop);if(o.click)mk.on('click',o.click);if(o.drag)mk.on('dragend',()=>{const q=mk.getLatLng();o.drag([q.lat,q.lng]);});return mk;},
     fit(pts,maxZ,pad){m.fitBounds(L.latLngBounds(pts).pad(pad||.15),{maxZoom:maxZ||17});},
     view(pt,z){m.setView(pt,z);}, pan(pt){m.panTo(pt,{animate:true});}, zoom(){return m.getZoom();},
-    onClick(cb){m.on('click',e=>cb([e.latlng.lat,e.latlng.lng]));}, onDrag(cb){m.on('dragstart',cb);},
+    onClick(cb){m.on('click',e=>{if(Date.now()-LP_AT<900)return;cb([e.latlng.lat,e.latlng.lng]);});}, onDrag(cb){m.on('dragstart',cb);},
+    poly(g,rings,o){return L.polygon(rings,{color:o.color,weight:o.weight,fillColor:o.fill,fillOpacity:o.fillOp}).addTo(g);},
+    popAt(html,pt){L.popup({maxWidth:260,autoPanPadding:[20,60]}).setLatLng(pt).setContent('<div class="lotpop">'+html+'</div>').openOn(m);},
+    onLong(cb){m.on('contextmenu',e=>{if(Date.now()-LP_AT<900)return;LP_AT=Date.now();cb([e.latlng.lat,e.latlng.lng]);});},
     closePop(){m.closePopup();}, resize(){m.invalidateSize();}, destroy(){m.remove();}};
 }
 function mkKakao(el){
@@ -2640,14 +2651,31 @@ function mkKakao(el){
       return ov;},
     fit(pts,maxZ){const b=new K.LatLngBounds();pts.forEach(p=>b.extend(LL(p)));m.setBounds(b,40,40,40,40);const mn=lvOf(maxZ||17);if(m.getLevel()<mn)m.setLevel(mn);},
     view(pt,z){m.setLevel(lvOf(z));m.setCenter(LL(pt));}, pan(pt){m.panTo(LL(pt));}, zoom(){return zOf(m.getLevel());},
-    onClick(cb){K.event.addListener(m,'click',e=>{closePop();cb([e.latLng.getLat(),e.latLng.getLng()]);});}, onDrag(cb){K.event.addListener(m,'dragstart',cb);},
+    onClick(cb){K.event.addListener(m,'click',e=>{if(Date.now()-LP_AT<900)return;closePop();cb([e.latLng.getLat(),e.latLng.getLng()]);});}, onDrag(cb){K.event.addListener(m,'dragstart',cb);},
+    poly(g,rings,o){const p=new K.Polygon({path:rings.map(r=>r.map(LL)),strokeWeight:o.weight,strokeColor:o.color,strokeOpacity:1,fillColor:o.fill,fillOpacity:o.fillOp,zIndex:3});p.setMap(m);g.items.push(p);return p;},
+    popAt(html,pt){showPop('<div class="lotpop">'+html+'</div>',pt);},
+    // v21.15: 지도를 꾸욱 누르면 (손가락 0.55초) · 컴퓨터는 마우스 오른쪽 클릭
+    onLong(cb){
+      let t=null, st=null, n=0;
+      const stop=()=>{clearTimeout(t);t=null;};
+      el.addEventListener('pointerdown',e=>{n++;if(e.pointerType==='mouse'||n>1){stop();return;}
+        if(e.target.closest('.kpop,.kbar,.tlab'))return;
+        st={x:e.clientX,y:e.clientY};stop();
+        t=setTimeout(()=>{t=null;const r=el.getBoundingClientRect();
+          const q=m.getProjection().coordsFromContainerPoint(new K.Point(st.x-r.left,st.y-r.top));
+          LP_AT=Date.now();try{navigator.vibrate&&navigator.vibrate(25);}catch(_){}cb([q.getLat(),q.getLng()]);},550);},true);
+      el.addEventListener('pointermove',e=>{if(t&&st&&Math.hypot(e.clientX-st.x,e.clientY-st.y)>10)stop();},true);
+      const up=()=>{n=Math.max(0,n-1);stop();};
+      el.addEventListener('pointerup',up,true);el.addEventListener('pointercancel',up,true);
+      el.addEventListener('contextmenu',e=>e.preventDefault());
+      K.event.addListener(m,'rightclick',e=>{LP_AT=Date.now();cb([e.latLng.getLat(),e.latLng.getLng()]);});},
     closePop, resize(){m.relayout();}, destroy(){closePop();el.innerHTML='';}};
 }
 // 지도를 원하는 종류로 준비 (카카오가 안 되면 위성 Esri 지도로)
 async function ensureMap(){
   const want=mapWant(), box=document.getElementById('mapBox');
   if(MP&&MP.kind===want)return true;
-  if(MP){try{MP.destroy();}catch(e){}MP=null;mapLayer=liveLayer=posLayer=null;box.innerHTML='';box.className='';box.removeAttribute('style');}
+  if(MP){try{MP.destroy();}catch(e){}MP=null;mapLayer=liveLayer=posLayer=lotLayer=null;box.innerHTML='';box.className='';box.removeAttribute('style');}
   mapErr='';
   if(want==='kakao'){
     try{await loadKakao(kakaoKey());MP=mkKakao(box);}
@@ -2655,7 +2683,8 @@ async function ensureMap(){
   }
   if(!MP){try{await loadLeaflet();MP=mkLeaflet(box);}catch(e){box.innerHTML='<p class="note" style="padding:16px">'+esc(e.message)+' 인터넷 연결을 확인하세요.</p>';return false;}}
   MP.onDrag(()=>{mapFollow=false;});
-  MP.onClick(pt=>{try{posOnMapClick(pt);}catch(er){}});
+  MP.onClick(pt=>{lotClear();try{posOnMapClick(pt);}catch(er){}});
+  MP.onLong(pt=>{lotLookup(pt);});
   return true;
 }
 async function openMap(){
@@ -2687,6 +2716,67 @@ async function openMap(){
   if(all.length)MP.fit(all,17);
   else{MP.view([35.33,129.03],11);document.getElementById('mapTitle').textContent+=' · 아직 기록 없음';}
 }
+
+/* ---------- v21.15 지도 꾸욱 누르면 지번 주소 + 필지 경계 ----------
+   주소: 카카오 주소 변환(지번·도로명) · 경계: 브이월드 연속지적도(LP_PA_CBND_BUBUN) */
+let LP_AT=0, lotLayer=null, LOT=null, lotSeq=0;
+const JIMOK={'대':'대지','전':'전','답':'답','임':'임야','과':'과수원','목':'목장용지','광':'광천지','염':'염전','장':'공장용지','학':'학교용지','주':'주차장','창':'창고용지','도':'도로','철':'철도용지','제':'제방','천':'하천','구':'구거','유':'유지','양':'양어장','수':'수도용지','공':'공원','체':'체육용지','원':'유원지','종':'종교용지','사':'사적지','묘':'묘지','잡':'잡종지','주유':'주유소용지'};
+function lotClear(){if(MP&&lotLayer)MP.clear(lotLayer);lotLayer=null;LOT=null;}
+function kkAddr(pt){return new Promise(res=>{
+  try{if(!(MP&&MP.kind==='kakao'&&kakao.maps.services))return res(null);
+    new kakao.maps.services.Geocoder().coord2Address(pt[1],pt[0],(r,s)=>{if(s!==kakao.maps.services.Status.OK||!r[0])return res(null);
+      res({jibun:r[0].address&&r[0].address.address_name||'',road:r[0].road_address&&r[0].road_address.address_name||''});});
+  }catch(e){res(null);}});}
+function vwLot(pt){return new Promise((res,rej)=>{
+  if(!VWORLD_KEY)return rej(new Error('브이월드 키 없음'));
+  const cb='vwLot'+Date.now()+'_'+Math.floor(Math.random()*1e5), s=document.createElement('script');
+  const done=()=>{clearTimeout(to);try{delete window[cb];}catch(_){window[cb]=undefined;}s.remove();};
+  const to=setTimeout(()=>{done();rej(new Error('브이월드가 응답하지 않아요'));},10000);
+  window[cb]=d=>{done();const r=d&&d.response;
+    if(!r)return rej(new Error('응답 형식 오류'));
+    if(r.status==='NOT_FOUND')return res(null);
+    if(r.status!=='OK')return rej(new Error((r.error&&(r.error.text||r.error.code))||r.status));
+    const f=r.result&&r.result.featureCollection&&r.result.featureCollection.features;res(f&&f[0]||null);};
+  s.onerror=()=>{done();rej(new Error('브이월드에 연결하지 못했어요'));};
+  s.src='https://api.vworld.kr/req/data?service=data&version=2.0&request=GetFeature&data=LP_PA_CBND_BUBUN&format=json&errorFormat=json&size=1&page=1'
+    +'&geometry=true&attribute=true&crs=EPSG:4326&geomFilter='+encodeURIComponent('POINT('+pt[1]+' '+pt[0]+')')
+    +'&key='+encodeURIComponent(VWORLD_KEY)+'&domain='+encodeURIComponent(location.origin)+'&callback='+cb;
+  document.head.appendChild(s);});}
+// 다각형 면적(㎡) — 필지 크기라 평면 근사로 충분
+function ringArea(r){if(r.length<3)return 0;const la0=r[0][0]*Math.PI/180,R=6371008.8,kx=R*Math.cos(la0)*Math.PI/180,ky=R*Math.PI/180;let a=0;
+  for(let i=0,j=r.length-1;i<r.length;j=i++)a+=(r[j][1]*kx)*(r[i][0]*ky)-(r[i][1]*kx)*(r[j][0]*ky);return Math.abs(a/2);}
+async function lotLookup(pt){
+  if(!MP)return;
+  const my=++lotSeq; lotClear(); lotLayer=MP.group();
+  MP.dot(lotLayer,pt,{r:6,fill:'#d63031'});
+  const ll=`<span class="lotll">${pt[0].toFixed(6)}, ${pt[1].toFixed(6)}</span>`;
+  MP.popAt('<b>📍 주소 찾는 중…</b><br>'+ll,pt);
+  const [ka,vw]=await Promise.all([kkAddr(pt),vwLot(pt).then(f=>({f}),e=>({err:e.message||String(e)}))]);
+  if(my!==lotSeq||!MP)return;
+  const f=vw.f, P=f&&f.properties||{};
+  let jibun=(ka&&ka.jibun)||P.addr||'', jimok='', area=0;
+  if(P.jibun){const m=String(P.jibun).match(/([가-힣]+)\s*$/);if(m)jimok=JIMOK[m[1]]||m[1];}
+  if(f&&f.geometry){
+    const g=f.geometry, polys=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];
+    polys.forEach(pl=>{const rings=pl.map(r=>r.map(c=>[c[1],c[0]]));
+      MP.poly(lotLayer,rings,{color:'#ff3b30',weight:3,fill:'#ff3b30',fillOp:.18});
+      area+=ringArea(rings[0])-rings.slice(1).reduce((a,r)=>a+ringArea(r),0);});
+  }
+  LOT={jibun,road:ka&&ka.road||'',pt,pnu:P.pnu||''};
+  let h='';
+  if(jibun)h+=`<b class="lotj">${esc(jibun)}</b>`;else h+='<b>주소를 찾지 못했어요</b>';
+  if(ka&&ka.road)h+=`<div class="lotr">도로명 ${esc(ka.road)}</div>`;
+  if(jimok||area)h+=`<div class="lotm">${jimok?'지목 <b>'+esc(jimok)+'</b>':''}${jimok&&area?' · ':''}${area?'면적 약 <b>'+Math.round(area).toLocaleString()+'㎡</b> ('+Math.round(area/3.3058).toLocaleString()+'평)':''}</div>`;
+  if(vw.err)h+=`<div class="lotw">필지 경계를 못 불러왔어요 (${esc(vw.err)})</div>`;
+  else if(!f)h+='<div class="lotw">이 자리는 지적도 필지가 없어요</div>';
+  h+=ll+(jibun?'<div class="lotb"><button type="button" data-lot="copy">📋 지번 복사</button><button type="button" class="b2" data-lot="clear">경계 지우기</button></div>':'<div class="lotb"><button type="button" class="b2" data-lot="clear">지우기</button></div>');
+  MP.popAt(h,pt);
+}
+function lotBtn(b){
+  if(b.dataset.lot==='clear'){lotClear();if(MP)MP.closePop();return;}
+  if(b.dataset.lot==='copy'&&LOT){const v=LOT.jibun+(LOT.road?'\n(도로명) '+LOT.road:'')+'\n'+LOT.pt[0].toFixed(6)+', '+LOT.pt[1].toFixed(6);
+    try{navigator.clipboard.writeText(v).then(()=>say('주소를 복사했어요.'),()=>say('복사하지 못했어요.'));}catch(e){say('복사하지 못했어요.');}}
+}
 function mapNote(){const n=document.getElementById('mapNote');if(!n)return;n.hidden=!mapErr;n.textContent=mapErr;}
 function mapLive(){
   if(!MP)return;
@@ -2695,7 +2785,7 @@ function mapLive(){
   if(GP&&GP.trk.length)MP.dot(liveLayer,GP.trk[0],{r:5,fill:'#2e7d4f'});
   if(GP&&GP.pos){MP.dot(liveLayer,GP.pos,{r:8,w:3,fill:'#c0392b'});if(mapFollow){if(MP.zoom()<15)MP.view(GP.pos,17);else MP.pan(GP.pos);}}
 }
-function mapPopClick(e){const b=e.target.closest('[data-ms]');if(!b||GP)return;if(MP)MP.closePop();gpsStart(b.dataset.ms,b.dataset.ms==='하차'?b.dataset.md:+b.dataset.md);}
+function mapPopClick(e){const lb=e.target.closest('[data-lot]');if(lb){lotBtn(lb);return;}const b=e.target.closest('[data-ms]');if(!b||GP)return;if(MP)MP.closePop();gpsStart(b.dataset.ms,b.dataset.ms==='하차'?b.dataset.md:+b.dataset.md);}
 document.getElementById('mapClose').addEventListener('click',()=>{if(posMode){posMode=false;document.getElementById('posBar').hidden=true;if(MP)MP.clear(posLayer);posLayer=null;}document.getElementById('mapSet').hidden=true;document.getElementById('mapOv').hidden=true;mapOn=false;try{if(ALL)buildAll();else build();}catch(e){}const r=document.getElementById('rail');r.insertBefore(gpsBar,r.querySelector('.tools'));});
 document.getElementById('mapBtn').addEventListener('click',()=>openMap());
 document.getElementById('mapBox').addEventListener('click',mapPopClick);
