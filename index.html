@@ -965,6 +965,14 @@ function camPatchTick(){
 }
 setInterval(camPatchTick,300);
 
+// 카메라→점 사이를 지형 격자 높이로 훑어서 산이 가리면 true
+let FOCUS=null;
+function occluded(C,x,y,z){
+  const dx=x-C.x,dy=y-C.y,dz=z-C.z,L=Math.hypot(dx,dz); if(L<60)return false;
+  const n=Math.min(28,Math.max(8,Math.round(L/150)));
+  for(let i=1;i<n;i++){const s=i/n*.97;const qx=C.x+dx*s,qz=C.z+dz*s,qy=C.y+dy*s;if(terrH(qx,qz)>qy+3)return true;}
+  return false;
+}
 let ANGLE_GEO=null;
 function steelDetail(t){
   if(t.pole||t.segFrom==null||!G||!G.pos)return;
@@ -1121,7 +1129,7 @@ function buildAll(){
     const m=tw[Math.floor(n/2)], el=document.createElement('div');
     el.className='xtag'; el.style.background='#334155'; el.style.color='#fff';
     el.textContent=l.kv+'kV '+LN(l); labelsEl.appendChild(el);
-    spans.push({i:-1,x:m.x,z:m.z,y:m.y+m.H+60+(m.own||m.share.length?40*(li%3):0),tags:[el]});
+    spans.push({i:-1,x:m.x,z:m.z,y:m.y+m.H+60+(m.own||m.share.length?40*(li%3):0),tags:[el],line:l});
     all.push(...tw.filter(t=>!t.own));
   });
   world.add(poleGrp);
@@ -2889,7 +2897,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.27`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.28`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
@@ -3413,9 +3421,21 @@ function loop(now){
     const hideT=t=>{show(t.tag,false);if(t.landTag)show(t.landTag,false);if(t.kudzuTag)show(t.kudzuTag,false);if(t.slopeTag)show(t.slopeTag,false);if(t.lowTag)show(t.lowTag,false);};
     // 선택한 철탑 → (전체 선로 보기면 선로 이름) → 가까운 철탑 순
     if(selT&&selT.tag){const p=proj(selT.x,selT.y+selT.H+8,selT.z,w,h);if(p)place(selT.tag,p,0,true);else hideT(selT);}
-    if(ALL)spans.forEach(s=>{const p=proj(s.x,s.y-8,s.z,w,h);s.tags.forEach((el,k)=>{if(!p)show(el,false);else place(el,p,k*24);});});
+    // v20.28: 산에 가려진 철탑 번호표는 숨김 · 전체 선로에선 가까이 볼 때 보고 있는 선로만
+    const nowT=performance.now();
+    if(!loop._t||nowT-loop._t>250){loop._t=nowT;
+      const C=camera.position;
+      towers.forEach(t=>{t._occ=G&&G.terr?occluded(C,t.x,t.y+t.H+4,t.z):false;});
+      spans.forEach(s=>{s._occ=ALL&&G&&G.terr?occluded(C,s.x,s.y-8,s.z):false;});
+      FOCUS=null;
+      if(ALL&&camera.position.distanceTo(controls.target)<6000){let bd=1e18;
+        towers.forEach(t=>{const dx=t.x-controls.target.x,dz=t.z-controls.target.z,d=dx*dx+dz*dz;if(d<bd){bd=d;FOCUS=t.line;}});}
+    }
+    const onFocus=t=>!FOCUS||t.line===FOCUS||(t.share&&t.share.some(s=>s.line===FOCUS));
+    if(ALL)spans.forEach(s=>{const p=proj(s.x,s.y-8,s.z,w,h);const lineOf=s.line;
+      s.tags.forEach((el,k)=>{if(!p||s._occ||(FOCUS&&lineOf&&lineOf!==FOCUS))show(el,false);else place(el,p,k*24);});});
     const cand=[];
-    towers.forEach(t=>{if(t===selT)return;const p=proj(t.x,t.y+t.H+8,t.z,w,h);if(!p){hideT(t);return;}
+    towers.forEach(t=>{if(t===selT)return;if(t._occ||(ALL&&!onFocus(t))){hideT(t);return;}const p=proj(t.x,t.y+t.H+8,t.z,w,h);if(!p){hideT(t);return;}
       const dx=t.x-camera.position.x,dy=t.y-camera.position.y,dz=t.z-camera.position.z;cand.push([dx*dx+dy*dy+dz*dz,t,p]);});
     cand.sort((a,b)=>a[0]-b[0]);
     cand.forEach(([d2,t,p])=>{
