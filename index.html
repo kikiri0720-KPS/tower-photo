@@ -2887,7 +2887,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.24`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.25`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
@@ -3333,6 +3333,8 @@ gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syn
     }
     if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
     AS=true; cloudReady=true; selT=null; card.hidden=true; build(); refit(true); writeCache();
+    // v20.25: 첫 화면은 🌐 전체 선로 (위치 찍힌 선로가 있을 때)
+    if(lines.some(l=>l.towers.filter(d=>d.gps&&d.gps.length===2).length>=2))openAll();
     if(localOnly.length&&rows.length){localOnly.forEach(l=>{if(!lines.find(x=>x.id===l.id))lines.push(l);});build();}
     if(!rows.length||localOnly.length) await flush();
     lsSet('tower3d-mig','1');
