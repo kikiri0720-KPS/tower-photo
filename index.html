@@ -1665,6 +1665,7 @@ function nextBranch(l,lb){ // 22 → 22-1, 22-1 → 22-2
   l.towers.forEach(t=>{const p=String(t.label).split('-');if(p[0]===b&&p.length>1){const k=parseInt(p[1],10);if(k>mx)mx=k;}});
   return b+'-'+(mx+1);
 }
+function chLab(l,dir){const t=l.towers[dir<0?0:l.towers.length-1],n=parseInt(baseNo(t.label),10);return isNaN(n)?(dir<0?'0':String(l.towers.length+1)):String(Math.max(0,n+dir));}
 function nextAfterLast(l){const last=l.towers[l.towers.length-1];const n=parseInt(baseNo(last.label),10);return isNaN(n)?String(l.towers.length+1):String(n+1);}
 
 /* ---------- UI ---------- */
@@ -1901,6 +1902,7 @@ function renderCard(){
           <div class="unit" data-unit="" style="margin-top:6px"><input id="fLowMemo" type="text" placeholder="예: 경간 중앙 농로 위, 수목 근접" value="${esc(t.d.lowMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
       <div class="field"><span class="lb">⚡ 케이블헤드 · 가공선이 지중케이블로 바뀌는 곳</span>
         <label class="check"><input type="checkbox" id="xCH" ${t.d.cableHead?'checked':''}>케이블헤드 설치<i class="sw" style="background:#8a8f93"></i></label>
+        ${(()=>{const ix=l.towers.indexOf(t.d),lastI=l.towers.length-1;return (ix===0?`<button class="ghost" type="button" id="chFront" style="margin-top:6px">+ 앞에 케이블헤드 철탑 No.${chLab(l,-1)} 추가</button>`:'')+(ix===lastI?`<button class="ghost" type="button" id="chBack" style="margin-top:6px">+ 뒤에 케이블헤드 철탑 No.${chLab(l,1)} 추가</button>`:'');})()}
         ${t.d.cableHead?(()=>{const cc=cirOf(l,t.d),nn=Math.max(1,Math.min(cc,t.d.chC!=null?t.d.chC:cc));return `<div class="field" style="margin-top:6px"><span class="lb">설치 회선 수 (회선당 3상)</span><div class="stepper"><button type="button" id="chMinus" aria-label="줄이기">−</button><output>${nn} / ${cc}회선</output><button type="button" id="chPlus" aria-label="늘리기">+</button></div></div><p class="note" style="margin:6px 0 0">3D에서 철탑 옆에 애관(원통) ${nn*3}개와 지중으로 내려가는 케이블이 보여요.</p>`;})():''}
       </div>
       ${next?`${SHOW_CROSS?`<div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 횡단</span>
@@ -1934,6 +1936,10 @@ function renderCard(){
   if(!t){const setKv=v=>{if(v>0&&v!==l.kv){l.kv=v;save();build();}};card.querySelectorAll('[data-kvq]').forEach(b=>b.addEventListener('click',()=>setKv(+b.dataset.kvq)));}
   if(q('#goPatrol')) q('#goPatrol').addEventListener('click',startPatrol);
   gpsBind(card,l,t);
+  [['#chFront',-1],['#chBack',1]].forEach(([id,dir])=>{if(!q(id))return;q(id).addEventListener('click',()=>{
+    if(l.towers.length>=MAX_TOWERS)return;
+    const nt=newTower(chLab(l,dir)); nt.cableHead=true; if(dir<0)l.towers.unshift(nt);else l.towers.push(nt);
+    save(); build(); selectTower(towers[dir<0?0:towers.length-1]);});});
   if(q('#addEnd')) q('#addEnd').addEventListener('click',()=>{
     if(l.towers.length>=MAX_TOWERS) return;
     const nt=newTower(nextAfterLast(l)); l.towers.push(nt); save(); build();
@@ -3023,7 +3029,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.9`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.10`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
