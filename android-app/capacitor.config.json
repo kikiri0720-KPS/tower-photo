@@ -1,0 +1,11 @@
+{
+  "appId": "com.kps.tower3d",
+  "appName": "철탑3D",
+  "webDir": "www",
+  "server": {
+    "url": "https://kikiri0720-kps.github.io/tower-photo/",
+    "allowNavigation": ["kikiri0720-kps.github.io"],
+    "cleartext": false
+  },
+  "android": { "allowMixedContent": false }
+}
