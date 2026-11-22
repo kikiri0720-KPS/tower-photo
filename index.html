@@ -405,7 +405,9 @@ const LN=l=>stripTL(l.name)+' T/L';
 const baseH=kv=>kv<=30?22:kv<=80?32:kv<=200?46:kv<=450?62:92;
 const CIRC_MUL={2:1,4:1.32,6:1.45};
 const MAX_TOWERS=300;
-const defGW=kv=>kv===154?1:2;   // 154kV는 가공지선 1조(꼭대기 가운데), 345·765kV는 2조
+const defGW=kv=>kv===154?1:2;
+const gwOf=(l,d)=>d&&(d.gwN===1||d.gwN===2)?d.gwN:l.gw;   // v20.13: 철탑마다 가공지선 조수(1조↔2조 바뀌는 구간)
+const gwPairs=(a,b)=>{const A=Object.keys(a.attach).filter(k=>a.attach[k].gw),B=Object.keys(b.attach).filter(k=>b.attach[k].gw);if(!A.length||!B.length||A.some(k=>B.includes(k)))return [];return A.length===1?B.map(k=>[A[0],k]):A.map(k=>[k,B[0]]);};   // 154kV는 가공지선 1조(꼭대기 가운데), 345·765kV는 2조
 const WT=['OPGW','GW'];
 const gwTxt=l=>l.gw===1?`가공지선 1조(${l.gw1})`:`가공지선 2조(#1 ${l.gw1}·#2 ${l.gw2})`;
 const wireOfKey=(l,key)=>key==='g-1'?l.gw2:l.gw1;          // g1·g0 = #1(또는 가운데), g-1 = #2
@@ -434,7 +436,7 @@ function defaults(){
     {id:'c',name:'사상–북부산 T/L',kv:154,circuits:6,seed:3,towers:c}
   ];
 }
-let lines=null, curId=null, ALL=false;   // ALL: v20.6 전체 선로 3D 보기 중
+let lines=null, curId=null, ALL=false, gwScope='one';   // ALL: v20.6 전체 선로 3D 보기 중
 try{const o=JSON.parse(localStorage.getItem(STORE)||'null');if(o&&Array.isArray(o.lines)&&o.lines.length){lines=o.lines;curId=o.cur;}}catch(e){}
 if(!lines){ // 이전 버전 데이터 옮기기
   try{const o=JSON.parse(localStorage.getItem(OLD)||'null');
@@ -702,7 +704,7 @@ function poleInto(l,t,steel,pos,col,grp0,mat){
   if(slant){const lad=y=>-(rAt(y)+.35);for(let y=1;y<H*.95;y+=1){const y2=Math.min(H*.95,y+1);
     [-.25,.25].forEach(o=>seg([lad(y),y,o],[lad(y2),y2,o],steel)); seg([lad(y),y,-.25],[lad(y),y,.25],steel);}}
   t.W=W; t.poleR=rAt;
-  if(l.gw===1){
+  if(gwOf(l,t.d)===1){
     // 가공지선 1조: 기둥 꼭대기 가운데 지선 받침대
     const Lp=H*.08, spike=new T.Mesh(new T.CylinderGeometry(rT*.35,rT*.8,Lp,10),mat(steel));
     spike.position.set(0,t.y+H+Lp/2,0); grp.add(spike);
@@ -771,7 +773,7 @@ function towerInto(l,t,steel,pos,col){
       hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att);
     });
   }));
-  if(l.gw===1){
+  if(gwOf(l,t.d)===1){
     const tip=[0,H*1.1,0];
     for(let k=0;k<4;k++) seg(corner(k,H*.95),tip);
     const mid=H*1.02, mw=w0*.28;
@@ -1104,8 +1106,8 @@ function buildAll(){
       const a=tw[i], b=tw[i+1], k=[idOf(a),idOf(b)].sort().join('|');
       if(drawn.has(k)){const cs=drawn.get(k);if(!cs.list.includes(lc))cs.list.push(lc);continue;}
       drawn.set(k,{a,b,list:[lc]});
-      Object.keys(a.attach||{}).filter(q=>b.attach&&b.attach[q]).forEach(q=>{
-        const A=a.attach[q].fwd, Q=b.attach[q].back, isG=a.attach[q].gw, arr=isG?gwA:ph;
+      Object.keys(a.attach||{}).filter(q=>b.attach&&b.attach[q]).map(q=>[q,q]).concat(a.attach&&b.attach?gwPairs(a,b):[]).forEach(([q,qb])=>{
+        const A=a.attach[q].fwd, Q=b.attach[qb].back, isG=a.attach[q].gw, arr=isG?gwA:ph;
         const sp=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=sp*sp*.000075*(isG?.8:1); let pv=null;
         for(let s=0;s<=16;s++){const u=s/16,p=[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];if(pv)arr.push(...pv,...p);pv=p;}
       });
@@ -1341,8 +1343,8 @@ function build(){
   for(let i=0;i<n-1;i++){
     let midY=0,cnt=0;
     // v17: 회선 수가 다른 철탑 사이(2회선↔4회선)는 양쪽에 다 있는 회선만 이음
-    Object.keys(towers[i].attach).filter(k=>towers[i+1].attach[k]).forEach(key=>{
-      const A=towers[i].attach[key].fwd, Q=towers[i+1].attach[key].back, isG=towers[i].attach[key].gw;
+    Object.keys(towers[i].attach).filter(k=>towers[i+1].attach[k]).map(k=>[k,k]).concat(gwPairs(towers[i],towers[i+1])).forEach(([key,kb])=>{
+      const A=towers[i].attach[key].fwd, Q=towers[i+1].attach[kb].back, isG=towers[i].attach[key].gw;
       const span=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=span*span*.000075*(isG?.8:1), arr=isG?(wireOfKey(l,key)==='OPGW'?op:gw):ph;
       const at=u=>[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];
       // 다도체: 345kV 4도체, 765kV 6도체 (전력선만)
@@ -1369,10 +1371,11 @@ function build(){
     for(let i=0;i<n-1;i++){
       const d=l.towers[i]; if(!d.ball) continue;
       // #1 가공지선(g1), #2 가공지선(g-1)에 각각 적색·백색 배치
-      (l.gw===1?[['g0',(d.ball1R||0)+(d.ball2R||0),(d.ball1W||0)+(d.ball2W||0)]]:[['g1',d.ball1R||0,d.ball1W||0],['g-1',d.ball2R||0,d.ball2W||0]]).forEach(([key,R,W])=>{
+      (gwOf(l,d)===1?[['g0',(d.ball1R||0)+(d.ball2R||0),(d.ball1W||0)+(d.ball2W||0)]]:[['g1',d.ball1R||0,d.ball1W||0],['g-1',d.ball2R||0,d.ball2W||0]]).forEach(([key,R,W])=>{
         const order=mkOrder(R,W), N=order.length; if(!N) return;
-        if(!towers[i].attach[key]||!towers[i+1].attach[key]) return;
-        const A=towers[i].attach[key].fwd, Q=towers[i+1].attach[key].back;
+        if(!towers[i].attach[key]) return;
+        const kb=towers[i+1].attach[key]?key:(gwPairs(towers[i],towers[i+1]).find(p=>p[0]===key)||[])[1]; if(!kb) return;
+        const A=towers[i].attach[key].fwd, Q=towers[i+1].attach[kb].back;
         const sp=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=sp*sp*.000075*.8;
         for(let k=0;k<N;k++){
           const u=(k+1)/(N+1);
@@ -1661,7 +1664,7 @@ function renderCard(){
       ${nameField(stripTL(l.name))}
       ${kvField(l.kv)}
       <div class="field"><span class="lb">회선 수 · 선로 기본값 (따로 고른 철탑은 그대로)</span>${segHTML('data-circ',[2,4,6],l.circuits,v=>v+'회선')}</div>
-      <div class="field"><span class="lb">가공지선 (꼭대기 지선 수)</span>${segHTML('data-gw',[1,2],l.gw,v=>v===1?'1조 · 가운데':'2조 · 양쪽')}</div>
+      <div class="field"><span class="lb">가공지선 · 선로 기본값 (따로 고른 철탑은 그대로)</span>${segHTML('data-gw',[1,2],l.gw,v=>v===1?'1조 · 가운데':'2조 · 양쪽')}</div>
       <div class="field"><span class="lb">가공지선 종류 · OPGW / GW</span>
         <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
         ${l.gw===1?'':`<div class="row2" style="align-items:center;margin-top:6px"><span class="lb" style="min-width:44px">#2</span>${segHTML('data-wt2',WT,l.gw2,v=>v)}</div>`}</div>
@@ -1705,7 +1708,9 @@ function renderCard(){
         <button class="ghost" type="button" id="gpsCopy" ${t.d.gps?'':'disabled'}>복사</button></div></div>
       <div class="field"><span class="lb">회선 수 · 이 철탑만</span>${segHTML('data-tcir',[2,4,6],cirOf(l,t.d),v=>v+'회선'+(v===l.circuits?' (기본)':''))}
         <span class="lb" style="font-size:12px">선로 기본 ${l.circuits}회선 · 다르게 고른 철탑만 바뀌어요. 기본값은 선로 정보에서 바꿔요.</span></div>
-      <div class="field"><span class="lb">가공지선 (선로 전체 적용)</span>${segHTML('data-gw',[1,2],l.gw,v=>v===1?'1조 · 가운데':'2조 · 양쪽')}</div>
+      <div class="field"><span class="lb">가공지선 · ${gwScope==='one'?'이 철탑만':gwScope==='from'?'이 철탑부터 끝까지':'선로 전체'} 바꿈</span>${segHTML('data-tgw',[1,2],gwOf(l,t.d),v=>(v===1?'1조 · 가운데':'2조 · 양쪽')+(v===l.gw?' (기본)':''))}
+        <div class="row2" style="align-items:center;margin-top:6px"><span class="lb" style="min-width:44px">적용</span>${segHTML('data-gwsc',['one','from','all'],gwScope,v=>v==='one'?'이 철탑만':v==='from'?'여기부터 끝까지':'선로 전체')}</div>
+        <span class="lb" style="font-size:12px">선로 기본 ${l.gw}조 · ${towers.filter(x=>gwOf(l,x.d)!==l.gw).length?'다르게 고른 철탑 '+towers.filter(x=>gwOf(l,x.d)!==l.gw).length+'기':'모든 철탑이 기본값'}</span></div>
       <div class="field"><span class="lb">가공지선 종류 · OPGW / GW</span>
         <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
         ${l.gw===1?'':`<div class="row2" style="align-items:center;margin-top:6px"><span class="lb" style="min-width:44px">#2</span>${segHTML('data-wt2',WT,l.gw2,v=>v)}</div>`}</div>
@@ -1771,6 +1776,13 @@ function renderCard(){
   card.querySelectorAll('[data-circ]').forEach(b=>b.addEventListener('click',()=>{l.circuits=+b.dataset.circ;l.towers.forEach(d=>{if(+d.cir===l.circuits)delete d.cir;});save();build();}));
   card.querySelectorAll('[data-tcir]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.tcir;if(cirOf(l,t.d)===v)return;if(v===l.circuits)delete t.d.cir;else t.d.cir=v;save();build();}));
   card.querySelectorAll('[data-gw]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.gw;if(v!==l.gw){l.gw=v;save();build();}}));
+  card.querySelectorAll('[data-gwsc]').forEach(b=>b.addEventListener('click',()=>{gwScope=b.dataset.gwsc;renderCard();}));
+  card.querySelectorAll('[data-tgw]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.tgw;if(!t)return;
+    const setD=d=>{if(v===l.gw)delete d.gwN;else d.gwN=v;};
+    if(gwScope==='all'){l.gw=v;l.towers.forEach(d=>delete d.gwN);}
+    else if(gwScope==='from'){l.towers.slice(t.i).forEach(setD);}
+    else setD(t.d);
+    save();build();renderCard();}));
   card.querySelectorAll('[data-wt1]').forEach(b=>b.addEventListener('click',()=>{if(l.gw1!==b.dataset.wt1){l.gw1=b.dataset.wt1;save();build();}}));
   card.querySelectorAll('[data-wt2]').forEach(b=>b.addEventListener('click',()=>{if(l.gw2!==b.dataset.wt2){l.gw2=b.dataset.wt2;save();build();}}));
   if(!t&&q('#fName')) q('#fName').addEventListener('change',e=>{const v=stripTL(e.target.value);if(v){l.name=v;e.target.value=v;save();renderHead();}});
@@ -2829,7 +2841,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.12`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.13`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
