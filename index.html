@@ -467,10 +467,13 @@ const ID_DOMAIN='tower3d.kps', T_MEM='tower3d_members';
 const RO_MSG='보기 전용이에요 · 🔑 로그인(관리자 승인된 회원)하면 고칠 수 있어요';
 let ME=null;   // {uid,login,name,approved,admin}
 const canEdit=()=>!!(ME&&ME.approved);
+const isAdmin=()=>!!(ME&&ME.approved&&ME.admin);   // v21.4: 선로 삭제·전체 덮어쓰기는 관리자만
+const ADM_MSG='선로 삭제는 관리자만 할 수 있어요';
 function authBtnPaint(){const b=document.getElementById('authBtn');if(!b)return;
   b.textContent=!ME?'🔑 로그인':ME.approved?'👤 '+(ME.name||ME.login):'⏳ 승인 대기';
   b.className='sync '+(!ME?'busy':ME.approved?'ok':'err');document.body.classList.toggle('ro',!canEdit());
-  const a=document.getElementById('allAuth');if(a)a.textContent=b.textContent;}
+  const a=document.getElementById('allAuth');if(a)a.textContent=b.textContent;
+  const dl=document.getElementById('delLine2');if(dl)dl.style.display=isAdmin()?'':'none';}
 async function loadMe(){
   if(!sb){ME=null;authBtnPaint();return;}
   try{const {data:{session}}=await sb.auth.getSession();
@@ -1783,7 +1786,7 @@ function renderCard(){
       ${gpsSpanFieldHTML(l)}
       <div class="actions">
         <button class="ghost" type="button" id="addEnd">+ 끝에 No.${nextAfterLast(l)} 추가</button>
-        <button class="ghost danger" type="button" id="delLine">${confirmDel==='line'?'한 번 더 누르면 선로가 삭제됩니다':'이 선로 삭제'}</button>
+        ${isAdmin()?`<button class="ghost danger" type="button" id="delLine">${confirmDel==='line'?'한 번 더 누르면 선로가 삭제됩니다':'이 선로 삭제'}</button>`:''}
       </div>
       <p class="note">철탑을 누르면 높이·경간, 현수·내장, 항공 철탑, 횡단을 입력할 수 있어요. 중간 철탑(No.22-1)도 끼워넣을 수 있어요. 수정 내용은 서버에 자동 저장되고, 이 주소를 아는 직원끼리 같이 봐요. 철탑의 📸 기별사진에서 사진을 등록하세요.</p>`;
   }else{
@@ -1907,6 +1910,7 @@ function renderCard(){
     selectTower(towers[towers.length-1]);
   });
   if(q('#delLine')) q('#delLine').addEventListener('click',()=>{
+    if(!isAdmin()){q('#delLine').textContent=ADM_MSG;say(ADM_MSG);return;}
     if(lines.length<=1){q('#delLine').textContent='선로가 하나뿐이라 삭제할 수 없어요';return;}
     if(confirmDel!=='line'){confirmDel='line';renderCard();return;}
     confirmDel=null; dropPhotos(l.towers.map(d=>d.id)); lines=lines.filter(x=>x.id!==l.id); curId=lines[0].id; save(); selT=null; card.hidden=true; build(); refit();
@@ -2743,6 +2747,7 @@ document.getElementById('addLine').addEventListener('click',()=>{
 const delBtn=document.getElementById('delLine2'); let delArm=null;
 const delReset=()=>{clearTimeout(delArm);delArm=null;delBtn.textContent='선로 삭제';delBtn.classList.remove('danger');};
 delBtn.addEventListener('click',()=>{
+  if(!isAdmin()){say(ADM_MSG);return;}
   if(lines.length<=1){delBtn.textContent='선로가 1개뿐이에요';clearTimeout(delArm);delArm=setTimeout(delReset,1800);return;}
   if(!delArm||delBtn.textContent==='선로가 1개뿐이에요'){clearTimeout(delArm);delBtn.textContent=`${LN(cur())} 삭제? 한 번 더`;delBtn.classList.add('danger');delArm=setTimeout(delReset,3500);return;}
   delReset(); if(play) stopPatrol();
@@ -2755,6 +2760,7 @@ let bkConfirm=false;
 let pushConfirm=false;
 async function pushAll(){
   if(!canEdit()){say(RO_MSG);return;}
+  if(!isAdmin()){say('서버 전체 덮어쓰기는 관리자만 할 수 있어요');return;}
   clearTimeout(flushT); flushT=null;
   while(flushing) await new Promise(ok=>setTimeout(ok,200));
   const now={}; lines.forEach(l=>now[l.id]=JSON.stringify(l));
@@ -2983,7 +2989,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.3`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.4`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
