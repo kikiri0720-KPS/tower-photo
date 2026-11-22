@@ -1509,7 +1509,7 @@ function build(){
 function makeCrossTags(){
   spans.forEach(s=>{s.tags.forEach(el=>el.remove());s.tags=[];
     const d=towers[s.i].d;
-    if(d.lowClr){const el=document.createElement('div');el.className='xtag';el.style.background='var(--danger)';el.textContent='⚠ 저지상고'+(d.lowH!=null?' '+d.lowH+'m':'')+(d.lowH!=null&&d.lowStd!=null&&d.lowH<d.lowStd?' (기준 '+d.lowStd+'m)':'');labelsEl.appendChild(el);s.tags.push(el);}
+    if(d.lowClr){const el=document.createElement('div');el.className='xtag';el.style.background='var(--danger)';el.textContent='⚠ 저지상고'+(d.lowH!=null?' '+d.lowH+'m':''); labelsEl.appendChild(el);s.tags.push(el);}
     if(SHOW_CROSS)CROSS.forEach(c=>{if(d[c.k]){const el=document.createElement('div');el.className='xtag '+c.cls;el.textContent=c.name+(d.xn&&d.xn[c.k]?' · '+d.xn[c.k]:'');labelsEl.appendChild(el);s.tags.push(el);}});
     if(d.ball&&((d.ball1R||0)+(d.ball1W||0)+(d.ball2R||0)+(d.ball2W||0)>0)){const ps=[];if(cur().gw===1)ps.push(`적${(d.ball1R||0)+(d.ball2R||0)}·백${(d.ball1W||0)+(d.ball2W||0)}`);else{if((d.ball1R||0)+(d.ball1W||0)>0)ps.push(`#1 적${d.ball1R||0}·백${d.ball1W||0}`);if((d.ball2R||0)+(d.ball2W||0)>0)ps.push(`#2 적${d.ball2R||0}·백${d.ball2W||0}`);}const el=document.createElement('div');el.className='xtag ball';el.textContent='항공구 '+ps.join(' ');labelsEl.appendChild(el);s.tags.push(el);}});
 }
@@ -1591,7 +1591,7 @@ function renderHead(){
     +LAND.map(x=>{const n=towers.filter(PICKS[x.k].f).length;return pk(x.k,x.name+' '+n+'기',n);}).join(' · ')
     +' · '+pk('kudzu','칡넝쿨 '+towers.filter(PICKS.kudzu.f).length+'기',towers.filter(PICKS.kudzu.f).length)
     +' · '+pk('sanbok','산복개소 '+towers.filter(PICKS.sanbok.f).length+'기'+(()=>{const n=towers.filter(t=>t.d.sanbok&&t.d.sanbokSt==='보강 필요').length;return n?' (보강 필요 '+n+')':'';})(),towers.filter(PICKS.sanbok.f).length)
-    +' · '+pk('lowClr','저지상고 '+towers.filter(PICKS.lowClr.f).length+'곳'+(()=>{const n=towers.filter(t=>t.d.lowClr&&t.d.lowH!=null&&t.d.lowStd!=null&&t.d.lowH<t.d.lowStd).length;return n?' (기준 미달 '+n+')':'';})(),towers.filter(PICKS.lowClr.f).length)
+    +' · '+pk('lowClr','저지상고 '+towers.filter(PICKS.lowClr.f).length+'곳',towers.filter(PICKS.lowClr.f).length)
     +' · '+pk('mtag','모바일태그 '+towers.filter(PICKS.mtag.f).length+'기',towers.filter(PICKS.mtag.f).length)
     +(towers.some(PICKS.green.f)?' · '+pk('green','녹색 도장 '+towers.filter(PICKS.green.f).length+'기',towers.filter(PICKS.green.f).length):'')
     +(towers.some(PICKS.avEco.f)?' · '+pk('avEco','친환경 도색 '+towers.filter(PICKS.avEco.f).length+'기',towers.filter(PICKS.avEco.f).length):'')
@@ -1757,9 +1757,7 @@ function renderCard(){
         <p class="note" style="margin:6px 0 0">3D에서 철탑 둘레에 갈색 표시와 내리막 방향 화살표가 보여요${t.y!=null&&t.slope!=null?` · 지형 경사 약 ${Math.round(t.slope)}°`:''}.</p>`:''}</div>
       <div class="field"><span class="lb">⚠ 저지상고 · ${next?`경간 ${esc(H_(t))} → ${esc(H_(next))} 전선이 땅·나무·지장물에 가까운 곳`:'이 철탑 주변 전선이 낮은 곳'}</span>
         <label class="check"><input type="checkbox" id="xLow" ${t.d.lowClr?'checked':''}>저지상고<i class="sw" style="background:var(--danger)"></i></label>
-        ${t.d.lowClr?`<div class="row2" style="margin-top:6px"><div class="unit" data-unit="m"><input id="fLowH" type="number" inputmode="decimal" step="0.1" placeholder="지상고" value="${t.d.lowH!=null?t.d.lowH:''}"></div>
-          <div class="unit" data-unit="m"><input id="fLowStd" type="number" inputmode="decimal" step="0.1" placeholder="기준" value="${t.d.lowStd!=null?t.d.lowStd:''}"></div></div>
-          ${t.d.lowH!=null&&t.d.lowStd!=null?`<p class="note" style="margin:4px 0 0;color:${t.d.lowH<t.d.lowStd?'var(--danger)':'inherit'}">${t.d.lowH<t.d.lowStd?'기준보다 '+(t.d.lowStd-t.d.lowH).toFixed(1)+' m 낮음':'기준 이상 (여유 '+(t.d.lowH-t.d.lowStd).toFixed(1)+' m)'}</p>`:''}
+        ${t.d.lowClr?`<div class="unit" data-unit="m" style="margin-top:6px"><input id="fLowH" type="number" inputmode="decimal" step="0.1" placeholder="지상고" value="${t.d.lowH!=null?t.d.lowH:''}"></div>
           <div class="unit" data-unit="" style="margin-top:6px"><input id="fLowMemo" type="text" placeholder="예: 경간 중앙 농로 위, 수목 근접" value="${esc(t.d.lowMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
       ${next?`${SHOW_CROSS?`<div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 횡단</span>
         <div class="checks">${CROSS.map(c=>`<label class="check"><input type="checkbox" data-x="${c.k}" ${t.d[c.k]?'checked':''}>${c.name}<i class="sw" style="background:${c.c}"></i></label>`).join('')}</div></div>`:''}
@@ -1838,7 +1836,7 @@ function renderCard(){
   if(q('#fSanbokMemo'))q('#fSanbokMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.sanbokMemo=v;else delete t.d.sanbokMemo;save();renderHead();});
   // v20.15: 저지상고
   q('#xLow').addEventListener('change',e=>{t.d.lowClr=e.target.checked;if(!t.d.lowClr){delete t.d.lowH;delete t.d.lowStd;delete t.d.lowMemo;}save();build();});
-  [['#fLowH','lowH'],['#fLowStd','lowStd']].forEach(([id,k])=>{if(q(id))q(id).addEventListener('change',e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=0)t.d[k]=Math.round(v*10)/10;else delete t.d[k];save();build();});});
+  [['#fLowH','lowH']].forEach(([id,k])=>{if(q(id))q(id).addEventListener('change',e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=0)t.d[k]=Math.round(v*10)/10;else delete t.d[k];save();build();});});
   if(q('#fLowMemo'))q('#fLowMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.lowMemo=v;else delete t.d.lowMemo;save();renderHead();});
   // v19: 위치 직접 입력 (찍어 둔 값은 그대로 보여 주고, 고치면 그 값으로)
   q('#fGps').addEventListener('change',e=>{
@@ -2854,7 +2852,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.15`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.16`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
