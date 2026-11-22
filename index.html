@@ -1374,6 +1374,7 @@ function build(){
     const mk=(arr,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(arr,3));return new T.LineSegments(gg,new T.LineBasicMaterial({color}));};
     const wires=new T.Group(); wires.add(mk(ph,wireC)); if(gw.length)wires.add(mk(gw,steel)); if(op.length)wires.add(mk(op,OPGW_C)); wires.visible=showWires; world.add(wires); world.userData.wires=wires;
     // 항공장애표시구: 가공지선에 주황·백색 번갈아 설치
+    const ballGrp=new T.Group(); ballGrp.visible=pickKey==='ball'; world.add(ballGrp); world.userData.balls=ballGrp;
     const ballG=new T.SphereGeometry(1.4,12,10), mO=new T.MeshLambertMaterial({color:0xe2581b}), mW=new T.MeshLambertMaterial({color:0xf2f2ee});
     const mkOrder=(R,W)=>{const o=[];while((R>0||W>0)&&o.length<60){if(R>0){o.push(true);R--;}if(W>0){o.push(false);W--;}}return o;};
     for(let i=0;i<n-1;i++){
@@ -1389,7 +1390,7 @@ function build(){
           const u=(k+1)/(N+1);
           const m=new T.Mesh(ballG,order[k]?mO:mW);
           m.position.set(A[0]+(Q[0]-A[0])*u, A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u)-1.4, A[2]+(Q[2]-A[2])*u);
-          wires.add(m);
+          ballGrp.add(m);
         }
       });
     }
@@ -1517,7 +1518,7 @@ function makeCrossTags(){
   spans.forEach(s=>{s.tags.forEach(el=>el.remove());s.tags=[];
     const d=towers[s.i].d;
     if(SHOW_CROSS)CROSS.forEach(c=>{if(d[c.k]){const el=document.createElement('div');el.className='xtag '+c.cls;el.textContent=c.name+(d.xn&&d.xn[c.k]?' · '+d.xn[c.k]:'');labelsEl.appendChild(el);s.tags.push(el);}});
-    if(d.ball&&((d.ball1R||0)+(d.ball1W||0)+(d.ball2R||0)+(d.ball2W||0)>0)){const ps=[];if(cur().gw===1)ps.push(`적${(d.ball1R||0)+(d.ball2R||0)}·백${(d.ball1W||0)+(d.ball2W||0)}`);else{if((d.ball1R||0)+(d.ball1W||0)>0)ps.push(`#1 적${d.ball1R||0}·백${d.ball1W||0}`);if((d.ball2R||0)+(d.ball2W||0)>0)ps.push(`#2 적${d.ball2R||0}·백${d.ball2W||0}`);}const el=document.createElement('div');el.className='xtag ball';el.textContent='항공구 '+ps.join(' ');labelsEl.appendChild(el);s.tags.push(el);}});
+    if(pickKey==='ball'&&d.ball&&((d.ball1R||0)+(d.ball1W||0)+(d.ball2R||0)+(d.ball2W||0)>0)){const ps=[];if(cur().gw===1)ps.push(`적${(d.ball1R||0)+(d.ball2R||0)}·백${(d.ball1W||0)+(d.ball2W||0)}`);else{if((d.ball1R||0)+(d.ball1W||0)>0)ps.push(`#1 적${d.ball1R||0}·백${d.ball1W||0}`);if((d.ball2R||0)+(d.ball2W||0)>0)ps.push(`#2 적${d.ball2R||0}·백${d.ball2W||0}`);}const el=document.createElement('div');el.className='xtag ball';el.textContent='항공구 '+ps.join(' ');labelsEl.appendChild(el);s.tags.push(el);}});
 }
 const crossOf=d=>CROSS.filter(c=>d[c.k]);
 const SANBOK_ST=['','양호','관찰','보강 필요'];   // v19: 산복개소 상태
@@ -1568,7 +1569,7 @@ function dmpKinds(l){
 const DMP_G=[{k:'dmpP',name:'전력선 댐퍼',keys:['dmpPS','dmpPL']},{k:'dmpGW',name:'GW',keys:['dmpGWS','dmpGWL']},{k:'dmpOP',name:'OPGW 댐퍼',keys:['dmpOPS','dmpOPL']}];
 const dmpSum=(d,g)=>g.keys.reduce((a,k)=>a+(d[k]>0?d[k]:0),0);
 const dmpGroups=l=>{const ks=dmpKinds(l).map(x=>x.k);return DMP_G.filter(g=>g.keys.some(k=>ks.includes(k)));};
-let pickKey=null, pickLine=null;
+var pickKey=null, pickLine=null;
 const MT_LEGS=['A','B','C','D'];
 const PICKS={angle:{n:'각도주',f:t=>!!t.ang},aviation:{n:'도색',f:t=>t.aviation},lamp:{n:'항공등',f:t=>t.lamp},ball:{n:'항공구',f:t=>t.d.ball&&t.d.ballN>0},kudzu:{n:'칡넝쿨',f:t=>t.d.kudzu},green:{n:'녹색 도장',f:t=>!!t.d.green},mtag:{n:'모바일태그',f:t=>(t.d.mtag||[]).length>0},avEco:{n:'친환경 도색',f:t=>t.aviation&&!!t.d.avEco}};
 CROSS.forEach(c=>PICKS[c.k]={n:c.name,f:t=>t.d[c.k]});
@@ -1579,7 +1580,7 @@ PICKS.sanbok={n:'산복개소',f:t=>!!t.d.sanbok}; PICKS.lowClr={n:'저지상고
 PICKS.gwBait={n:'GW 배이트',f:t=>t.d.gwKind==='bait'&&dmpSum(t.d,DMP_G[1])>0};
 document.getElementById('stats').addEventListener('click',e=>{
   const g=e.target.closest('[data-go]'); if(g){const t=towers[+g.dataset.go]; if(t){selectTower(t); renderHead();} return;}
-  const k=e.target.closest('[data-pk]'); if(k){pickKey=pickKey===k.dataset.pk?null:k.dataset.pk; renderHead();}
+  const k=e.target.closest('[data-pk]'); if(k){pickKey=pickKey===k.dataset.pk?null:k.dataset.pk; if(world&&world.userData.balls)world.userData.balls.visible=pickKey==='ball'; if(!ALL)makeCrossTags(); renderHead();}
 });
 function renderHead(){
   const l=cur();
@@ -1592,7 +1593,7 @@ function renderHead(){
   const pk=(k,txt,n)=>n>0?`<span class="pk${pickKey===k?' on':''}" data-pk="${k}" role="button">${txt}</span>`:txt;
   const lampSum=towers.filter(t=>t.lamp).reduce((a,t)=>({high:a.high+t.lampN.high,mid:a.mid+t.lampN.mid,low:a.low+t.lampN.low}),{high:0,mid:0,low:0});
   const hit=pickKey&&PICKS[pickKey]?towers.filter(PICKS[pickKey].f):[];
-  document.getElementById('stats').innerHTML=`No.${esc(first)}~No.${esc(last)} · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · ${pk('aviation','도색 '+towers.filter(PICKS.aviation.f).length,towers.filter(PICKS.aviation.f).length)} · ${pk('lamp','항공등 '+esc(lampTxt(lampSum,true)),towers.filter(PICKS.lamp.f).length)} · ${pk('ball','항공구 '+ballSum(l)+'개',towers.filter(PICKS.ball.f).length)} · `
+  document.getElementById('stats').innerHTML=`No.${esc(first)}~No.${esc(last)} · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · ${pk('aviation','도색 '+towers.filter(PICKS.aviation.f).length,towers.filter(PICKS.aviation.f).length)} · ${pk('lamp','항공등 '+esc(lampTxt(lampSum,true)),towers.filter(PICKS.lamp.f).length)} · ${pk('ball','✈ 항공구 설치개소 '+towers.filter(PICKS.ball.f).length+'곳 ('+ballSum(l)+'개)',towers.filter(PICKS.ball.f).length)} · `
     +(SHOW_CROSS?CROSS.map(c=>{const n=towers.filter(PICKS[c.k].f).length;return pk(c.k,c.name.replace('횡단','')+' '+n,n);}).join(' · ')+'\n':'')
     +LAND.map(x=>{const n=towers.filter(PICKS[x.k].f).length;return pk(x.k,x.name+' '+n+'기',n);}).join(' · ')
     +' · '+pk('kudzu','칡넝쿨 '+towers.filter(PICKS.kudzu.f).length+'기',towers.filter(PICKS.kudzu.f).length)
@@ -2886,7 +2887,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.23`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.24`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
