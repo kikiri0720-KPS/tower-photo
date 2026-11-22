@@ -469,7 +469,8 @@ let ME=null;   // {uid,login,name,approved,admin}
 const canEdit=()=>!!(ME&&ME.approved);
 function authBtnPaint(){const b=document.getElementById('authBtn');if(!b)return;
   b.textContent=!ME?'🔑 로그인':ME.approved?'👤 '+(ME.name||ME.login):'⏳ 승인 대기';
-  b.className='sync '+(!ME?'busy':ME.approved?'ok':'err');document.body.classList.toggle('ro',!canEdit());}
+  b.className='sync '+(!ME?'busy':ME.approved?'ok':'err');document.body.classList.toggle('ro',!canEdit());
+  const a=document.getElementById('allAuth');if(a)a.textContent=b.textContent;}
 async function loadMe(){
   if(!sb){ME=null;authBtnPaint();return;}
   try{const {data:{session}}=await sb.auth.getSession();
@@ -1236,6 +1237,8 @@ function buildAll(){
   bar.innerHTML=`<button class="btn" type="button" id="allBack">← 돌아가기</button>`
     +`<b style="white-space:nowrap;font-size:13px">🌐 ${items.length}개 선로 · ${all.length}기${nShare?' · 4회선 '+nShare+'기':''}</b>`
 ;
+  bar.insertAdjacentHTML('beforeend','<button class="btn" type="button" id="allAuth">🔑 로그인</button>');
+  document.getElementById('allAuth').onclick=()=>openAuth('login'); authBtnPaint();
   document.getElementById('allBack').onclick=()=>allExit();
   chipsEl.hidden=true;
   {const hd=document.querySelector('header.head');if(hd)hd.style.display='none';}   // v20.27: 전체 선로에선 개별 선로 정보판 숨김
