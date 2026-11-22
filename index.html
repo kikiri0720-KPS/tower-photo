@@ -1759,12 +1759,16 @@ function renderAdd(){
     <div class="field"><span class="lb">철탑 호수</span>
       <div class="row2"><div class="unit" data-unit="번부터"><input id="fFrom" type="number" inputmode="numeric" min="1" value="${d.from}" aria-label="시작 호수"></div>
       <div class="unit" data-unit="번까지"><input id="fTo" type="number" inputmode="numeric" min="1" value="${d.to}" aria-label="끝 호수"></div></div></div>
+    <div class="field"><span class="lb">⚡ 케이블헤드 철탑 (지중케이블로 이어지는 철골타워)</span>
+      <div class="checks"><label class="check"><input type="checkbox" id="chS" ${d.chS?'checked':''}>시작 앞에 (No.${(d.from>1?d.from-1:0)})<i class="sw" style="background:#8a8f93"></i></label>
+      <label class="check"><input type="checkbox" id="chE" ${d.chE?'checked':''}>끝 뒤에 (No.${(d.to>0?d.to+1:'')})<i class="sw" style="background:#8a8f93"></i></label></div>
+      <p class="note" style="margin:6px 0 0">체크하면 그 자리에 철탑이 하나 더 생기고 케이블헤드가 표시돼요. GPS를 찍으면 지도에도 떠요.</p></div>
     <p class="err" id="addErr" hidden></p>
     <p class="note">22-1호처럼 중간 철탑은 추가한 뒤 22호를 눌러 끼워넣을 수 있어요.</p>
     <div class="actions"><button class="primary" type="button" id="addOk">선로 추가</button>
     <button class="ghost" type="button" id="addNo">취소</button></div>`;
   const q=x=>card.querySelector(x);
-  const keep=()=>{d.name=stripTL(q('#fName').value);d.from=parseInt(q('#fFrom').value,10);d.to=parseInt(q('#fTo').value,10);};
+  const keep=()=>{d.chS=q('#chS').checked;d.chE=q('#chE').checked;d.name=stripTL(q('#fName').value);d.from=parseInt(q('#fFrom').value,10);d.to=parseInt(q('#fTo').value,10);};
   const close=()=>{addMode=false;card.hidden=true;};
   q('.close').addEventListener('click',close); q('#addNo').addEventListener('click',close);
   card.querySelectorAll('[data-kvq]').forEach(b=>b.addEventListener('click',()=>{keep();d.kv=+b.dataset.kvq;if(!d.gwSet)d.gw=defGW(d.kv);renderAdd();}));
@@ -1777,7 +1781,7 @@ function renderAdd(){
     if(!(d.to>d.from)) return bad('끝 호수가 시작 호수보다 커야 해요.','#fTo');
     if(d.to-d.from+1>MAX_TOWERS) return bad(`한 선로에 ${MAX_TOWERS}기까지 넣을 수 있어요.`,'#fTo');
     const id='l'+Date.now().toString(36);
-    lines.push({id,name:stripTL(d.name),kv:d.kv,circuits:d.circuits,gw:d.gw||defGW(d.kv),seed:Math.round(Math.random()*90)+4,towers:range(d.from,d.to)});
+    lines.push({id,name:stripTL(d.name),kv:d.kv,circuits:d.circuits,gw:d.gw||defGW(d.kv),seed:Math.round(Math.random()*90)+4,towers:(()=>{const ts=range(d.from,d.to);const ch=lab=>{const t=newTower(lab);t.cableHead=true;return t;};if(d.chS)ts.unshift(ch(d.from>1?d.from-1:0));if(d.chE)ts.push(ch(d.to+1));return ts;})()});
     addMode=false; curId=id; selT=null; save(); build(); refit(); renderCard();
   });
   card.hidden=false;
@@ -2628,7 +2632,7 @@ async function openMap(){
     if(ac&&ac.trk&&ac.trk.length>1){MP.line(mapLayer,ac.trk,{color:'#2e7d4f',weight:4,opacity:.9,dash:true},`🚗 진입로 → No.${esc(d.label)}<br><b>${kmT(ac.m)}</b> · ${hms(ac.sec)}<br>${esc(ac.date)}`);ac.trk.forEach(p=>all.push(p));
       MP.dot(mapLayer,ac.trk[0],{r:6,fill:'#2f6fd6'},'🚗 No.'+esc(d.label)+' 차 세우는 곳');}
     if(d.gps){const nx=l.towers[i+1],pv=l.towers[i-1];
-      MP.label(mapLayer,d.gps,'<div class="tlab">No.'+esc(d.label)+(d.sanbok?' ⛰':'')+(d.lowClr?' ⚠':'')+'</div>',{pop:`<div class="tpop"><b>No.${esc(d.label)}</b>${d.sanbok?' <span style="color:#8a5a2b">⛰ 산복개소'+(d.sanbokSt?' · '+esc(d.sanbokSt):'')+'</span>':''}${d.lowClr?' <span style="color:#c0392b">⚠ 저지상고'+(d.lowH!=null?' '+d.lowH+'m':'')+'</span>':''}<br><span style="font-size:12px;color:#555">${d.gps[0].toFixed(6)}, ${d.gps[1].toFixed(6)}</span>${GP?'<br>순시 기록 중':(nx?`<button data-ms="${esc(d.label)}" data-md="1">▶ 여기서 No.${esc(nx.label)} 쪽 출발</button>`:'')+(pv?`<button class="b2" data-ms="${esc(d.label)}" data-md="-1">◀ No.${esc(pv.label)} 쪽 출발</button>`:'')+`<button class="b2" data-ms="하차" data-md="${esc(d.label)}">🚗 차에서 내린 곳 → 여기까지</button>`}</div>`});
+      MP.label(mapLayer,d.gps,'<div class="tlab">No.'+esc(d.label)+(d.cableHead?' ⚡':'')+(d.sanbok?' ⛰':'')+(d.lowClr?' ⚠':'')+'</div>',{pop:`<div class="tpop"><b>No.${esc(d.label)}</b>${d.sanbok?' <span style="color:#8a5a2b">⛰ 산복개소'+(d.sanbokSt?' · '+esc(d.sanbokSt):'')+'</span>':''}${d.lowClr?' <span style="color:#c0392b">⚠ 저지상고'+(d.lowH!=null?' '+d.lowH+'m':'')+'</span>':''}<br><span style="font-size:12px;color:#555">${d.gps[0].toFixed(6)}, ${d.gps[1].toFixed(6)}</span>${GP?'<br>순시 기록 중':(nx?`<button data-ms="${esc(d.label)}" data-md="1">▶ 여기서 No.${esc(nx.label)} 쪽 출발</button>`:'')+(pv?`<button class="b2" data-ms="${esc(d.label)}" data-md="-1">◀ No.${esc(pv.label)} 쪽 출발</button>`:'')+`<button class="b2" data-ms="하차" data-md="${esc(d.label)}">🚗 차에서 내린 곳 → 여기까지</button>`}</div>`});
       all.push(d.gps);}
   });
   // 위치가 있는 철탑끼리 선로를 이어서 표시
@@ -3019,7 +3023,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.8`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.9`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
