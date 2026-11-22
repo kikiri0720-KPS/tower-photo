@@ -796,6 +796,7 @@ let showWires=true, showTags=true, showPath=false, selT=null, play=null;
 const labelsEl=document.getElementById('labels');
 const LAND=[{k:'paddy',name:'논',c:'var(--paddy)',v:'--paddy'},{k:'field',name:'밭',c:'var(--field)',v:'--field'},{k:'urban',name:'도심지',c:'var(--urban)',v:'--urban'}];
 const landOf=d=>LAND.find(x=>x.k===d.land);
+const SHOW_CROSS=false;   // v20.14: 실제 지도(항공사진)가 들어가서 도로·강·철도·골짜기 횡단 표시는 숨김 (입력해 둔 값은 그대로 보관)
 const CROSS=[{k:'road',name:'도로횡단',cls:'road',c:'var(--road)'},{k:'river',name:'강횡단',cls:'river',c:'var(--river)'},{k:'rail',name:'철도횡단',cls:'xrail',c:'var(--railc)'},{k:'valley',name:'골짜기횡단',cls:'valley',c:'var(--water)'}];
 
 /* ---------- 실제 지형 (v18): 순시 [도착]으로 모인 철탑 GPS 위치 + 공개 표고 자료(AWS Terrarium) + 위성 사진(Esri) ----------
@@ -1464,7 +1465,7 @@ function build(){
     const railLine=(sp,len)=>{const ax=Math.cos(sp.h), az=Math.sin(sp.h), ux=-az, uz=ax, p=[], N=Math.round(len/15);
       [-.75,.75].forEach(o=>{for(let k=0;k<N;k++){const s1=-len/2+len*k/N,s2=-len/2+len*(k+1)/N;const x1=sp.x+ux*s1+ax*o,z1=sp.z+uz*s1+az*o,x2=sp.x+ux*s2+ax*o,z2=sp.z+uz*s2+az*o;p.push(x1,elev(x1,z1)+.6,z1,x2,elev(x2,z2)+.6,z2);}});
       const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(p,3));world.add(new T.LineSegments(gg,new T.LineBasicMaterial({color:0x3a3a3a})));};
-    spans.forEach(sp=>{const d=l.towers[sp.i];
+    if(SHOW_CROSS)spans.forEach(sp=>{const d=l.towers[sp.i];
       if(d.road){strip(sp,9,0x55595c,.35,900);strip(sp,.4,0xe8e4d4,.45,900);}
       if(d.river) strip(sp,60,0x3f7fbf,.25,1400);
       if(d.rail){strip(sp,5,0x7a6a58,.3,900);railLine(sp,900);}
@@ -1508,7 +1509,7 @@ function build(){
 function makeCrossTags(){
   spans.forEach(s=>{s.tags.forEach(el=>el.remove());s.tags=[];
     const d=towers[s.i].d;
-    CROSS.forEach(c=>{if(d[c.k]){const el=document.createElement('div');el.className='xtag '+c.cls;el.textContent=c.name+(d.xn&&d.xn[c.k]?' · '+d.xn[c.k]:'');labelsEl.appendChild(el);s.tags.push(el);}});
+    if(SHOW_CROSS)CROSS.forEach(c=>{if(d[c.k]){const el=document.createElement('div');el.className='xtag '+c.cls;el.textContent=c.name+(d.xn&&d.xn[c.k]?' · '+d.xn[c.k]:'');labelsEl.appendChild(el);s.tags.push(el);}});
     if(d.ball&&((d.ball1R||0)+(d.ball1W||0)+(d.ball2R||0)+(d.ball2W||0)>0)){const ps=[];if(cur().gw===1)ps.push(`적${(d.ball1R||0)+(d.ball2R||0)}·백${(d.ball1W||0)+(d.ball2W||0)}`);else{if((d.ball1R||0)+(d.ball1W||0)>0)ps.push(`#1 적${d.ball1R||0}·백${d.ball1W||0}`);if((d.ball2R||0)+(d.ball2W||0)>0)ps.push(`#2 적${d.ball2R||0}·백${d.ball2W||0}`);}const el=document.createElement('div');el.className='xtag ball';el.textContent='항공구 '+ps.join(' ');labelsEl.appendChild(el);s.tags.push(el);}});
 }
 const crossOf=d=>CROSS.filter(c=>d[c.k]);
@@ -1585,7 +1586,7 @@ function renderHead(){
   const lampSum=towers.filter(t=>t.lamp).reduce((a,t)=>({high:a.high+t.lampN.high,mid:a.mid+t.lampN.mid,low:a.low+t.lampN.low}),{high:0,mid:0,low:0});
   const hit=pickKey&&PICKS[pickKey]?towers.filter(PICKS[pickKey].f):[];
   document.getElementById('stats').innerHTML=`No.${esc(first)}~No.${esc(last)} · 철탑 ${towers.length}기 (현수 ${towers.length-nT} · 내장 ${nT}${towers.some(t=>t.pole)?' · 관형주 '+towers.filter(t=>t.pole).length:''})\n${(G.L/1000).toFixed(2)} km · ${pk('aviation','도색 '+towers.filter(PICKS.aviation.f).length,towers.filter(PICKS.aviation.f).length)} · ${pk('lamp','항공등 '+esc(lampTxt(lampSum,true)),towers.filter(PICKS.lamp.f).length)} · ${pk('ball','항공구 '+ballSum(l)+'개',towers.filter(PICKS.ball.f).length)} · `
-    +CROSS.map(c=>{const n=towers.filter(PICKS[c.k].f).length;return pk(c.k,c.name.replace('횡단','')+' '+n,n);}).join(' · ')+'\n'
+    +(SHOW_CROSS?CROSS.map(c=>{const n=towers.filter(PICKS[c.k].f).length;return pk(c.k,c.name.replace('횡단','')+' '+n,n);}).join(' · ')+'\n':'')
     +LAND.map(x=>{const n=towers.filter(PICKS[x.k].f).length;return pk(x.k,x.name+' '+n+'기',n);}).join(' · ')
     +' · '+pk('kudzu','칡넝쿨 '+towers.filter(PICKS.kudzu.f).length+'기',towers.filter(PICKS.kudzu.f).length)
     +' · '+pk('sanbok','산복개소 '+towers.filter(PICKS.sanbok.f).length+'기'+(()=>{const n=towers.filter(t=>t.d.sanbok&&t.d.sanbokSt==='보강 필요').length;return n?' (보강 필요 '+n+')':'';})(),towers.filter(PICKS.sanbok.f).length)
@@ -1673,8 +1674,8 @@ function renderCard(){
         <dt>선로길이</dt><dd>${(G.L/1000).toFixed(2)} km</dd>
       </dl>
       ${realFieldHTML(l)}
-      <div class="field"><span class="lb">🔍 횡단 자동 찾기 (도로·강·철도·골짜기)</span><button class="ghost" type="button" id="xaGo">지도 자료로 경간별 횡단 찾기</button>
-        <p class="note" style="margin:4px 0 0">위치(📍)를 찍은 철탑 사이 경간이 정확해요. 찾은 목록을 보고 골라서 적용해요.</p></div>
+      ${SHOW_CROSS?`      <div class="field"><span class="lb">🔍 횡단 자동 찾기 (도로·강·철도·골짜기)</span><button class="ghost" type="button" id="xaGo">지도 자료로 경간별 횡단 찾기</button>
+        <p class="note" style="margin:4px 0 0">위치(📍)를 찍은 철탑 사이 경간이 정확해요. 찾은 목록을 보고 골라서 적용해요.</p></div>`:''}
       ${gpsLineHTML(l)}
       <div class="actions">
         <button class="ghost" type="button" id="addEnd">+ 끝에 No.${nextAfterLast(l)} 추가</button>
@@ -1752,8 +1753,8 @@ function renderCard(){
         ${t.d.sanbok?`<div style="margin-top:6px">${segHTML('data-sbst',SANBOK_ST,t.d.sanbokSt||'',v=>v||'상태 미정')}</div>
         <div class="unit" data-unit="" style="margin-top:6px"><input id="fSanbokMemo" type="text" placeholder="예: 부하측 사면 토사 유실, 석축 보강 2023" value="${esc(t.d.sanbokMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>
         <p class="note" style="margin:6px 0 0">3D에서 철탑 둘레에 갈색 표시와 내리막 방향 화살표가 보여요${t.y!=null&&t.slope!=null?` · 지형 경사 약 ${Math.round(t.slope)}°`:''}.</p>`:''}</div>
-      ${next?`<div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 횡단</span>
-        <div class="checks">${CROSS.map(c=>`<label class="check"><input type="checkbox" data-x="${c.k}" ${t.d[c.k]?'checked':''}>${c.name}<i class="sw" style="background:${c.c}"></i></label>`).join('')}</div></div>
+      ${next?`${SHOW_CROSS?`<div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 횡단</span>
+        <div class="checks">${CROSS.map(c=>`<label class="check"><input type="checkbox" data-x="${c.k}" ${t.d[c.k]?'checked':''}>${c.name}<i class="sw" style="background:${c.c}"></i></label>`).join('')}</div></div>`:''}
       <div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 항공장애표시구</span>
         <label class="check"><input type="checkbox" id="xBall" ${t.d.ball?'checked':''}>항공구 설치<i class="sw" style="background:#e2581b;border-radius:50%;width:10px;height:10px"></i></label>
         ${l.gw===1?'<p class="note" style="margin:6px 0 0">가공지선 1조 선로라 꼭대기 가운데 지선 하나에 달려요.</p>':`<div class="seg" style="margin-top:6px"><button type="button" data-ballside="1" aria-pressed="${ballSide==='1'}">#1</button><button type="button" data-ballside="2" aria-pressed="${ballSide==='2'}">#2</button></div>`}
@@ -2841,7 +2842,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.13`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.14`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
