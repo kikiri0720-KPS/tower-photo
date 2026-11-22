@@ -884,7 +884,7 @@ async function realLoad(lineId,key,bb){
         R.sat.px={w:sw,h:sh,k:sw/t.w,data:x2.getImageData(0,0,sw,sh).data};}catch(e){}}
     catch(e){R.sat='fail';R.st+=' · 위성 사진 못 받음';}
   }
-  if(cur().id===lineId){build();if(!card.hidden&&!selT&&!addMode&&!backupMode)renderCard();}
+  if(!ALL&&cur().id===lineId){build();if(!card.hidden&&!selT&&!addMode&&!backupMode)renderCard();}   // v20.26: 전체 선로 보는 중엔 개별 선로 지형이 다 받아져도 화면을 바꾸지 않음
 }
 function demAt(R,lat,lng){
   const D=R&&R.dem;if(!D||D==='fail')return null;
@@ -2520,7 +2520,7 @@ function mapLive(){
   if(GP&&GP.pos){MP.dot(liveLayer,GP.pos,{r:8,w:3,fill:'#c0392b'});if(mapFollow){if(MP.zoom()<15)MP.view(GP.pos,17);else MP.pan(GP.pos);}}
 }
 function mapPopClick(e){const b=e.target.closest('[data-ms]');if(!b||GP)return;if(MP)MP.closePop();gpsStart(b.dataset.ms,b.dataset.ms==='하차'?b.dataset.md:+b.dataset.md);}
-document.getElementById('mapClose').addEventListener('click',()=>{if(posMode){posMode=false;document.getElementById('posBar').hidden=true;if(MP)MP.clear(posLayer);posLayer=null;}document.getElementById('mapSet').hidden=true;document.getElementById('mapOv').hidden=true;mapOn=false;try{build();}catch(e){}const r=document.getElementById('rail');r.insertBefore(gpsBar,r.querySelector('.tools'));});
+document.getElementById('mapClose').addEventListener('click',()=>{if(posMode){posMode=false;document.getElementById('posBar').hidden=true;if(MP)MP.clear(posLayer);posLayer=null;}document.getElementById('mapSet').hidden=true;document.getElementById('mapOv').hidden=true;mapOn=false;try{if(ALL)buildAll();else build();}catch(e){}const r=document.getElementById('rail');r.insertBefore(gpsBar,r.querySelector('.tools'));});
 document.getElementById('mapBtn').addEventListener('click',()=>openMap());
 document.getElementById('mapBox').addEventListener('click',mapPopClick);
 document.getElementById('mapGo').addEventListener('click',()=>{
@@ -2887,7 +2887,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.25`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.26`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
