@@ -1288,8 +1288,8 @@ function buildAll(){
   });
   // 위쪽 안내 띠
   const bar=allBar(); bar.hidden=false;
-  const nChk=items.reduce((a,it)=>a+it.nGps,0), nShare=all.filter(t=>t.share.length).length;
-  bar.innerHTML=`<b style="white-space:nowrap;font-size:13px">🌐 ${items.length}개 선로 · ${all.length}기${nShare?' · 4회선 '+nShare+'기':''}</b>`
+  const nChk=items.reduce((a,it)=>a+it.nGps,0), n4=all.filter(t=>!t.d.gantry&&cirAll(t)===4).length, n6=all.filter(t=>!t.d.gantry&&cirAll(t)===6).length;   // v21.14: 4회선·6회선 기수 따로
+  bar.innerHTML=`<b style="white-space:nowrap;font-size:13px">🌐 ${items.length}개 선로 · ${all.length}기${n4?' · 4회선 '+n4+'기':''}${n6?' · 6회선 '+n6+'기':''}</b>`
 ;
   bar.insertAdjacentHTML('beforeend','<button class="btn" type="button" id="allAuth">🔑 로그인</button>');
   document.getElementById('allAuth').onclick=()=>openAuth('login'); authBtnPaint();
@@ -1298,11 +1298,13 @@ function buildAll(){
   return {y:all.reduce((a,t)=>a+t.y,0)/(all.length||1),span:Math.max(BW,BD,1500)};
 }
 // 전체 선로 번호표: 멀면 번호만, 가까우면 선로명+번호 (4회선은 두 선로 다)
+// v21.14: 한 철탑의 회선수 — 같이 서는 선로들 중 가장 큰 회선수 (3개 선로가 같이 서면 6회선)
+const cirAll=t=>{const grp=[t,...(t.share||[])];return Math.min(6,Math.max(grp.length*2,...grp.map(x=>cirOf(x.line,x.d))));};
 const lnShort=l=>String(LN(l)).replace(/\s*T\/L$/,'');
 function allTagHTML(t,near){
   const grp=[t,...t.share], sym=`<i class="sym ${t.tension?'ten':'sus'}"></i>`, ck=t.d.gps?' ✓':'';
   if(!near)return sym+esc(H_(t))+ck;
-  return sym+(grp.length>1?'4회선 ':'')+grp.map(x=>esc(lnShort(x.line)+' '+H_(x))).join(' / ')+ck;
+  return sym+(grp.length>1||cirAll(t)>2?cirAll(t)+'회선 ':'')+grp.map(x=>esc(lnShort(x.line)+' '+H_(x))).join(' / ')+ck;
 }
 function openAll(){
   const r=buildAll(); if(!r)return;
