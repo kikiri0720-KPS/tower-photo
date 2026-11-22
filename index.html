@@ -1545,28 +1545,6 @@ function build(){
     }
   }
 
-  // v21.8 케이블헤드: 철탑 옆 애관(상당 3개) + 지중으로 내려가는 케이블
-  {const chG=new T.Group(); world.add(chG);
-   const mP=new T.MeshLambertMaterial({color:0xece6d6}), mC=new T.MeshLambertMaterial({color:0x7d8388}), mL=new T.LineBasicMaterial({color:0x1d1f21}), mU=new T.LineDashedMaterial({color:0x1d1f21,dashSize:1.2,gapSize:.8});
-   towers.forEach((t,ti)=>{
-    if(!t.d.cableHead)return;
-    const cc=cirOf(l,t.d), nC=Math.max(1,Math.min(cc,t.d.chC!=null?t.d.chC:cc));
-    const H=t.H, ca=Math.cos(t.th||0), sa=Math.sin(t.th||0);
-    const W=p=>new T.Vector3(t.x+p[2]*ca+p[0]*sa, t.y+p[1], t.z+p[2]*sa-p[0]*ca);
-    const r=Math.max(.32,H*.0055), len=Math.max(2.4,H*.05), yb=Math.max(4,H*.15), sp=Math.max(1.6,H*.03);
-    const dir=ti===towers.length-1?1:ti===0?-1:1;
-    for(let k=0;k<nC;k++){
-      const side=k%2?1:-1, lat=side*(Math.max(3,H*.11)+Math.floor(k/2)*Math.max(3.2,H*.06));
-      for(let ph=-1;ph<=1;ph++){
-        const z=ph*sp, base=W([lat,yb,z]), top=W([lat,yb+len,z]);
-        const m=new T.Mesh(new T.CylinderGeometry(r*.8,r,len,10),mP); m.position.copy(base).lerp(top,.5); chG.add(m);
-        const cap=new T.Mesh(new T.SphereGeometry(r*.9,8,6),mC); cap.position.copy(top); chG.add(cap);
-        const g1=new T.BufferGeometry().setFromPoints([base,W([lat,0,z]),W([lat,-1.6,z])]); chG.add(new T.Line(g1,mL));
-        const g2=new T.BufferGeometry().setFromPoints([W([lat,-1.6,z]),W([lat,-1.6,z+dir*Math.max(10,H*.3)])]); const ln=new T.Line(g2,mU); ln.computeLineDistances(); chG.add(ln);
-      }
-    }
-   });}
-
   // ---- 디테일: 애자련(원판), 기초 받침, 숲, 횡단 지물 ----
   {
     const up=new T.Vector3(0,1,0), dir=new T.Vector3(), q=new T.Quaternion(), m4=new T.Matrix4(), sc=new T.Vector3(), ps=new T.Vector3();
@@ -1954,12 +1932,8 @@ function renderCard(){
           <div class="unit" data-unit="" style="margin-top:6px"><input id="fLowMemo" type="text" placeholder="예: 경간 중앙 농로 위, 수목 근접" value="${esc(t.d.lowMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
       <div class="field"><span class="lb">🏭 변전소 철골타워 · 변전소 인출 구조물 (선로 맨 앞·맨 뒤)</span>
         <label class="check"><input type="checkbox" id="xGan" ${t.d.gantry?'checked':''}>변전소 철골타워<i class="sw" style="background:#6d7a82"></i></label>
-        <p class="note" style="margin:6px 0 0">체크하면 철탑 대신 철골 기둥 2개와 가로 보로 된 3D 구조물로 보여요.</p></div>
-      <div class="field"><span class="lb">⚡ 케이블헤드 · 가공선이 지중케이블로 바뀌는 곳</span>
-        <label class="check"><input type="checkbox" id="xCH" ${t.d.cableHead?'checked':''}>케이블헤드 설치<i class="sw" style="background:#8a8f93"></i></label>
         ${(()=>{const ix=l.towers.indexOf(t.d),lastI=l.towers.length-1;return (ix===0?`<button class="ghost" type="button" id="chFront" style="margin-top:6px">+ 앞에 변전소 철골타워 No.${chLab(l,-1)} 추가</button>`:'')+(ix===lastI?`<button class="ghost" type="button" id="chBack" style="margin-top:6px">+ 뒤에 변전소 철골타워 No.${chLab(l,1)} 추가</button>`:'');})()}
-        ${t.d.cableHead?(()=>{const cc=cirOf(l,t.d),nn=Math.max(1,Math.min(cc,t.d.chC!=null?t.d.chC:cc));return `<div class="field" style="margin-top:6px"><span class="lb">설치 회선 수 (회선당 3상)</span><div class="stepper"><button type="button" id="chMinus" aria-label="줄이기">−</button><output>${nn} / ${cc}회선</output><button type="button" id="chPlus" aria-label="늘리기">+</button></div></div><p class="note" style="margin:6px 0 0">3D에서 철탑 옆에 애관(원통) ${nn*3}개와 지중으로 내려가는 케이블이 보여요.</p>`;})():''}
-      </div>
+        <p class="note" style="margin:6px 0 0">체크하면 철탑 대신 철골 기둥 2개와 가로 보로 된 3D 구조물로 보여요.</p></div>
       ${next?`${SHOW_CROSS?`<div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 횡단</span>
         <div class="checks">${CROSS.map(c=>`<label class="check"><input type="checkbox" data-x="${c.k}" ${t.d[c.k]?'checked':''}>${c.name}<i class="sw" style="background:${c.c}"></i></label>`).join('')}</div></div>`:''}
 `:''}
@@ -2039,10 +2013,6 @@ function renderCard(){
   if(q('#fSanbokMemo'))q('#fSanbokMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.sanbokMemo=v;else delete t.d.sanbokMemo;save();renderHead();});
   // v20.15: 저지상고
   q('#xGan').addEventListener('change',e=>{t.d.gantry=e.target.checked;if(!t.d.gantry)delete t.d.gantry;save();build();renderCard();});
-  q('#xCH').addEventListener('change',e=>{t.d.cableHead=e.target.checked;if(!t.d.cableHead)delete t.d.chC;save();build();});
-  {const cc=cirOf(l,t.d),cv=()=>Math.max(1,Math.min(cc,t.d.chC!=null?t.d.chC:cc));
-   if(q('#chMinus'))q('#chMinus').addEventListener('click',()=>{t.d.chC=Math.max(1,cv()-1);save();build();});
-   if(q('#chPlus'))q('#chPlus').addEventListener('click',()=>{t.d.chC=Math.min(cc,cv()+1);save();build();});}
   q('#xLow').addEventListener('change',e=>{t.d.lowClr=e.target.checked;if(!t.d.lowClr){delete t.d.lowH;delete t.d.lowStd;delete t.d.lowMemo;}save();build();});
   [['#fLowH','lowH']].forEach(([id,k])=>{if(q(id))q(id).addEventListener('change',e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=0)t.d[k]=Math.round(v*10)/10;else delete t.d[k];save();build();});});
   if(q('#fLowMemo'))q('#fLowMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.lowMemo=v;else delete t.d.lowMemo;save();renderHead();});
@@ -2694,7 +2664,7 @@ async function openMap(){
     if(ac&&ac.trk&&ac.trk.length>1){MP.line(mapLayer,ac.trk,{color:'#2e7d4f',weight:4,opacity:.9,dash:true},`🚗 진입로 → No.${esc(d.label)}<br><b>${kmT(ac.m)}</b> · ${hms(ac.sec)}<br>${esc(ac.date)}`);ac.trk.forEach(p=>all.push(p));
       MP.dot(mapLayer,ac.trk[0],{r:6,fill:'#2f6fd6'},'🚗 No.'+esc(d.label)+' 차 세우는 곳');}
     if(d.gps){const nx=l.towers[i+1],pv=l.towers[i-1];
-      MP.label(mapLayer,d.gps,'<div class="tlab">No.'+esc(d.label)+(d.gantry?' 🏭':'')+(d.cableHead?' ⚡':'')+(d.sanbok?' ⛰':'')+(d.lowClr?' ⚠':'')+'</div>',{pop:`<div class="tpop"><b>No.${esc(d.label)}</b>${d.sanbok?' <span style="color:#8a5a2b">⛰ 산복개소'+(d.sanbokSt?' · '+esc(d.sanbokSt):'')+'</span>':''}${d.lowClr?' <span style="color:#c0392b">⚠ 저지상고'+(d.lowH!=null?' '+d.lowH+'m':'')+'</span>':''}<br><span style="font-size:12px;color:#555">${d.gps[0].toFixed(6)}, ${d.gps[1].toFixed(6)}</span>${GP?'<br>순시 기록 중':(nx?`<button data-ms="${esc(d.label)}" data-md="1">▶ 여기서 No.${esc(nx.label)} 쪽 출발</button>`:'')+(pv?`<button class="b2" data-ms="${esc(d.label)}" data-md="-1">◀ No.${esc(pv.label)} 쪽 출발</button>`:'')+`<button class="b2" data-ms="하차" data-md="${esc(d.label)}">🚗 차에서 내린 곳 → 여기까지</button>`}</div>`});
+      MP.label(mapLayer,d.gps,'<div class="tlab">No.'+esc(d.label)+(d.gantry?' 🏭':'')+(d.sanbok?' ⛰':'')+(d.lowClr?' ⚠':'')+'</div>',{pop:`<div class="tpop"><b>No.${esc(d.label)}</b>${d.sanbok?' <span style="color:#8a5a2b">⛰ 산복개소'+(d.sanbokSt?' · '+esc(d.sanbokSt):'')+'</span>':''}${d.lowClr?' <span style="color:#c0392b">⚠ 저지상고'+(d.lowH!=null?' '+d.lowH+'m':'')+'</span>':''}<br><span style="font-size:12px;color:#555">${d.gps[0].toFixed(6)}, ${d.gps[1].toFixed(6)}</span>${GP?'<br>순시 기록 중':(nx?`<button data-ms="${esc(d.label)}" data-md="1">▶ 여기서 No.${esc(nx.label)} 쪽 출발</button>`:'')+(pv?`<button class="b2" data-ms="${esc(d.label)}" data-md="-1">◀ No.${esc(pv.label)} 쪽 출발</button>`:'')+`<button class="b2" data-ms="하차" data-md="${esc(d.label)}">🚗 차에서 내린 곳 → 여기까지</button>`}</div>`});
       all.push(d.gps);}
   });
   // 위치가 있는 철탑끼리 선로를 이어서 표시
@@ -3085,7 +3055,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.11`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.12`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
