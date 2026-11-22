@@ -1162,8 +1162,10 @@ function openAll(){
   flyTo(new T.Vector3(-r.span*.05,r.y+e*.55+300,e*.8),new T.Vector3(0,r.y,0));
 }
 
+// v20.23: 각도주 입력값 지움 (찍은 위치로 꺾임을 그리므로 필요 없음)
+function clearAngles(){if(!lines)return 0;let n=0;lines.forEach(l=>l.towers.forEach(d=>{if(d.angDir||+d.angDeg){d.angDir='';d.angDeg=0;n++;}}));return n;}
 function build(){
-  if(autoGpsSpans())save();
+  if(autoGpsSpans()+clearAngles())save();
   ALL=false;
   {const b=document.getElementById('allBar');if(b)b.hidden=true;}
   {const c=document.getElementById('chips');if(c)c.hidden=false;}
@@ -2884,7 +2886,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.22`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v20.23`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
