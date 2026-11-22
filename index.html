@@ -1234,12 +1234,10 @@ function buildAll(){
   // 위쪽 안내 띠
   const bar=allBar(); bar.hidden=false;
   const nChk=items.reduce((a,it)=>a+it.nGps,0), nShare=all.filter(t=>t.share.length).length;
-  bar.innerHTML=`<button class="btn" type="button" id="allBack">← 돌아가기</button>`
-    +`<b style="white-space:nowrap;font-size:13px">🌐 ${items.length}개 선로 · ${all.length}기${nShare?' · 4회선 '+nShare+'기':''}</b>`
+  bar.innerHTML=`<b style="white-space:nowrap;font-size:13px">🌐 ${items.length}개 선로 · ${all.length}기${nShare?' · 4회선 '+nShare+'기':''}</b>`
 ;
   bar.insertAdjacentHTML('beforeend','<button class="btn" type="button" id="allAuth">🔑 로그인</button>');
   document.getElementById('allAuth').onclick=()=>openAuth('login'); authBtnPaint();
-  document.getElementById('allBack').onclick=()=>allExit();
   chipsEl.hidden=true;
   {const hd=document.querySelector('header.head');if(hd)hd.style.display='none';}   // v20.27: 전체 선로에선 개별 선로 정보판 숨김
   return {y:all.reduce((a,t)=>a+t.y,0)/(all.length||1),span:Math.max(BW,BD,1500)};
@@ -2985,7 +2983,7 @@ function renderLedger(){
   const t=LT(); if(!t){closeLedger();return;}
   const l=cur(), tp=pType(t), p=progress(t);
   gid('lgTitle').textContent=H_(t)+' 기별사진';
-  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.2`;
+  gid('lgSub').textContent=`${l.kv}kV ${LN(l)} · ${cirOf(l,t.d)}회선 · ${gwTxt(l)} · ${tp==='항공'?'항공철탑':tp+'형'}${t.pole?' · 관형주':''}${t.d.form?' · '+FORM(t.d):''} · v21.3`;
   gid('lgBack').textContent=sel?'← 도면으로':'← 3D 화면';
   gid('lgPct').textContent=`${p.done}/${p.total}개 등록 · ${p.pct}%`;
   gid('lgBar').style.width=p.pct+'%';
