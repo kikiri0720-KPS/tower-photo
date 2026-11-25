@@ -1365,10 +1365,10 @@ function allTagHTML(t,near){
   if(!near)return sym+esc(H_(t))+ck;
   return sym+(grp.length>1||cirAll(t)>2?cirAll(t)+'회선 ':'')+grp.map(x=>esc(lnShort(x.line)+' '+H_(x))).join(' / ')+ck;
 }
-function openAll(){
+function openAll(instant){
   const r=buildAll(); if(!r)return;
-  const e=r.span*aspectK();
-  flyTo(new T.Vector3(-r.span*.05,r.y+e*.55+300,e*.8),new T.Vector3(0,r.y,0));
+  const e=r.span*aspectK(), p=new T.Vector3(-r.span*.05,r.y+e*.55+300,e*.8), t=new T.Vector3(0,r.y,0);
+  if(instant){anim=null;camera.position.copy(p);controls.target.copy(t);}else flyTo(p,t);
 }
 
 // v20.23: 각도주 입력값 지움 (찍은 위치로 꺾임을 그리므로 필요 없음)
@@ -3281,7 +3281,9 @@ const MYP={pos:null,acc:0,first:true,watch:null,obj:null,t0:0,flewAcc:0,userMove
 // v21.22: 처음 잡히는 위치는 기지국·와이파이 위치라 수십~수백 m 틀릴 수 있음 →
 //  · 정확도 25m 안쪽이 될 때까지 최대 12초 기다렸다가 이동 · 그래도 안 되면 그때까지 가장 정확한 값으로 이동
 //  · 더 정확한 위치가 나중에 잡히면 (화면을 직접 안 움직였을 때) 한 번 더 맞춰 줌 · 오차 범위를 파란 원으로 표시
-const GOOD_ACC=25;
+const GOOD_ACC=25, FIRST_ACC=50;
+// v21.25: 위치를 빨리 — 30분 안에 잡힌 최근 위치가 있으면 그 자리부터 보여 주고, 지금 위치가 잡히면 맞춤
+try{const lp=JSON.parse(lsGet('tower3d-lastpos')||'null');if(lp&&Date.now()-lp.t<30*60000&&lp.acc<=FIRST_ACC){MYP.pos=lp.p;MYP.acc=lp.acc;MYP.at=lp.t;MYP.stale=true;}}catch(e){}
 function meObj(){
   if(MYP.obj)return MYP.obj;
   const g=new T.Group(), c=0x2f6fd6;
@@ -3314,8 +3316,8 @@ function meGo(say1){
   const q=meXZ();
   if(q&&q.inside){
     flyTo(new T.Vector3(q.x+220,q.y+320,q.z+420),new T.Vector3(q.x,q.y,q.z));
-    MYP.flewAcc=MYP.acc||999; MYP.userMoved=false;
-    if(say1)say('📍 현재 위치예요'+accTxt());
+    MYP.flewAcc=MYP.acc||999; MYP.userMoved=false; MYP.flewPos=MYP.pos.slice(); MYP.flewStale=!!MYP.stale;
+    if(say1)say(MYP.stale?'📍 최근 위치예요 · 지금 위치를 찾는 중…':'📍 현재 위치예요'+accTxt());
     return true;
   }
   const n=meNearest();
@@ -3326,7 +3328,8 @@ function meFix(p){
   const a=p.coords.accuracy||999;
   // 정확도가 많이 나쁜 값이 좋은 값을 덮어쓰지 않게 (20초 넘게 지난 값이면 바꿈)
   if(MYP.pos&&a>MYP.acc*2.5&&a>GOOD_ACC&&Date.now()-(MYP.at||0)<20000)return;
-  MYP.pos=[p.coords.latitude,p.coords.longitude];MYP.acc=a;MYP.at=Date.now();
+  MYP.pos=[p.coords.latitude,p.coords.longitude];MYP.acc=a;MYP.at=Date.now();MYP.stale=false;
+  if(a<=FIRST_ACC&&Date.now()-(MYP.saved||0)>10000){MYP.saved=Date.now();lsSet('tower3d-lastpos',JSON.stringify({p:MYP.pos,acc:a,t:Date.now()}));}
 }
 function meStart(){
   if(!('geolocation' in navigator)||MYP.watch!=null)return;
@@ -3348,11 +3351,15 @@ setInterval(()=>{
   // v21.24: 오차가 100m 넘으면(대략적인 위치 · 기지국 위치) 화면을 옮기지 않고 알려 줌 → 나중에 정확해지면 자동으로 이동
   if(MYP.first&&ready&&MYP.pos){
     const late=Date.now()-MYP.t0>12000;
-    if(MYP.acc<=GOOD_ACC&&(!late||!MYP.userMoved)){MYP.first=false;meGo(true);return;}
+    if((MYP.acc<=FIRST_ACC||MYP.stale)&&(!late||!MYP.userMoved)){MYP.first=false;meGo(true);return;}
     if(late&&MYP.acc<=BAD_ACC&&!MYP.userMoved){MYP.first=false;meGo(true);return;}
     if(late&&MYP.acc>BAD_ACC&&!MYP.warned){MYP.warned=true;say('📍 위치 오차가 너무 커서(약 '+accM(MYP.acc)+') 화면을 옮기지 않았어요. '+ACC_HELP+' 정확한 위치가 잡히면 자동으로 이동해요.',true);}
   }
   // 처음 이동 때 오차가 컸는데 지금 정확해졌으면, 화면을 직접 안 움직였을 때 한 번 더 맞춤
+  if(!MYP.first&&MYP.flewStale&&!MYP.stale&&MYP.acc<=FIRST_ACC&&ready&&q.inside){   // 최근 위치로 먼저 갔다면, 지금 위치가 잡히면 맞춤
+    MYP.flewStale=false;
+    if(!MYP.userMoved&&MYP.flewPos&&hav(MYP.flewPos,MYP.pos)>30){meGo(false);say('📍 지금 위치로 맞췄어요'+accTxt());} else say('📍 현재 위치예요'+accTxt());
+  }
   if(!MYP.first&&!MYP.refined&&MYP.flewAcc>40&&MYP.acc<=GOOD_ACC&&!MYP.userMoved&&ready&&q.inside){MYP.refined=true;meGo(false);say('📍 위치를 더 정확하게 맞췄어요 (오차 약 '+Math.round(MYP.acc)+'m)');}
 },1000);
 document.getElementById('meBtn').addEventListener('click',()=>{
@@ -4091,7 +4098,9 @@ gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syn
   const baseH=(c&&c.baseH)||{};
   if(c&&Array.isArray(c.lines)&&c.lines.length){lines=c.lines.map(normalize); if(c.cur&&lines.find(l=>l.id===c.cur)) curId=c.cur;}
   if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
-  build(); refit(true); syncState('busy','불러오는 중…'); pqLoad();
+  const hasGps0=lines.some(l=>l.towers.filter(d=>d.gps&&d.gps.length===2).length>=2);
+  if(hasGps0)openAll(true); else {build(); refit(true);}   // v21.25: 처음부터 전체 선로로 (1개 선로가 잠깐 보였다 바뀌지 않게)
+  syncState('busy','불러오는 중…'); pqLoad();
   if(!sb){syncState('err','서버 연결 도구를 못 불러옴 · 이 기기에만 저장');return;}
   let first=true, connecting=false, after=false;
   const hasGpsLine=()=>lines.some(l=>l.towers.filter(d=>d.gps&&d.gps.length===2).length>=2);
@@ -4116,10 +4125,11 @@ gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syn
       }
       if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
       AS=true; cloudReady=true;
-      if(first){selT=null; card.hidden=true; build(); refit(true);} else rebuildSoon();
+      if(first){selT=null; card.hidden=true;
+        // v20.25: 첫 화면은 🌐 전체 선로 · v21.25: 이미 전체 선로면 카메라는 그대로 두고 새 자료로 다시 그리기만
+        if(hasGpsLine()){if(ALL)buildAll();else openAll(true);} else {build(); refit(true);}
+      } else rebuildSoon();
       writeCache();
-      // v20.25: 첫 화면은 🌐 전체 선로 (위치 찍힌 선로가 있을 때)
-      if(first&&hasGpsLine())openAll();
       if(localOnly.length&&rows.length){localOnly.forEach(l=>{if(!lines.find(x=>x.id===l.id))lines.push(l);});rebuildSoon();}
       if(!rows.length||localOnly.length||keptLocal.length) await flush();
       if(keptLocal.length)say('📶 연결됐어요 · 연결 안 될 때 고친 내용('+keptLocal.map(l=>LN(l)).join(', ')+')을 서버에 올렸어요',true);
@@ -4147,7 +4157,7 @@ gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syn
     window.addEventListener('online',()=>{flush();pull();pqRun();});
   }
   if(!await connect()){
-    if(first&&hasGpsLine())openAll();
+    if(first&&hasGpsLine()&&!ALL)openAll(true);
     first=false;
     window.addEventListener('online',()=>{if(!cloudReady)connect();});
     const iv=setInterval(()=>{if(cloudReady){clearInterval(iv);return;}if(navigator.onLine!==false)connect();},20000);
@@ -4158,11 +4168,8 @@ setTimeout(()=>{try{if(mapWant()==='kakao')loadKakao(kakaoKey()).catch(()=>{});}
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').then(reg=>{
     reg.update();
-    // 새 버전이 설치되면 자동으로 새로고침해서 최신 화면을 보여줌
-    reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(!nw)return;nw.addEventListener('statechange',()=>{if(nw.state==='activated')location.reload();});});
+    // v21.25: 켜자마자 저절로 새로고침하던 것을 없앰 (화면이 두세 번 다시 그려지던 원인) — 앱 화면은 열 때마다 최신본을 받음
   }).catch(()=>{});
-  let reloaded=false;
-  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!reloaded){reloaded=true;location.reload();}});
 }
 
 /* ---------- 루프 ---------- */
