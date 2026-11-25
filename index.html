@@ -449,6 +449,11 @@ const gwOf=(l,d)=>d&&(d.gwN===1||d.gwN===2)?d.gwN:l.gw;   // v20.13: 철탑마�
 const gwPairs=(a,b)=>{const A=Object.keys(a.attach).filter(k=>a.attach[k].gw),B=Object.keys(b.attach).filter(k=>b.attach[k].gw);if(!A.length||!B.length||A.some(k=>B.includes(k)))return [];return A.length===1?B.map(k=>[A[0],k]):A.map(k=>[k,B[0]]);};   // 154kV는 가공지선 1조(꼭대기 가운데), 345·765kV는 2조
 const WT=['OPGW','GW'];
 const gwTxt=l=>l.gw===1?`가공지선 1조(${l.gw1})`:`가공지선 2조(#1 ${l.gw1}·#2 ${l.gw2})`;
+// v21.30: 도체 수 — 154kV 단도체/복도체, 345kV 2/4도체 선택 (기본: 154 단도체, 345 4도체), 765kV 6도체 고정
+const bunDef=kv=>kv>=700?6:kv>=300?4:1;
+const bunOpts=kv=>kv>=700?[6]:kv>=300?[2,4]:kv>=100?[1,2]:[1];
+const bunOf=l=>{const o=bunOpts(+l.kv||0);return o.includes(+l.bun)?+l.bun:bunDef(+l.kv||0);};
+const bunTxt=n=>n===1?'단도체':n===2?'복도체':n+'도체';
 const wireOfKey=(l,key)=>key==='g-1'?l.gw2:l.gw1;          // g1·g0 = #1(또는 가운데), g-1 = #2
 const lineHas=(l,w)=>l.gw===1?l.gw1===w:(l.gw1===w||l.gw2===w);
 const OPGW_C=new T.Color('#2b7bb9');   // 3D에서 OPGW는 파란빛으로 구분
@@ -1607,8 +1612,8 @@ function build(){
       const span=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=span*span*.000075*(isG?.8:1), arr=isG?(wireOfKey(l,key)==='OPGW'?op:gw):ph;
       const at=u=>[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];
       // 다도체: 345kV 4도체, 765kV 6도체 (전력선만)
-      const nb=isG?1:(l.kv>=700?6:l.kv>=300?4:1), hx=(Q[0]-A[0])/(span||1), hz=(Q[2]-A[2])/(span||1), sxv=-hz, szv=hx;
-      const offs=nb===1?[[0,0]]:nb===4?[[-.25,.25],[.25,.25],[.25,-.25],[-.25,-.25]]:[0,1,2,3,4,5].map(k=>[Math.cos(k/6*Math.PI*2)*.45,Math.sin(k/6*Math.PI*2)*.45]);
+      const nb=isG?1:bunOf(l), hx=(Q[0]-A[0])/(span||1), hz=(Q[2]-A[2])/(span||1), sxv=-hz, szv=hx;
+      const offs=nb===1?[[0,0]]:nb===2?[[-.2,0],[.2,0]]:nb===4?[[-.25,.25],[.25,.25],[.25,-.25],[-.25,-.25]]:[0,1,2,3,4,5].map(k=>[Math.cos(k/6*Math.PI*2)*.45,Math.sin(k/6*Math.PI*2)*.45]);
       offs.forEach(([os,oy])=>{let pv=null;for(let s2=0;s2<=24;s2++){const p=at(s2/24);p[0]+=sxv*os;p[1]+=oy;p[2]+=szv*os;if(pv)arr.push(...pv,...p);pv=p;}});
       if(nb>1){const ns=Math.max(2,Math.round(span/60));for(let k=1;k<ns;k++){const c=at(k/ns);for(let j=0;j<offs.length;j++){const a1=offs[j],b1=offs[(j+1)%offs.length];arr.push(c[0]+sxv*a1[0],c[1]+a1[1],c[2]+szv*a1[0],c[0]+sxv*b1[0],c[1]+b1[1],c[2]+szv*b1[0]);}}}
       // 댐퍼: 철탑 가까이 (입력한 댐퍼 수량이 있을 때)
@@ -1842,7 +1847,7 @@ document.getElementById('stats').addEventListener('click',e=>{
 function renderHead(){
   const l=cur();
   const cx=[4,6,2].filter(c=>c!==l.circuits).map(c=>[c,l.towers.filter(d=>cirOf(l,d)===c).length]).filter(x=>x[1]);
-  document.getElementById('eyebrow').textContent=`${l.kv}kV · ${l.circuits}회선${cx.length?' ('+cx.map(x=>x[0]+'회선 '+x[1]+'기').join(' · ')+')':''} · ${gwTxt(l)}`;
+  document.getElementById('eyebrow').textContent=`${l.kv}kV · ${l.circuits}회선${cx.length?' ('+cx.map(x=>x[0]+'회선 '+x[1]+'기').join(' · ')+')':''} · ${bunTxt(bunOf(l))} · ${gwTxt(l)}`;
   document.getElementById('titleTx').textContent=LN(l);
   const nT=towers.filter(t=>t.tension).length;
   const first=towers[0].label, last=towers[towers.length-1].label;
@@ -1937,6 +1942,7 @@ function renderCard(){
       ${nameField(stripTL(l.name))}
       ${kvField(l.kv)}
       <div class="field"><span class="lb">회선 수 · 선로 기본값 (따로 고른 철탑은 그대로)</span>${segHTML('data-circ',[2,4,6],l.circuits,v=>v+'회선')}</div>
+      <div class="field"><span class="lb">전선 도체 수</span>${bunOpts(+l.kv||0).length>1?segHTML('data-bun',bunOpts(+l.kv||0),bunOf(l),v=>bunTxt(v)):`<div class="note" style="margin:2px 0">${bunTxt(bunOf(l))}${+l.kv>=700?' (765kV 고정)':''}</div>`}</div>
       <div class="field"><span class="lb">가공지선 · 선로 기본값 (따로 고른 철탑은 그대로)</span>${segHTML('data-gw',[1,2],l.gw,v=>v===1?'1조 · 가운데':'2조 · 양쪽')}</div>
       <div class="field"><span class="lb">가공지선 종류 · OPGW / GW</span>
         <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
@@ -1962,7 +1968,7 @@ function renderCard(){
       <div class="card-top"><span class="no">${esc(H_(t))}</span>
         <span class="pill ${t.tension?'ten':''}"><i class="sym ${t.tension?'ten':'sus'}"></i>${t.tension?'내장형':'현수형'}</span>${t.ang?'<span class="pill">∠ '+esc(angTxt(t.d))+'</span>':''}${t.pole?'<span class="pill">'+(false?'강관주·경사완금':'관형주')+'</span>':''}${t.d.danger?'<span class="pill" style="background:var(--danger);color:#fff;border-color:var(--danger)">⚠ 위험</span>':''}
         <button class="ghost splitBtn" type="button" data-split aria-pressed="${splitOn?'true':'false'}" title="3D와 정보를 나눠서 보기">⧉ 분할</button><button class="close" type="button" aria-label="닫기">×</button></div>
-      <div class="sub">${esc(l.kv+'kV '+LN(l))} · ${cirOf(l,t.d)}회선${t.d.cir?' (따로 설정)':''} · ${gwTxt(l)}${t.d.form?' · '+esc(FORM(t.d)):''}</div>
+      <div class="sub">${esc(l.kv+'kV '+LN(l))} · ${cirOf(l,t.d)}회선${t.d.cir?' (따로 설정)':''} · ${bunTxt(bunOf(l))} · ${gwTxt(l)}${t.d.form?' · '+esc(FORM(t.d)):''}</div>
       <button class="primary ledger-btn" type="button" id="openLedger">📸 기별사진 · ${progress(t).done}/${progress(t).total}</button>
       ${elvHTML(t)}
       <div class="row2">
@@ -2070,6 +2076,7 @@ function renderCard(){
   // 선로
   card.querySelectorAll('[data-circ]').forEach(b=>b.addEventListener('click',()=>{l.circuits=+b.dataset.circ;l.towers.forEach(d=>{if(+d.cir===l.circuits)delete d.cir;});save();build();}));
   card.querySelectorAll('[data-tcir]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.tcir;if(cirOf(l,t.d)===v)return;if(v===l.circuits)delete t.d.cir;else t.d.cir=v;save();build();}));
+  card.querySelectorAll('[data-bun]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.bun;if(v!==bunOf(l)){l.bun=v;save();build();renderCard();}}));
   card.querySelectorAll('[data-gw]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.gw;if(v!==l.gw){l.gw=v;save();build();}}));
   card.querySelectorAll('[data-gwsc]').forEach(b=>b.addEventListener('click',()=>{gwScope=b.dataset.gwsc;renderCard();}));
   card.querySelectorAll('[data-tgw]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.tgw;if(!t)return;
@@ -4088,7 +4095,7 @@ function xlRows(){
       ITEMS.forEach((it,k)=>{r2[it.label]=pr.per[k];});
       R2.push(r2);
     });
-    R3.push({'전압(kV)':l.kv,'선로명':LN(l),'철탑 수':l.towers.length,'위치 찍힌 철탑':nG,'높이 미수정':nH,'철탑형 미수정':nF,
+    R3.push({'전압(kV)':l.kv,'선로명':LN(l),'도체':bunTxt(bunOf(l)),'철탑 수':l.towers.length,'위치 찍힌 철탑':nG,'높이 미수정':nH,'철탑형 미수정':nF,
       '기별사진':pt?pd+'/'+pt+' ('+Math.round(pd/pt*100)+'%)':''});
   });
   return [R1,R2,R3];
