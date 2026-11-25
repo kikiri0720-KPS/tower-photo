@@ -411,6 +411,7 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
       <button class="btn" id="delLine2" type="button">선로 삭제</button>
       <button class="btn" id="backup" type="button">백업</button>
       <button class="btn" id="zipBtn" type="button" hidden>사진 ZIP</button>
+      <button class="btn" id="xlsBtn" type="button" title="전체 선로 기별을 엑셀로">📊 엑셀</button>
       <button class="btn" id="tWire" type="button" aria-pressed="true">전선</button>
       <button class="btn" id="tTag" type="button" aria-pressed="true">번호</button>
       <button class="btn" id="gpsBtn" type="button">🥾 순시</button>
@@ -3871,6 +3872,110 @@ function makeZip(files){
   return new Blob([...parts,...cen,end.buffer],{type:'application/zip'});
 }
 const safe=s=>(s||'').replace(/[\\/:*?"<>|]/g,'_').trim()||'이름없음';
+
+/* ---------- v21.19 전체 선로 기별 → 엑셀 내려받기 ----------
+   · 시트1 철탑 기별(철탑마다 한 줄) · 시트2 기별사진 항목별 · 시트3 선로 요약
+   · 철탑형·높이를 고치지 않은 철탑은 "미수정"으로 남김 */
+function loadXLSX(){
+  if(window.XLSX)return Promise.resolve();
+  return new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.onload=res;s.onerror=()=>rej(new Error('엑셀 프로그램을 불러오지 못했어요. 인터넷 연결을 확인하세요.'));document.head.appendChild(s);});
+}
+function xlTension(l,i){const d=l.towers[i],n=l.towers.length,auto=i===0||i===n-1||i%6===5||(i>0&&i<n-1&&angOf(d)!==0);return {ten:d.type!=null?!!d.type:auto,auto:d.type==null};}
+function xlProgress(l,i){
+  const d=l.towers[i], tn=xlTension(l,i).ten, av=d.av!=null?d.av:false, lamp=d.lamp!=null?d.lamp:false, pt=(av||lamp)?'항공':tn?'내장':'현수';
+  const per=[];let done=0,total=0;
+  ITEMS.forEach(it=>{
+    const has=slotsOf(it).some(sl=>photosOf(d.id,sl.id).length);
+    const ok=inType(it,pt)&&((!it.wire||lineHas(l,it.wire))&&(!it.cond||d[it.cond])||has);
+    if(!ok){per.push('-');return;}
+    const sl=slotsOf(it).filter(x=>!x.opt), f=sl.filter(x=>photosOf(d.id,x.id).length).length;
+    done+=f;total+=sl.length;per.push(f+'/'+sl.length);
+  });
+  return {done,total,per};
+}
+function xlRows(){
+  const L=lines.slice().sort((a,b)=>(b.kv-a.kv)||String(a.name).localeCompare(String(b.name),'ko',{numeric:true}));
+  const R1=[],R2=[],R3=[];
+  const SUPN=Object.fromEntries(SUP);
+  const sideN=k=>k==='src'?'전원측':k==='load'?'부하측':k;
+  L.forEach(l=>{
+    let nG=0,nH=0,nF=0,pd=0,pt=0;
+    l.towers.forEach((d,i)=>{
+      const T2=xlTension(l,i), av=d.av!=null?d.av:false, lamp=d.lamp!=null?d.lamp:false, lc=lampCounts(d), pr=xlProgress(l,i);
+      if(d.gps)nG++; if(!(d.h>0))nH++; if(!d.form)nF++; pd+=pr.done; pt+=pr.total;
+      const dm=g=>{const a=+d[g.keys[0]]||0,b=+d[g.keys[1]]||0;return a||b?`전원 ${a} · 부하 ${b}`:'';};
+      const js=d.jise||{}, jl=l.jise||{};
+      const jsTxt=JS_M.map(m=>{const v=js[m.k]!=null?js[m.k]:jl[m.k];return v!=null?m.n+' '+m.o[v]:'';}).filter(Boolean).join(', ');
+      const acc=d.access&&d.access.last, wk=d.walk&&d.walk.last;
+      R1.push({
+        '전압(kV)':l.kv,'선로명':LN(l),'철탑번호':NO(d.label),
+        '철탑형':d.form?FORM(d):'미수정',
+        '높이(m)':d.h>0?+d.h:'미수정',
+        '현수/내장':(T2.ten?'내장':'현수')+(T2.auto?' (자동)':''),
+        '각도':angOf(d)?angTxt(d):'',
+        '회선수':cirOf(l,d),'가공지선':gwOf(l,d)+'조',
+        '종류':d.gantry?'철구':d.pole?'관형주':'철탑',
+        '경간(m) 다음 철탑까지':i<l.towers.length-1?(d.span>0?+d.span:'미입력'):'',
+        '경간 출처':d.span>0?(d.spanSrc==='gps'?'GPS 위치':'직접 입력'):'',
+        '위도':d.gps?+d.gps[0].toFixed(6):'','경도':d.gps?+d.gps[1].toFixed(6):'',
+        '항공철탑':av?'○':'','항공 도장':av?(d.avEco?'친환경(연주황·백색)':'주황·백색'):'','녹색 도장':d.green?'○':'',
+        '항공장애등':lamp?`고광도 ${lc.high} · 중광도 ${lc.mid} · 저광도 ${lc.low}`:'',
+        '장애등 제조사':(d.lampMk||[]).join(', '),'고광도 위치':hiList(d).join(', '),
+        '표시구':d.ball?`#1 적 ${d.ball1R||0} 백 ${d.ball1W||0}`+((d.ball2R||d.ball2W)?` · #2 적 ${d.ball2R||0} 백 ${d.ball2W||0}`:''):'',
+        '모바일태그':(d.mtag||[]).map(k=>k+'각').join(', '),
+        '수직구명줄 각':d.vleg?Object.keys(d.vleg).filter(k=>d.vleg[k]).map(k=>sideN(k)+' '+d.vleg[k]+'각').join(', '):'',
+        '지지애자':d.sup?Object.keys(d.sup).filter(k=>d.sup[k]).map(k=>(SUPN[k]||k).replace('지지애자 ','')).join(', '):'',
+        '전력선 댐퍼':dm(DMP_G[0]),'GW 댐퍼':dm(DMP_G[1]),'OPGW 댐퍼':dm(DMP_G[2]),
+        '칡넝쿨':d.kudzu?'○':'',
+        '산복개소':d.sanbok?('○'+(d.sanbokSt?' '+d.sanbokSt:'')+(d.sanbokMemo?' · '+d.sanbokMemo:'')):'',
+        '저지상고':d.lowClr?('○'+(d.lowH!=null?' '+d.lowH+'m':'')+(d.lowStd?' (기준 '+d.lowStd+')':'')+(d.lowMemo?' · '+d.lowMemo:'')):'',
+        '철탑 밑':(LAND.find(x=>x.k===d.land)||{}).name||'',
+        '위험철탑':d.danger?'○':'',
+        '지세 입력 항목':jsTxt,
+        '하차→철탑 이동':acc?`${Math.round(acc.sec/60)}분 · ${kmT(acc.m)} (${acc.date})`:'',
+        '경간 순시 기록':wk?`${kmT(wk.m)} · ${hms(wk.sec)} (${wk.date})`:'',
+        '기별사진':pr.total?pr.done+'/'+pr.total:''
+      });
+      const r2={'전압(kV)':l.kv,'선로명':LN(l),'철탑번호':NO(d.label),'전체':pr.total?pr.done+'/'+pr.total:''};
+      ITEMS.forEach((it,k)=>{r2[it.label]=pr.per[k];});
+      R2.push(r2);
+    });
+    R3.push({'전압(kV)':l.kv,'선로명':LN(l),'철탑 수':l.towers.length,'위치 찍힌 철탑':nG,'높이 미수정':nH,'철탑형 미수정':nF,
+      '기별사진':pt?pd+'/'+pt+' ('+Math.round(pd/pt*100)+'%)':''});
+  });
+  return [R1,R2,R3];
+}
+function xlSheet(rows){
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const keys=rows.length?Object.keys(rows[0]):[];
+  ws['!cols']=keys.map(k=>{let w=k.length*2+2;rows.forEach(r=>{const v=String(r[k]==null?'':r[k]);let n=0;for(const ch of v)n+=ch.charCodeAt(0)>255?2:1;w=Math.max(w,n+2);});return {wch:Math.min(48,w)};});
+  if(rows.length)ws['!autofilter']={ref:ws['!ref']};
+  return ws;
+}
+async function exportXlsx(){
+  if(!lines||!lines.length){say('선로가 없어요.');return;}
+  say('엑셀 만드는 중…',true);
+  try{await loadXLSX();}catch(e){say(e.message);return;}
+  const [R1,R2,R3]=xlRows(), wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,xlSheet(R1),'철탑 기별');
+  XLSX.utils.book_append_sheet(wb,xlSheet(R2),'기별사진 항목별');
+  XLSX.utils.book_append_sheet(wb,xlSheet(R3),'선로 요약');
+  const now=new Date(), fn='철탑기별_전체선로_'+gpsYmd(now).replace(/-/g,'')+'.xlsx';
+  const isApp=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
+  if(!isApp){XLSX.writeFile(wb,fn);say('📊 엑셀을 내려받았어요 · '+fn+' (철탑 '+R1.length+'기)');return;}
+  // 철탑3D 앱 안에서는 바로 내려받기가 안 돼서: 공유하기 → 안 되면 서버에 잠깐 올려 브라우저로 내려받음
+  const blob=new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  try{const f=new File([blob],fn,{type:blob.type});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:fn});say('📊 엑셀을 보냈어요');return;}}
+  catch(e){if(e&&e.name==='AbortError')return;}
+  try{
+    if(!sb)throw new Error('서버 연결 없음');
+    const path='exports/tower_'+gpsYmd(now).replace(/-/g,'')+'_'+Math.random().toString(36).slice(2,8)+'.xlsx';
+    const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:blob.type,upsert:true}); if(up.error)throw up.error;
+    const {data,error}=await sb.storage.from(BUCKET).createSignedUrl(path,3600,{download:fn}); if(error)throw error;
+    say('📊 브라우저에서 엑셀을 내려받아요');location.href=data.signedUrl;
+  }catch(e){say('앱에서는 내려받지 못했어요. 크롬에서 앱 주소를 열고 📊 엑셀을 누르세요. ('+(e.message||e)+')',true);}
+}
+gid('xlsBtn').addEventListener('click',exportXlsx);
 gid('zipBtn').addEventListener('click',async()=>{
   if(!AS) return say('서버에 연결되지 않았어요.');
   const l=cur(), mine=photos.filter(p=>p.lineId===l.id&&p.path);
