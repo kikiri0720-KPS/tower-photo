@@ -1320,6 +1320,36 @@ function buildAll(){
    const lv=TWS.map(()=>0);
    TWS.forEach((_,li)=>{const used=new Set([...nbr[li]].filter(o=>o<li).map(o=>lv[o]));let v=0;while(used.has(v))v++;lv[li]=v;});
    TWS.forEach((tw,li)=>{if(!lv[li])return;const off=(lv[li]%4)*STEP;tw.forEach(t=>{if(t.pole||t.own||t.share.length)return;t.autoH+=off;if(!(t.d.h>0))t.H=t.autoH;});});}
+  // v21.29: 서로 건너가는(크로스) 선로 — 교차 지점에서 위로 가는 선로의 가장 낮은 전선이
+  //         아래 선로의 가공지선보다 8 m 이상 위에 오도록 위 선로 양쪽 철탑을 높임 (전압 높은 선로가 위)
+  //         직접 높이를 고친 철탑은 못 높이므로, 그때는 아래 선로 철탑을 낮춰 봄 (최소 자동높이의 70 %)
+  {const CLR=8, SP=[];
+   const band=t=>{const T0=t.own||t, sp=armSpec(cirOf(T0.line,T0.d)), lo=sp.arms[0].f-.06;return [T0.y+T0.H*lo, T0.y+T0.H*1.06];};
+   TWS.forEach((tw,li)=>{for(let i=0;i<tw.length-1;i++){const a=tw[i],b=tw[i+1],A=a.own||a,B=b.own||b;if(A===B||A.pole||B.pole)continue;
+     SP.push({li,a:A,b:B,kv:+tw[0].line.kv||0,x0:Math.min(A.x,B.x),x1:Math.max(A.x,B.x),z0:Math.min(A.z,B.z),z1:Math.max(A.z,B.z)});}});
+   const canUp=t=>!(t.d.h>0)&&!t.share.length, canDn=t=>!(t.d.h>0)&&!t.share.length;
+   for(let pass=0;pass<3;pass++){let any=false;
+    for(let i=0;i<SP.length;i++){const p=SP[i];
+     for(let j=i+1;j<SP.length;j++){const q=SP[j];
+      if(p.li===q.li||p.x1<q.x0||q.x1<p.x0||p.z1<q.z0||q.z1<p.z0)continue;
+      if(p.a===q.a||p.a===q.b||p.b===q.a||p.b===q.b)continue;
+      const rx=p.b.x-p.a.x,rz=p.b.z-p.a.z,sx=q.b.x-q.a.x,sz=q.b.z-q.a.z,den=rx*sz-rz*sx;if(Math.abs(den)<1e-6)continue;
+      const u=((q.a.x-p.a.x)*sz-(q.a.z-p.a.z)*sx)/den, v=((q.a.x-p.a.x)*rz-(q.a.z-p.a.z)*rx)/den;
+      if(u<=0.02||u>=0.98||v<=0.02||v>=0.98)continue;
+      const at=(sp,w)=>{const L=Math.hypot(sp.b.x-sp.a.x,sp.b.z-sp.a.z),sag=L*L*.000075*4*w*(1-w),ba=band(sp.a),bb=band(sp.b);
+        return [ba[0]+(bb[0]-ba[0])*w-sag, ba[1]+(bb[1]-ba[1])*w-sag*.8];};
+      const P=at(p,u),Q=at(q,v);
+      let up,dn,wu,wd;
+      if(p.kv!==q.kv){[up,dn,wu,wd]=p.kv>q.kv?[p,q,u,v]:[q,p,v,u];} else {[up,dn,wu,wd]=(P[0]+P[1])>=(Q[0]+Q[1])?[p,q,u,v]:[q,p,v,u];}
+      const U=up===p?P:Q, D=up===p?Q:P; let need=D[1]+CLR-U[0];
+      if(need<=0.3)continue;
+      const loF=(t=>{const s2=armSpec(cirOf(t.line,t.d));return s2.arms[0].f-.06;})(up.a);need/=loF;
+      if(canUp(up.a)&&canUp(up.b)){up.a.H+=need;up.b.H+=need;up.a.autoH=up.a.H;up.b.autoH=up.b.H;any=true;}
+      else if(canUp(up.a)||canUp(up.b)){const t=canUp(up.a)?up.a:up.b,w=t===up.a?1-wu:wu;const add=need/Math.max(w,.25);t.H+=add;t.autoH=t.H;any=true;}
+      else{[dn.a,dn.b].forEach(t=>{if(!canDn(t))return;if(t._a0==null)t._a0=t.autoH;const nh=Math.max(t.H-need,t._a0*.7);if(nh<t.H-.1){t.H=nh;t.autoH=nh;any=true;}});}
+     }}
+    if(!any)break;}
+   TWS.forEach(tw=>tw.forEach(t=>{t.H=Math.round(t.H);t.autoH=Math.round(t.autoH);}));}
   const idOf=t=>(t.own||t).uid;
   TWS.forEach((tw,li)=>{
     const l=items[li].l, n=tw.length, lc=tw[0].lc;
