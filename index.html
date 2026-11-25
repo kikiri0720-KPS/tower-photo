@@ -1309,6 +1309,17 @@ function buildAll(){
   }
   // 3) 세우기 · 전선 (같은 철탑 사이 경간은 한 번만)
   const drawn=new Map();   // 경간 키 → 지나가는 선로 색들
+  // v21.28: 나란히 가는 선로끼리 철탑 높이가 같으면 전선이 겹쳐 보임 → 가까이 있는 선로마다 높이 단차(7 m씩)를 줌
+  //         (철탑 높이를 직접 고친 철탑은 그대로 둠)
+  {const NB=150, STEP=7, grid=new Map(), gk=(x,z)=>Math.floor(x/NB)+','+Math.floor(z/NB);
+   TWS.forEach(tw=>tw.forEach(t=>{const k=gk(t.x,t.z);if(!grid.has(k))grid.set(k,[]);grid.get(k).push(t);}));
+   const nbr=TWS.map(()=>new Set());
+   TWS.forEach(tw=>tw.forEach(t=>{const gx=Math.floor(t.x/NB),gz=Math.floor(t.z/NB);
+     for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)(grid.get((gx+dx)+','+(gz+dz))||[]).forEach(o=>{
+       if(o.li!==t.li&&!t.own&&!o.own&&Math.hypot(o.x-t.x,o.z-t.z)<NB&&Math.hypot(o.x-t.x,o.z-t.z)>25){nbr[t.li].add(o.li);nbr[o.li].add(t.li);}});}));
+   const lv=TWS.map(()=>0);
+   TWS.forEach((_,li)=>{const used=new Set([...nbr[li]].filter(o=>o<li).map(o=>lv[o]));let v=0;while(used.has(v))v++;lv[li]=v;});
+   TWS.forEach((tw,li)=>{if(!lv[li])return;const off=(lv[li]%4)*STEP;tw.forEach(t=>{if(t.pole||t.own||t.share.length)return;t.autoH+=off;if(!(t.d.h>0))t.H=t.autoH;});});}
   const idOf=t=>(t.own||t).uid;
   TWS.forEach((tw,li)=>{
     const l=items[li].l, n=tw.length, lc=tw[0].lc;
