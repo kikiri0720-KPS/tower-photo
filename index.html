@@ -14,6 +14,11 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://api.vworld.kr" crossorigin>
+<link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
+<link rel="preconnect" href="https://s3.amazonaws.com" crossorigin>
+<link rel="preconnect" href="https://dapi.kakao.com">
+<link rel="preconnect" href="https://map.daumcdn.net">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <style>
 /* Layout: full-bleed 3D terrain with one straight line at a time; line summary top-left, detail card right (bottom on phones), line picker + tower rail along the bottom */
@@ -959,15 +964,20 @@ const REAL={};   // lineId → {key, dem, sat, st}
 // v20.5: 브이월드(국토부) 항공사진 — 우리나라는 이음매 없이 선명함. 안 되면 Esri로 자동 전환
 const VWORLD_KEY='8887E96B-6BBA-4ABD-AA5B-2873D0C14B77';
 const SAT_SRC=()=>[
-  ...(VWORLD_KEY?[{name:'브이월드 항공사진',zMax:19,url:(z,x,y)=>`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Satellite/${z}/${y}/${x}.jpeg`}]:[]),
+  ...(VWORLD_KEY?[{name:'브이월드 항공사진',vw:true,zMax:19,url:(z,x,y)=>`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Satellite/${z}/${y}/${x}.jpeg`}]:[]),
   {name:'Esri 위성',zMax:18,url:(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`}];
+// v21.17: 브이월드가 응답이 없으면 한 장만 먼저 시험해 보고 바로 Esri로 넘어감 (10분 동안 기억)
+let VW_BAD=0, VW_OK=false;
 async function satTiles(bb,maxPx,zCap){
   let last=null;
   for(const s of SAT_SRC()){
-    try{const z=pickZoom(bb,maxPx,Math.min(zCap,s.zMax));const r=await tilesToCanvas(bb,z,s.url,maxPx);
+    if(s.vw&&Date.now()-VW_BAD<600000)continue;
+    try{const z=pickZoom(bb,maxPx,Math.min(zCap,s.zMax));
+      if(s.vw&&!VW_OK){const x=Math.floor(mX((bb.w+bb.e)/2,z)/256),y=Math.floor(mY((bb.n+bb.s)/2,z)/256);await loadImg(s.url(z,x,y),5000);VW_OK=true;}
+      const r=await tilesToCanvas(bb,z,s.url,maxPx);
       const all=(r.w/256)*(r.h/256); if(r.miss>all*.3)throw new Error(s.name+' 사진이 많이 빠짐');
       r.src=s.name; return r;}
-    catch(e){last=e;}
+    catch(e){last=e;if(s.vw){VW_BAD=Date.now();VW_OK=false;}}
   }
   throw last||new Error('위성 사진 없음');
 }
@@ -988,9 +998,12 @@ function realLayout(l,spanOf){
   return {px:P.map(p=>p[0]),pz:P.map(p=>p[1]),lat0,lng0,kx,kz,nGps:A.length};
 }
 const IMGC=new Map();   // v20.10: 받은 지도 조각 기억 (최대 900장)
-function loadImg(src){
+function loadImg(src,ms){
   if(IMGC.has(src)){const p=IMGC.get(src);IMGC.delete(src);IMGC.set(src,p);return p;}
-  const p=new Promise((res,rej)=>{const im=new Image();im.crossOrigin='anonymous';im.onload=()=>res(im);im.onerror=()=>rej(new Error('그림을 받지 못함'));im.src=src;});
+  // v21.17: 응답 없는 조각 하나 때문에 지도 전체가 멈추지 않게 8초 넘으면 포기
+  const p=new Promise((res,rej)=>{const im=new Image();im.crossOrigin='anonymous';
+    const to=setTimeout(()=>{im.onload=im.onerror=null;im.src='';rej(new Error('시간 초과'));},ms||8000);
+    im.onload=()=>{clearTimeout(to);res(im);};im.onerror=()=>{clearTimeout(to);rej(new Error('그림을 받지 못함'));};im.src=src;});
   p.catch(()=>IMGC.delete(src)); IMGC.set(src,p);
   if(IMGC.size>900)IMGC.delete(IMGC.keys().next().value);
   return p;
@@ -1002,16 +1015,23 @@ async function tilesToCanvas(bb,z,url,maxPx){
   if(cv.width>maxPx||cv.height>maxPx)throw new Error('범위가 너무 넓어요');
   const ctx=cv.getContext('2d',{willReadFrequently:true}),jobs=[];let ok=0;
   for(let ty=ty0;ty<=ty1;ty++)for(let tx=tx0;tx<=tx1;tx++)jobs.push([tx,ty]);
-  for(let k=0;k<jobs.length;k+=8){
-    await Promise.all(jobs.slice(k,k+8).map(([tx,ty])=>loadImg(url(z,tx,ty)).then(im=>{ctx.drawImage(im,(tx-tx0)*256,(ty-ty0)*256);ok++;}).catch(()=>{})));
-  }
+  // v21.17: 8장씩 끊어 받던 것을 12장씩 쉬지 않고 이어서 받음 (늦은 조각이 다음 묶음을 막지 않게)
+  let next=0;
+  const worker=async()=>{while(next<jobs.length){const [tx,ty]=jobs[next++];try{const im=await loadImg(url(z,tx,ty));ctx.drawImage(im,(tx-tx0)*256,(ty-ty0)*256);ok++;}catch(e){}}};
+  await Promise.all(Array.from({length:Math.min(12,jobs.length)},worker));
   if(!ok)throw new Error('지도 타일을 하나도 받지 못했어요');
   return {cv,ctx,z,px0:tx0*256,py0:ty0*256,w:cv.width,h:cv.height,miss:jobs.length-ok};
 }
 function pickZoom(bb,maxPx,zMax){for(let z=zMax;z>=8;z--){const w=(Math.floor(mX(bb.e,z)/256)-Math.floor(mX(bb.w,z)/256)+1)*256,h=(Math.floor(mY(bb.s,z)/256)-Math.floor(mY(bb.n,z)/256)+1)*256;if(w<=maxPx&&h<=maxPx)return z;}return 8;}
 async function realLoad(lineId,key,bb){
   const R=REAL[lineId]={key,dem:null,sat:null,st:'지형 자료 받는 중…'};
-  try{
+  // v21.17: 표고와 사진을 동시에 받고, 흐린 사진을 먼저 보여 준 뒤 선명한 사진으로 바꿈
+  let stD='지형 자료 받는 중…';
+  const upd=()=>{R.st=stD+(R.sat&&R.sat!=='fail'?' · '+R.sat.src+(R.sat.lo?' (선명한 사진 받는 중)':''):R.sat==='fail'?' · 위성 사진 못 받음':'');};
+  const refresh=()=>{upd();if(REAL[lineId]!==R)return;
+    if(lineId==='__all__'){if(ALL)buildAll();return;}
+    if(!ALL&&cur().id===lineId){build();if(!card.hidden&&!selT&&!addMode&&!backupMode)renderCard();}};
+  const demP=(async()=>{try{
     const z=pickZoom(bb,3072,13);
     const t=await tilesToCanvas(bb,z,(z,x,y)=>`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,3072);
     const d=t.ctx.getImageData(0,0,t.w,t.h).data,arr=new Float32Array(t.w*t.h);
@@ -1023,17 +1043,20 @@ async function realLoad(lineId,key,bb){
     // v19.1: 표고 자료의 잔물결(나무·건물 높이, 측정 오차)을 3×3 평균으로 두 번 다듬어 평지가 울퉁불퉁하지 않게
     for(let pass=0;pass<2;pass++){const src=arr.slice(),W=t.w,H=t.h;
       for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){let s2=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)s2+=src[(y+dy)*W+x+dx];arr[y*W+x]=s2/9;}}
-    R.dem={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,arr,base};R.st='실제 지형 (표고 자료 '+(t.miss?'일부 빠짐':'완료')+')';
-  }catch(e){R.dem='fail';R.st='표고 자료를 받지 못해 가상 지형으로 보여요 ('+e.message+')';}
-  if(surfSat()){
-    try{const t=await satTiles(bb,4096,17);
-      const tex=new T.CanvasTexture(t.cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();R.sat={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,tex,src:t.src};R.st+=' · '+t.src;
-      // v19.1: 나무를 심을 곳을 고르려고 위성 사진을 작게 줄여 색을 읽어 둠
-      try{const sw=Math.min(1024,t.w),sh=Math.max(1,Math.round(t.h*sw/t.w)),c2=document.createElement('canvas');c2.width=sw;c2.height=sh;const x2=c2.getContext('2d',{willReadFrequently:true});x2.drawImage(t.cv,0,0,sw,sh);
-        R.sat.px={w:sw,h:sh,k:sw/t.w,data:x2.getImageData(0,0,sw,sh).data};}catch(e){}}
-    catch(e){R.sat='fail';R.st+=' · 위성 사진 못 받음';}
-  }
-  if(!ALL&&cur().id===lineId){build();if(!card.hidden&&!selT&&!addMode&&!backupMode)renderCard();}   // v20.26: 전체 선로 보는 중엔 개별 선로 지형이 다 받아져도 화면을 바꾸지 않음
+    R.dem={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,arr,base};stD='실제 지형 (표고 자료 '+(t.miss?'일부 빠짐':'완료')+')';
+  }catch(e){R.dem='fail';R.failAt=Date.now();stD='표고 자료를 받지 못해 가상 지형으로 보여요 ('+e.message+')';}})();
+  const setSat=(t,lo)=>{
+    const tex=new T.CanvasTexture(t.cv);tex.anisotropy=renderer.capabilities.getMaxAnisotropy();R.sat={z:t.z,px0:t.px0,py0:t.py0,w:t.w,h:t.h,tex,src:t.src,lo};
+    // v19.1: 나무를 심을 곳을 고르려고 위성 사진을 작게 줄여 색을 읽어 둠
+    try{const sw=Math.min(1024,t.w),sh=Math.max(1,Math.round(t.h*sw/t.w)),c2=document.createElement('canvas');c2.width=sw;c2.height=sh;const x2=c2.getContext('2d',{willReadFrequently:true});x2.drawImage(t.cv,0,0,sw,sh);
+      R.sat.px={w:sw,h:sh,k:sw/t.w,data:x2.getImageData(0,0,sw,sh).data};}catch(e){}
+  };
+  if(!surfSat()){await demP;refresh();return;}
+  let got=false;
+  try{setSat(await satTiles(bb,1024,17),true);got=true;}catch(e){}
+  await demP; refresh();          // 흐린 사진(또는 지형만)이라도 먼저 화면에
+  try{const old=R.sat;setSat(await satTiles(bb,4096,17),false);got=true;refresh();if(old&&old.tex&&REAL[lineId]===R)old.tex.dispose();}catch(e){if(R.sat&&R.sat.lo){R.sat.lo=false;refresh();}}
+  if(!got){R.sat='fail';R.failAt=Date.now();refresh();}
 }
 function demAt(R,lat,lng){
   const D=R&&R.dem;if(!D||D==='fail')return null;
@@ -1195,7 +1218,7 @@ function buildAll(){
   const bb={n:Math.max(...cs.map(c=>c[0])),s:Math.min(...cs.map(c=>c[0])),e:Math.max(...cs.map(c=>c[1])),w:Math.min(...cs.map(c=>c[1]))};
   const key='ALL:'+[bb.n,bb.s,bb.e,bb.w].map(v=>v.toFixed(4)).join(',')+(surfSat()?'s':'g');
   let RR=REAL.__all__;
-  if(!RR||RR.key!==key){realLoad('__all__',key,bb).then(()=>{if(ALL)buildAll();});RR=REAL.__all__;}
+  if(!RR||RR.key!==key||(RR.failAt&&Date.now()-RR.failAt>60000)){realLoad('__all__',key,bb);RR=REAL.__all__;}
   const flat=()=>RR&&RR.dem&&RR.dem!=='fail'?RR.dem.base:0;
   const elev=(x,z)=>{const g=toLL(x,z),h=demAt(RR,g[0],g[1]);return h==null?flat():h;};
   G={L:Math.max(BW,BD),elev,real:null,toLL,all:true};
@@ -1360,7 +1383,7 @@ function build(){
     const TW=BW+3000, TD=Math.max(2600,L*.25,BD+2600), cs=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>toLL(a*TW/2,b*TD/2));
     const bb={n:Math.max(...cs.map(c=>c[0])),s:Math.min(...cs.map(c=>c[0])),e:Math.max(...cs.map(c=>c[1])),w:Math.min(...cs.map(c=>c[1]))};
     const key=[bb.n,bb.s,bb.e,bb.w].map(v=>v.toFixed(4)).join(',')+(surfSat()?'s':'g');
-    RR=REAL[l.id]; if(!RR||RR.key!==key){realLoad(l.id,key,bb);RR=REAL[l.id];}
+    RR=REAL[l.id]; if(!RR||RR.key!==key||(RR.failAt&&Date.now()-RR.failAt>60000)){realLoad(l.id,key,bb);RR=REAL[l.id];}
     const flat=()=>RR&&RR.dem&&RR.dem!=='fail'?RR.dem.base:0;   // v19.1: 자료가 없는 곳·받는 중에는 가짜 산 대신 평평하게
     elev=(x,z)=>{const g=toLL(x,z),h=demAt(RR,g[0],g[1]);return h==null?(RR&&RR.dem==='fail'?synth(x,z):flat()):h;};
   }
@@ -3744,6 +3767,8 @@ gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syn
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible') pull();});
   window.addEventListener('online',()=>{flush();pull();});
 })();
+// v21.17: 순시 지도를 누르기 전에 카카오 지도 프로그램을 미리 받아 둬서 바로 열리게
+setTimeout(()=>{try{if(mapWant()==='kakao')loadKakao(kakaoKey()).catch(()=>{});}catch(e){}},4000);
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').then(reg=>{
     reg.update();
