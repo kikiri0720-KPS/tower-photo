@@ -230,6 +230,17 @@ body.headmin .head h1{font-size:15px}
 .lotpop .lotr,.lotpop .lotm{font-size:12.5px;color:#333;margin-top:2px}
 .elv{margin:8px 0 2px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:13.5px;line-height:1.55}
 .elv b{font-size:15px}.elv .en{display:block;font-size:11.5px;opacity:.75;margin-top:2px}
+.jise{margin:10px 0 4px;padding:10px;border:1px solid var(--line);border-radius:12px}
+.jise .jh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:700}
+.jise .jg{padding:2px 10px;border-radius:999px;font-size:13.5px;color:#fff}
+.jg0{background:#2e7d4f}.jg1{background:#c98a00}.jg2{background:#c0392b}.jgn{background:#8a8f94}
+.jise table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}
+.jise td{padding:4px 2px;border-top:1px solid var(--line);vertical-align:middle}
+.jise td:last-child{text-align:right;white-space:nowrap}
+.jise .jc{display:inline-block;min-width:44px;text-align:center;padding:1px 6px;border-radius:6px;font-size:11.5px;color:#fff}
+.jise .jrow{margin-top:8px}.jise .jrow .lb{font-size:12px}
+.jise .seg button{font-size:12px;padding:5px 6px}
+.jise .jn{font-size:11.5px;opacity:.75;margin-top:6px;line-height:1.5}
 .lotpop .lotw{font-size:12px;color:#b35b00;margin-top:3px}
 .lotpop .lotll{display:block;font-size:11.5px;color:#777;margin-top:3px}
 .lotpop .lotb{display:flex;gap:6px;margin-top:6px}
@@ -1879,6 +1890,7 @@ function renderCard(){
         <dt>선로길이</dt><dd>${(G.L/1000).toFixed(2)} km</dd>
       </dl>
       ${realFieldHTML(l)}
+      ${jiseLineHTML(l)}
       ${SHOW_CROSS?`      <div class="field"><span class="lb">🔍 횡단 자동 찾기 (도로·강·철도·골짜기)</span><button class="ghost" type="button" id="xaGo">지도 자료로 경간별 횡단 찾기</button>
         <p class="note" style="margin:4px 0 0">위치(📍)를 찍은 철탑 사이 경간이 정확해요. 찾은 목록을 보고 골라서 적용해요.</p></div>`:''}
       ${gpsLineHTML(l)}
@@ -1898,6 +1910,7 @@ function renderCard(){
       <div class="sub">${esc(l.kv+'kV '+LN(l))} · ${cirOf(l,t.d)}회선${t.d.cir?' (따로 설정)':''} · ${gwTxt(l)}${t.d.form?' · '+esc(FORM(t.d)):''}</div>
       <button class="primary ledger-btn" type="button" id="openLedger">📸 기별사진 · ${progress(t).done}/${progress(t).total}</button>
       ${elvHTML(t)}
+      ${jiseHTML(t)}
       <div class="row2">
         <div class="field"><label for="fLabel">철탑 번호 (No.)</label><div class="unit" data-unit=""><input id="fLabel" type="text" value="${esc(t.label)}"></div></div>
         <div class="field"><label for="fH">철탑 높이</label><div class="unit" data-unit="m"><input id="fH" type="number" inputmode="decimal" min="10" max="250" step="0.1" placeholder="${t.autoH}" value="${t.d.h>0?t.d.h:''}"></div></div>
@@ -3166,7 +3179,7 @@ async function lot3Lookup(cx,cy){
    · 위성 표고라 수 m 오차가 있는 참고값 */
 const ELV=new Map();
 async function elevInfo(lat,lng){
-  const z=15, m=70, kx=111320*Math.cos(lat*Math.PI/180), kz=110574;
+  const z=15, m=330, kx=111320*Math.cos(lat*Math.PI/180), kz=110574;
   const bb={n:lat+m/kz,s:lat-m/kz,e:lng+m/kx,w:lng-m/kx};
   const t=await tilesToCanvas(bb,z,(z,x,y)=>`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,1024);
   const W=t.w,H=t.h,D=t.ctx.getImageData(0,0,W,H).data;
@@ -3176,9 +3189,10 @@ async function elevInfo(lat,lng){
   if(!(h>-100&&h<3000))throw new Error('표고 자료 없음');
   const res=156543.03392*Math.cos(lat*Math.PI/180)/2**z, s=Math.max(1,Math.round(10/res));
   const gx=(hp(i+s,j)-hp(i-s,j))/(2*s*res), gy=(hp(i,j+s)-hp(i,j-s))/(2*s*res), g=Math.hypot(gx,gy)||0;
-  const r=Math.round(50/res); let lo=1e9,hi=-1e9;
-  for(let b=-r;b<=r;b++)for(let a=-r;a<=r;a++){if(a*a+b*b>r*r)continue;const q=hp(i+a,j+b);if(q===q){lo=Math.min(lo,q);hi=Math.max(hi,q);}}
-  return {h,deg:Math.atan(g)*180/Math.PI,pct:g*100,lo,hi};
+  const r=Math.round(50/res), r3=Math.round(300/res); let lo=1e9,hi=-1e9,lo3=1e9,hi3=-1e9;
+  for(let b=-r3;b<=r3;b++)for(let a=-r3;a<=r3;a++){const dd=a*a+b*b;if(dd>r3*r3)continue;const q=hp(i+a,j+b);if(q!==q)continue;
+    lo3=Math.min(lo3,q);hi3=Math.max(hi3,q);if(dd<=r*r){lo=Math.min(lo,q);hi=Math.max(hi,q);}}
+  return {h,deg:Math.atan(g)*180/Math.PI,pct:g*100,lo,hi,lo3,hi3};
 }
 function elvLine(r){return `⛰ 표고 <b>${Math.round(r.h)} m</b> · 경사 ${Math.round(r.deg)}° (${Math.round(r.pct)}%) · 반경 50m 고저차 ${Math.round(r.hi-r.lo)} m`;}
 function towerLL(t){
@@ -3192,10 +3206,69 @@ function elvHTML(t){
   const k=p[0].toFixed(6)+','+p[1].toFixed(6), v=ELV.get(k), note=`<span class="en">${p[2]?'찍은 철탑 위치':'앞뒤 철탑 사이 추정 위치'} · 위성 표고 자료 기준 참고값 (수 m 오차)</span>`;
   if(v&&v!=='busy')return `<div class="elv" id="elvBox" data-k="${k}">${elvLine(v)}${note}</div>`;
   if(!v){ELV.set(k,'busy');
-    elevInfo(p[0],p[1]).then(r=>{ELV.set(k,r);const b=document.getElementById('elvBox');if(b&&b.dataset.k===k)b.innerHTML=elvLine(r)+note;})
+    elevInfo(p[0],p[1]).then(r=>{ELV.set(k,r);const b=document.getElementById('elvBox');if(b&&b.dataset.k===k)b.innerHTML=elvLine(r)+note;jiseRefresh();})
       .catch(e=>{ELV.delete(k);const b=document.getElementById('elvBox');if(b&&b.dataset.k===k)b.textContent='⛰ 표고를 받지 못했어요 ('+(e.message||e)+')';});}
   return `<div class="elv" id="elvBox" data-k="${k}">⛰ 표고 계산 중…${note}</div>`;
 }
+
+/* ---------- v21.18 지세 판정 (전기공사 표준품셈 1-11-3 지세별 할증률) ----------
+   · 10개 항목을 보통·불량·매우 불량으로 나누고, 2/3 이상 해당하는 등급으로 판정 (주3)
+   · 자동: 해발고도·표고(반경 300m 고저차)·부지경사각 ← 표고 자료 / 이동시간 ← 🚗 하차 지점부터 순시 기록
+   · 입력: 도로 노폭·도로 기울기·수목·강수일·숙소·인력동원 — 선로 기본값 + 철탑별로 다르게 고를 수 있음 */
+const JS_G=['보통','불량','매우 불량'], JS_P=['0%','25%','50%'];
+const JS_M=[
+  {k:'road',n:'도로 노폭',o:['4m 초과','3~4m','3m 미만']},
+  {k:'rslope',n:'도로 기울기',o:['10° 미만','10~30°','30° 이상']},
+  {k:'time',n:'이동시간',o:['30분 미만','30분~1시간','1시간 이상']},
+  {k:'tree',n:'수목 (100㎡당)',o:['5그루 미만','5~10그루','10그루 이상']},
+  {k:'rain',n:'강수일 (5mm 이상)',o:['연 40일 미만','40~50일','50일 이상']},
+  {k:'lodge',n:'숙소 거리',o:['1km 미만','1~5km','5km 이상']},
+  {k:'labor',n:'인력동원 거리',o:['1km 미만','1~5km','5km 이상']}];
+const jsLv=(v,a,b)=>v<a?0:v<b?1:2;
+const jsChip=g=>g==null?'<span class="jc jgn">미입력</span>':`<span class="jc jg${g}">${JS_G[g]}</span>`;
+function jiseCalc(t){
+  const l=cur(), d=t.d, L=l.jise||{}, D=d.jise||{}, rows=[];
+  const p=towerLL(t), e=p&&ELV.get(p[0].toFixed(6)+','+p[1].toFixed(6)), E=e&&e!=='busy'?e:null, wait=p&&!E;
+  rows.push({n:'해발고도',v:E?Math.round(E.h)+' m':wait?'계산 중…':'—',g:E?jsLv(E.h,100,300):null,src:'자동'});
+  rows.push({n:'표고 (반경 300m 고저차)',v:E?Math.round(E.hi3-E.lo3)+' m':wait?'계산 중…':'—',g:E?jsLv(E.hi3-E.lo3,50,150):null,src:'자동'});
+  rows.push({n:'부지 경사각',v:E?Math.round(E.deg)+'°':wait?'계산 중…':'—',g:E?jsLv(E.deg,15,35):null,src:'자동'});
+  JS_M.forEach(m=>{
+    let g=D[m.k]!=null?D[m.k]:L[m.k]!=null?L[m.k]:null, src=D[m.k]!=null?'철탑':L[m.k]!=null?'선로 기본':'', v=g!=null?m.o[g]:'—';
+    if(m.k==='time'&&D.time==null){const a=d.access&&d.access.last;if(a&&a.sec>0){const mn=a.sec/60;g=jsLv(mn,30,60);v=Math.round(mn)+'분';src='🚗 순시 기록';}}
+    rows.push({n:m.n,v,g,src,k:m.k});
+  });
+  const known=rows.filter(r=>r.g!=null), n=known.length, c2=known.filter(r=>r.g===2).length, c1=known.filter(r=>r.g>=1).length;
+  const grade=!n?null:c2*3>=n*2?2:c1*3>=n*2?1:0;
+  return {rows,grade,n,c1,c2};
+}
+function jiseHTML(t){
+  const J=jiseCalc(t), l=cur(), D=t.d.jise||{}, L=l.jise||{};
+  let h=`<div class="jise" id="jsBox"><div class="jh">📐 지세 판정 ${J.grade==null?'<span class="jg jgn">항목 입력 필요</span>':`<span class="jg jg${J.grade}">${JS_G[J.grade]} · 할증 ${JS_P[J.grade]}</span>`}</div>`;
+  h+='<table>'+J.rows.map(r=>`<tr><td>${r.n}${r.src&&r.src!=='자동'?' <span style="opacity:.6;font-size:11px">('+r.src+')</span>':''}</td><td>${esc(r.v)}</td><td>${jsChip(r.g)}</td></tr>`).join('')+'</table>';
+  h+=`<details class="jrow"${J.n<10?' open':''}><summary class="lb">입력 항목 고르기 (이 철탑만 · 다시 누르면 선로 기본값으로)</summary>`;
+  JS_M.forEach(m=>{const cv=D[m.k]!=null?D[m.k]:L[m.k]!=null?L[m.k]:-1;
+    h+=`<div class="jrow"><span class="lb">${m.n}${m.k==='time'?' · 🚗 하차 순시 기록이 있으면 자동':''}</span><div class="seg">${m.o.map((o,i)=>`<button type="button" data-tjs="${m.k}:${i}" aria-pressed="${cv===i}">${o}</button>`).join('')}</div></div>`;});
+  h+='</details>';
+  h+=`<div class="jn">${J.n<10?'입력된 '+J.n+'개 항목 기준 판정이에요 (10개 다 넣으면 정확해요). ':''}불량 이상 ${J.c1}개 · 매우 불량 ${J.c2}개 / ${J.n}개 · 2/3 이상 해당하는 등급으로 판정 (품셈 1-11-3 주3)<br>표고·경사는 위성 표고 자료 기준 참고값이라, 최종 판정은 현장 확인 후 정하세요.</div></div>`;
+  return h;
+}
+function jiseLineHTML(l){
+  const L=l.jise||{};
+  return `<div class="field"><span class="lb">📐 지세 판정 기본값 · 이 선로 모든 철탑 (철탑별로 다르면 철탑에서 따로 고름)</span>`+
+    JS_M.map(m=>`<div class="jrow" style="margin-top:6px"><span class="lb" style="font-size:12px">${m.n}</span><div class="seg">${m.o.map((o,i)=>`<button type="button" data-ljs="${m.k}:${i}" aria-pressed="${L[m.k]===i}">${o}</button>`).join('')}</div></div>`).join('')+
+    `<p class="note" style="margin:4px 0 0">해발고도·표고·부지경사각은 철탑 위치로 자동 계산돼요. 이동시간은 🚗 하차 지점부터 순시한 기록이 있으면 자동이에요.</p></div>`;
+}
+function jiseRefresh(){const b=document.getElementById('jsBox');if(b&&selT){const op=b.querySelector('details')&&b.querySelector('details').open;b.outerHTML=jiseHTML(selT);const nb=document.getElementById('jsBox');const dt=nb&&nb.querySelector('details');if(dt&&op!=null)dt.open=op;}}
+card.addEventListener('click',e=>{
+  const b=e.target.closest('[data-tjs],[data-ljs]'); if(!b)return;
+  const l=cur(), [k,v0]=(b.dataset.tjs||b.dataset.ljs).split(':'), v=+v0;
+  if(b.dataset.ljs!=null){l.jise=l.jise||{};if(l.jise[k]===v)delete l.jise[k];else l.jise[k]=v;save();renderCard();return;}
+  const t=selT; if(!t)return; const D=t.d.jise=t.d.jise||{}, L=l.jise||{};
+  if(D[k]===v||(D[k]==null&&L[k]===v&&k!=='time'))delete D[k]; else D[k]=v;
+  if(L[k]===v&&D[k]===v&&k!=='time')delete D[k];
+  if(!Object.keys(D).length)delete t.d.jise;
+  save(); jiseRefresh();
+});
 
 /* ---------- v21.17 내 위치 (카카오맵처럼 켜면 내 위치부터) ----------
    · 앱을 켜면 현재 위치를 받아, 철탑 지도 안이면 그 자리로 화면을 옮기고 파란 표시를 세움
