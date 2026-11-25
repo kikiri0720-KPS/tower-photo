@@ -1997,10 +1997,7 @@ function renderCard(){
         <p class="note" style="margin:6px 0 0">3D에서 철탑 둘레에 갈색 표시와 내리막 방향 화살표가 보여요${t.y!=null&&t.slope!=null?` · 지형 경사 약 ${Math.round(t.slope)}°`:''}.</p>`:''}</div>
       <div class="field"><span class="lb">⏚ 매설지선</span>
         <label class="check"><input type="checkbox" id="xGnd" ${t.d.gnd?'checked':''}>매설지선 있음</label>
-        ${t.d.gnd?`<div class="row2" style="margin-top:6px">
-          <div class="field" style="margin:0"><label for="fGndOhm">접지저항</label><div class="unit" data-unit="Ω"><input id="fGndOhm" type="number" inputmode="decimal" min="0" step="0.1" placeholder="측정값" value="${t.d.gndOhm!=null?t.d.gndOhm:''}"></div></div>
-          <div class="field" style="margin:0"><label for="fGndDate">측정일</label><div class="unit" data-unit=""><input id="fGndDate" type="date" value="${esc(t.d.gndDate||'')}"></div></div></div>
-        <div class="unit" data-unit="" style="margin-top:6px"><input id="fGndMemo" type="text" placeholder="예: 4방향 매설, 길이 30m, 2019 보강" value="${esc(t.d.gndMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
+        ${t.d.gnd?`<div class="unit" data-unit="" style="margin-top:6px"><input id="fGndMemo" type="text" placeholder="예: 4방향 매설, 길이 30m, 2019 보강" value="${esc(t.d.gndMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
       <div class="field"><span class="lb">🧱 기초보호설비 (여러 개 선택)</span>
         <div class="checks">${FP_TYPES.map(k=>`<label class="check"><input type="checkbox" data-fp="${k}" ${(t.d.fp||[]).includes(k)?'checked':''}>${k}</label>`).join('')}</div>
         ${(t.d.fp||[]).length?`<div class="lb" style="margin-top:8px;font-size:12px">설치 위치 (다리)</div>
@@ -2094,9 +2091,7 @@ function renderCard(){
   card.querySelectorAll('[data-sbst]').forEach(b=>b.addEventListener('click',()=>{const v=b.dataset.sbst;if(v)t.d.sanbokSt=v;else delete t.d.sanbokSt;save();build();}));
   if(q('#fSanbokMemo'))q('#fSanbokMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.sanbokMemo=v;else delete t.d.sanbokMemo;save();renderHead();});
   // v21.26: 매설지선 · 기초보호설비
-  if(q('#xGnd'))q('#xGnd').addEventListener('change',e=>{if(e.target.checked)t.d.gnd=true;else{delete t.d.gnd;delete t.d.gndOhm;delete t.d.gndDate;delete t.d.gndMemo;}save();build();});
-  if(q('#fGndOhm'))q('#fGndOhm').addEventListener('change',e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=0)t.d.gndOhm=Math.round(v*100)/100;else delete t.d.gndOhm;save();});
-  if(q('#fGndDate'))q('#fGndDate').addEventListener('change',e=>{const v=e.target.value;if(v)t.d.gndDate=v;else delete t.d.gndDate;save();});
+  if(q('#xGnd'))q('#xGnd').addEventListener('change',e=>{if(e.target.checked)t.d.gnd=true;else{delete t.d.gnd;delete t.d.gndMemo;}save();build();});
   if(q('#fGndMemo'))q('#fGndMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.gndMemo=v;else delete t.d.gndMemo;save();});
   card.querySelectorAll('[data-fp]').forEach(cb=>cb.addEventListener('change',()=>{const a=new Set(t.d.fp||[]);if(cb.checked)a.add(cb.dataset.fp);else a.delete(cb.dataset.fp);
     const arr=FP_TYPES.filter(k=>a.has(k));if(arr.length){t.d.fp=arr;t.d.fpOn=true;}else{delete t.d.fp;delete t.d.fpOn;delete t.d.fpLeg;delete t.d.fpSt;delete t.d.fpMemo;}save();build();}));
@@ -4038,7 +4033,7 @@ function xlRows(){
         '전력선 댐퍼':dm(DMP_G[0]),'GW 댐퍼':dm(DMP_G[1]),'OPGW 댐퍼':dm(DMP_G[2]),
         '칡넝쿨':d.kudzu?'○':'',
         '산복개소':d.sanbok?('○'+(d.sanbokSt?' '+d.sanbokSt:'')+(d.sanbokMemo?' · '+d.sanbokMemo:'')):'',
-        '매설지선':d.gnd?('○'+(d.gndOhm!=null?' '+d.gndOhm+'Ω':'')+(d.gndDate?' ('+d.gndDate+')':'')+(d.gndMemo?' · '+d.gndMemo:'')):'',
+        '매설지선':d.gnd?('○'+(d.gndMemo?' · '+d.gndMemo:'')):'',
         '기초보호설비':d.fpOn?((d.fp||[]).join('·')+(d.fpLeg&&d.fpLeg.length?' / '+d.fpLeg.map(k=>k+'각').join(','):'')+(d.fpSt?' / '+d.fpSt:'')+(d.fpMemo?' · '+d.fpMemo:'')):'',
         '저지상고':d.lowClr?('○'+(d.lowH!=null?' '+d.lowH+'m':'')+(d.lowStd?' (기준 '+d.lowStd+')':'')+(d.lowMemo?' · '+d.lowMemo:'')):'',
         '철탑 밑':(LAND.find(x=>x.k===d.land)||{}).name||'',
