@@ -1731,7 +1731,8 @@ function makeCrossTags(){
     if(pickKey==='ball'&&d.ball&&((d.ball1R||0)+(d.ball1W||0)+(d.ball2R||0)+(d.ball2W||0)>0)){const ps=[];if(cur().gw===1)ps.push(`적${(d.ball1R||0)+(d.ball2R||0)}·백${(d.ball1W||0)+(d.ball2W||0)}`);else{if((d.ball1R||0)+(d.ball1W||0)>0)ps.push(`#1 적${d.ball1R||0}·백${d.ball1W||0}`);if((d.ball2R||0)+(d.ball2W||0)>0)ps.push(`#2 적${d.ball2R||0}·백${d.ball2W||0}`);}const el=document.createElement('div');el.className='xtag ball';el.textContent='항공구 '+ps.join(' ');labelsEl.appendChild(el);s.tags.push(el);}});
 }
 const crossOf=d=>CROSS.filter(c=>d[c.k]);
-const SANBOK_ST=['','양호','관찰','보강 필요'];   // v19: 산복개소 상태
+const SANBOK_ST=['','양호','관찰','보강 필요'];
+const FP_TYPES=['옹벽','석축','개비온','백필','배수로','기타'], FP_ST=['','양호','관찰','보수 필요'], FP_LEG=['A','B','C','D'];   // v21.26: 기초보호설비   // v19: 산복개소 상태
 const isCT=lb=>/^C\/T/i.test(String(lb));   // v21.13: 변전소 철골타워는 번호 대신 C/T
 const NO=lb=>isCT(lb)?String(lb):'No.'+lb;
 const H_=t=>NO(t.label);   // v15: 1호 → No.1 표기
@@ -1786,7 +1787,7 @@ const dmpSum=(d,g)=>g.keys.reduce((a,k)=>a+(d[k]>0?d[k]:0),0);
 const dmpGroups=l=>{const ks=dmpKinds(l).map(x=>x.k);return DMP_G.filter(g=>g.keys.some(k=>ks.includes(k)));};
 var pickKey=null, pickLine=null;
 const MT_LEGS=['A','B','C','D'];
-const PICKS={angle:{n:'각도주',f:t=>!!t.ang},aviation:{n:'도색',f:t=>t.aviation},lamp:{n:'항공등',f:t=>t.lamp},ball:{n:'항공구',f:t=>t.d.ball&&t.d.ballN>0},kudzu:{n:'칡넝쿨',f:t=>t.d.kudzu},green:{n:'녹색 도장',f:t=>!!t.d.green},mtag:{n:'모바일태그',f:t=>(t.d.mtag||[]).length>0},avEco:{n:'친환경 도색',f:t=>t.aviation&&!!t.d.avEco}};
+const PICKS={angle:{n:'각도주',f:t=>!!t.ang},aviation:{n:'도색',f:t=>t.aviation},lamp:{n:'항공등',f:t=>t.lamp},ball:{n:'항공구',f:t=>t.d.ball&&t.d.ballN>0},kudzu:{n:'칡넝쿨',f:t=>t.d.kudzu},green:{n:'녹색 도장',f:t=>!!t.d.green},mtag:{n:'모바일태그',f:t=>(t.d.mtag||[]).length>0},avEco:{n:'친환경 도색',f:t=>t.aviation&&!!t.d.avEco},gnd:{n:'매설지선',f:t=>!!t.d.gnd},fprot:{n:'기초보호설비',f:t=>!!t.d.fpOn}};
 CROSS.forEach(c=>PICKS[c.k]={n:c.name,f:t=>t.d[c.k]});
 LAND.forEach(x=>PICKS[x.k]={n:x.name,f:t=>t.d.land===x.k});
 ARR_STAT.forEach(k=>PICKS['arr_'+k]={n:k,f:t=>arrHas(t.d,k)});
@@ -1814,6 +1815,8 @@ function renderHead(){
     +' · '+pk('kudzu','칡넝쿨 '+towers.filter(PICKS.kudzu.f).length+'기',towers.filter(PICKS.kudzu.f).length)
     +' · '+pk('sanbok','산복개소 '+towers.filter(PICKS.sanbok.f).length+'기'+(()=>{const n=towers.filter(t=>t.d.sanbok&&t.d.sanbokSt==='보강 필요').length;return n?' (보강 필요 '+n+')':'';})(),towers.filter(PICKS.sanbok.f).length)
     +' · '+pk('lowClr','저지상고 '+towers.filter(PICKS.lowClr.f).length+'곳',towers.filter(PICKS.lowClr.f).length)
+    +' · '+pk('fprot','기초보호설비 '+towers.filter(PICKS.fprot.f).length+'기'+(()=>{const n=towers.filter(t=>t.d.fpOn&&t.d.fpSt==='보수 필요').length;return n?' (보수 필요 '+n+')':'';})(),towers.filter(PICKS.fprot.f).length)
+    +' · '+pk('gnd','매설지선 '+towers.filter(PICKS.gnd.f).length+'기',towers.filter(PICKS.gnd.f).length)
     +' · '+pk('mtag','모바일태그 '+towers.filter(PICKS.mtag.f).length+'기',towers.filter(PICKS.mtag.f).length)
     +(towers.some(PICKS.green.f)?' · '+pk('green','녹색 도장 '+towers.filter(PICKS.green.f).length+'기',towers.filter(PICKS.green.f).length):'')
     +(towers.some(PICKS.avEco.f)?' · '+pk('avEco','친환경 도색 '+towers.filter(PICKS.avEco.f).length+'기',towers.filter(PICKS.avEco.f).length):'')
@@ -1992,6 +1995,18 @@ function renderCard(){
         ${t.d.sanbok?`<div style="margin-top:6px">${segHTML('data-sbst',SANBOK_ST,t.d.sanbokSt||'',v=>v||'상태 미정')}</div>
         <div class="unit" data-unit="" style="margin-top:6px"><input id="fSanbokMemo" type="text" placeholder="예: 부하측 사면 토사 유실, 석축 보강 2023" value="${esc(t.d.sanbokMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>
         <p class="note" style="margin:6px 0 0">3D에서 철탑 둘레에 갈색 표시와 내리막 방향 화살표가 보여요${t.y!=null&&t.slope!=null?` · 지형 경사 약 ${Math.round(t.slope)}°`:''}.</p>`:''}</div>
+      <div class="field"><span class="lb">⏚ 매설지선</span>
+        <label class="check"><input type="checkbox" id="xGnd" ${t.d.gnd?'checked':''}>매설지선 있음</label>
+        ${t.d.gnd?`<div class="row2" style="margin-top:6px">
+          <div class="field" style="margin:0"><label for="fGndOhm">접지저항</label><div class="unit" data-unit="Ω"><input id="fGndOhm" type="number" inputmode="decimal" min="0" step="0.1" placeholder="측정값" value="${t.d.gndOhm!=null?t.d.gndOhm:''}"></div></div>
+          <div class="field" style="margin:0"><label for="fGndDate">측정일</label><div class="unit" data-unit=""><input id="fGndDate" type="date" value="${esc(t.d.gndDate||'')}"></div></div></div>
+        <div class="unit" data-unit="" style="margin-top:6px"><input id="fGndMemo" type="text" placeholder="예: 4방향 매설, 길이 30m, 2019 보강" value="${esc(t.d.gndMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
+      <div class="field"><span class="lb">🧱 기초보호설비 (여러 개 선택)</span>
+        <div class="checks">${FP_TYPES.map(k=>`<label class="check"><input type="checkbox" data-fp="${k}" ${(t.d.fp||[]).includes(k)?'checked':''}>${k}</label>`).join('')}</div>
+        ${(t.d.fp||[]).length?`<div class="lb" style="margin-top:8px;font-size:12px">설치 위치 (다리)</div>
+        <div class="checks">${FP_LEG.map(k=>`<label class="check" style="flex:1;min-width:56px"><input type="checkbox" data-fpleg="${k}" ${(t.d.fpLeg||[]).includes(k)?'checked':''}>${k}각</label>`).join('')}</div>
+        <div style="margin-top:6px">${segHTML('data-fpst',FP_ST,t.d.fpSt||'',v=>v||'상태 미정')}</div>
+        <div class="unit" data-unit="" style="margin-top:6px"><input id="fFpMemo" type="text" placeholder="예: C·D각 석축 균열, 개비온 높이 2m" value="${esc(t.d.fpMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
       <div class="field"><span class="lb">⚠ 저지상고 · ${next?`경간 ${esc(H_(t))} → ${esc(H_(next))} 전선이 땅·나무·지장물에 가까운 곳`:'이 철탑 주변 전선이 낮은 곳'}</span>
         <label class="check"><input type="checkbox" id="xLow" ${t.d.lowClr?'checked':''}>저지상고<i class="sw" style="background:var(--danger)"></i></label>
         ${t.d.lowClr?`<div class="unit" data-unit="m" style="margin-top:6px"><input id="fLowH" type="number" inputmode="decimal" step="0.1" placeholder="지상고" value="${t.d.lowH!=null?t.d.lowH:''}"></div>
@@ -2078,6 +2093,16 @@ function renderCard(){
   q('#xSanbok').addEventListener('change',e=>{t.d.sanbok=e.target.checked;if(!t.d.sanbok){delete t.d.sanbokSt;delete t.d.sanbokMemo;}save();build();});
   card.querySelectorAll('[data-sbst]').forEach(b=>b.addEventListener('click',()=>{const v=b.dataset.sbst;if(v)t.d.sanbokSt=v;else delete t.d.sanbokSt;save();build();}));
   if(q('#fSanbokMemo'))q('#fSanbokMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.sanbokMemo=v;else delete t.d.sanbokMemo;save();renderHead();});
+  // v21.26: 매설지선 · 기초보호설비
+  if(q('#xGnd'))q('#xGnd').addEventListener('change',e=>{if(e.target.checked)t.d.gnd=true;else{delete t.d.gnd;delete t.d.gndOhm;delete t.d.gndDate;delete t.d.gndMemo;}save();build();});
+  if(q('#fGndOhm'))q('#fGndOhm').addEventListener('change',e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>=0)t.d.gndOhm=Math.round(v*100)/100;else delete t.d.gndOhm;save();});
+  if(q('#fGndDate'))q('#fGndDate').addEventListener('change',e=>{const v=e.target.value;if(v)t.d.gndDate=v;else delete t.d.gndDate;save();});
+  if(q('#fGndMemo'))q('#fGndMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.gndMemo=v;else delete t.d.gndMemo;save();});
+  card.querySelectorAll('[data-fp]').forEach(cb=>cb.addEventListener('change',()=>{const a=new Set(t.d.fp||[]);if(cb.checked)a.add(cb.dataset.fp);else a.delete(cb.dataset.fp);
+    const arr=FP_TYPES.filter(k=>a.has(k));if(arr.length){t.d.fp=arr;t.d.fpOn=true;}else{delete t.d.fp;delete t.d.fpOn;delete t.d.fpLeg;delete t.d.fpSt;delete t.d.fpMemo;}save();build();}));
+  card.querySelectorAll('[data-fpleg]').forEach(cb=>cb.addEventListener('change',()=>{const a=new Set(t.d.fpLeg||[]);if(cb.checked)a.add(cb.dataset.fpleg);else a.delete(cb.dataset.fpleg);const arr=FP_LEG.filter(k=>a.has(k));if(arr.length)t.d.fpLeg=arr;else delete t.d.fpLeg;save();}));
+  card.querySelectorAll('[data-fpst]').forEach(b=>b.addEventListener('click',()=>{const v=b.dataset.fpst;if(v)t.d.fpSt=v;else delete t.d.fpSt;save();build();}));
+  if(q('#fFpMemo'))q('#fFpMemo').addEventListener('change',e=>{const v=e.target.value.trim();if(v)t.d.fpMemo=v;else delete t.d.fpMemo;save();});
   // v20.15: 저지상고
   q('#xGan').addEventListener('change',e=>{t.d.gantry=e.target.checked;if(!t.d.gantry)delete t.d.gantry;
     const ix=l.towers.indexOf(t.d),edge=ix===0||ix===l.towers.length-1;   // v21.13: 맨 앞·맨 뒤에서 체크하면 이름을 C/T로, 풀면 번호로
@@ -3400,6 +3425,8 @@ const ITEMS=[
 {id:"top",label:"상부",sides:SL},
 {id:"view",label:"전경",sides:SL},
 {id:"base",label:"기초부지"},
+{id:"gnd",label:"매설지선",cond:"gnd"},
+{id:"fprot",label:"기초보호설비",cond:"fpOn"},
 {id:"slope",label:"산복 사면",sides:[["up","위쪽 사면"],["down","아래쪽 사면"]],cond:"sanbok"},
 {id:"num_plate",label:"번호찰",extra:[["danger","⚠ 위험표시찰"]]},
 {id:"nat_plate",label:"국가지점 번호찰"},
@@ -4011,6 +4038,8 @@ function xlRows(){
         '전력선 댐퍼':dm(DMP_G[0]),'GW 댐퍼':dm(DMP_G[1]),'OPGW 댐퍼':dm(DMP_G[2]),
         '칡넝쿨':d.kudzu?'○':'',
         '산복개소':d.sanbok?('○'+(d.sanbokSt?' '+d.sanbokSt:'')+(d.sanbokMemo?' · '+d.sanbokMemo:'')):'',
+        '매설지선':d.gnd?('○'+(d.gndOhm!=null?' '+d.gndOhm+'Ω':'')+(d.gndDate?' ('+d.gndDate+')':'')+(d.gndMemo?' · '+d.gndMemo:'')):'',
+        '기초보호설비':d.fpOn?((d.fp||[]).join('·')+(d.fpLeg&&d.fpLeg.length?' / '+d.fpLeg.map(k=>k+'각').join(','):'')+(d.fpSt?' / '+d.fpSt:'')+(d.fpMemo?' · '+d.fpMemo:'')):'',
         '저지상고':d.lowClr?('○'+(d.lowH!=null?' '+d.lowH+'m':'')+(d.lowStd?' (기준 '+d.lowStd+')':'')+(d.lowMemo?' · '+d.lowMemo:'')):'',
         '철탑 밑':(LAND.find(x=>x.k===d.land)||{}).name||'',
         '위험철탑':d.danger?'○':'',
