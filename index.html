@@ -3306,7 +3306,10 @@ function meNearest(){
     if(!best||dist<best.dist)best={l,d,dist};}));
   return best;
 }
-const accTxt=()=>MYP.acc?' (오차 약 '+Math.round(MYP.acc)+'m'+(MYP.acc>GOOD_ACC?' · 더 정확한 위치를 찾는 중':'')+')':'';
+const accM=a=>a>=1000?(a/1000).toFixed(1)+'km':Math.round(a)+'m';
+const accTxt=()=>MYP.acc?' (오차 약 '+accM(MYP.acc)+(MYP.acc>GOOD_ACC?' · 더 정확한 위치를 찾는 중':'')+')':'';
+const BAD_ACC=100;   // v21.24: 이보다 오차가 크면(대략적인 위치) 화면을 옮기지 않음
+const ACC_HELP='휴대폰 설정 → 위치 → 앱 권한에서 이 앱(또는 크롬)을 "항상/앱 사용 중 허용" + "정확한 위치 사용" 켜기, 그리고 위치(GPS)를 켜 주세요.';
 function meGo(say1){
   const q=meXZ();
   if(q&&q.inside){
@@ -3341,8 +3344,14 @@ setInterval(()=>{
   o.userData.mk.scale.setScalar(Math.min(25,Math.max(1,camera.position.distanceTo(o.position)/700)));
   o.userData.acc.scale.setScalar(Math.max(5,Math.min(2000,MYP.acc||5)));
   const ready=(typeof cloudReady==='undefined'||cloudReady||performance.now()>8000)&&!selT&&!play;
-  // 앱을 켜고: 정확한 위치(25m 안)가 잡히거나 12초가 지나면 한 번 그 자리로
-  if(MYP.first&&ready&&(MYP.acc<=GOOD_ACC||Date.now()-MYP.t0>12000)){MYP.first=false;meGo(true);return;}
+  // 앱을 켜고: 정확한 위치(25m 안)가 잡히면 그 자리로 · 12초가 지나도 100m 안쪽이면 그 자리로
+  // v21.24: 오차가 100m 넘으면(대략적인 위치 · 기지국 위치) 화면을 옮기지 않고 알려 줌 → 나중에 정확해지면 자동으로 이동
+  if(MYP.first&&ready&&MYP.pos){
+    const late=Date.now()-MYP.t0>12000;
+    if(MYP.acc<=GOOD_ACC&&(!late||!MYP.userMoved)){MYP.first=false;meGo(true);return;}
+    if(late&&MYP.acc<=BAD_ACC&&!MYP.userMoved){MYP.first=false;meGo(true);return;}
+    if(late&&MYP.acc>BAD_ACC&&!MYP.warned){MYP.warned=true;say('📍 위치 오차가 너무 커서(약 '+accM(MYP.acc)+') 화면을 옮기지 않았어요. '+ACC_HELP+' 정확한 위치가 잡히면 자동으로 이동해요.',true);}
+  }
   // 처음 이동 때 오차가 컸는데 지금 정확해졌으면, 화면을 직접 안 움직였을 때 한 번 더 맞춤
   if(!MYP.first&&!MYP.refined&&MYP.flewAcc>40&&MYP.acc<=GOOD_ACC&&!MYP.userMoved&&ready&&q.inside){MYP.refined=true;meGo(false);say('📍 위치를 더 정확하게 맞췄어요 (오차 약 '+Math.round(MYP.acc)+'m)');}
 },1000);
@@ -3350,8 +3359,9 @@ document.getElementById('meBtn').addEventListener('click',()=>{
   if(!('geolocation' in navigator)){say('이 기기는 위치 기능을 쓸 수 없어요.');return;}
   meStart();
   if(MYP.pos&&MYP.acc<=GOOD_ACC*2){MYP.first=false;meGo(true);return;}
+  if(MYP.pos&&MYP.acc>BAD_ACC)say('📍 지금 위치는 오차가 약 '+accM(MYP.acc)+'예요. 정확한 위치를 찾는 중… '+ACC_HELP,true);
   say('📍 위치를 찾는 중…'+accTxt());
-  navigator.geolocation.getCurrentPosition(p=>{meFix(p);MYP.first=false;MYP.refined=false;meGo(true);},
+  navigator.geolocation.getCurrentPosition(p=>{meFix(p);MYP.first=false;MYP.refined=false;meGo(true);if(MYP.acc>BAD_ACC)setTimeout(()=>say('📍 위치 오차가 약 '+accM(MYP.acc)+'로 커요. '+ACC_HELP,true),1500);},
     ()=>{if(MYP.pos){MYP.first=false;meGo(true);}else say('위치를 받을 수 없어요. 위치 권한과 GPS를 확인하세요.');},{enableHighAccuracy:true,timeout:15000,maximumAge:0});
 });
 meStart();
