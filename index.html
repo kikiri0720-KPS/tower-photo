@@ -518,7 +518,10 @@ async function loadMe(){
     const {data}=await sb.from(T_MEM).select('*').eq('user_id',session.user.id).maybeSingle();
     const lg=String(session.user.email||'').split('@')[0];
     ME=data?{uid:data.user_id,login:data.login,name:data.name,approved:!!data.approved,admin:!!data.is_admin}:{uid:session.user.id,login:lg,name:'',approved:false,admin:false,noRow:true};
-  }catch(e){console.warn(e);ME=null;}
+    if(data)lsSet('tower3d-me',JSON.stringify(ME));
+  }catch(e){console.warn(e);
+    // v21.23: 전화가 안 터지면 이 기기에 마지막으로 확인된 회원 정보로 (로그인 세션이 남아 있을 때만)
+    try{const {data:{session}}=await sb.auth.getSession();const c=JSON.parse(lsGet('tower3d-me')||'null');ME=session&&c&&c.uid===session.user.id?Object.assign(c,{offline:true}):null;}catch(_){ME=null;}}
   authBtnPaint();}
 function authModal(html){let m=document.getElementById('authMask');if(m)m.remove();
   m=document.createElement('div');m.id='authMask';m.style.cssText='position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
@@ -591,11 +594,12 @@ let DB=null, AS=null, DL=true, serverHash={}, serverStamp={}, flushT=null, flush
 let photos=[], photoStamp='';   // 기별사진: {id,towerId,lineId,slot,path,name,at}
 const urlCache={};
 function syncState(c,msg){const e=document.getElementById('sync');if(e){e.className='sync '+c;e.textContent=msg;}}
-function writeCache(){lsSet(CACHE,JSON.stringify({lines,cur:curId}));}
+const strHash=t=>{let h=5381;for(let i=0;i<t.length;i++)h=(h*33^t.charCodeAt(i))>>>0;return h.toString(36)+t.length.toString(36);};
+function writeCache(){const baseH={};for(const id in serverHash)baseH[id]=strHash(serverHash[id]);lsSet(CACHE,JSON.stringify({lines,cur:curId,baseH}));}
 function save(){
   if(sb&&!canEdit()){revertLocal();writeCache();say(RO_MSG);setTimeout(()=>{build();if(!card.hidden)renderCard();},0);return;}
   writeCache();
-  if(!cloudReady){syncState('ok','이 기기에만 저장됨');return;}
+  if(!cloudReady){syncState('err','📵 연결 안 됨 · 휴대폰에 저장됨 (연결되면 자동으로 올림)');return;}
   clearTimeout(flushT); flushT=setTimeout(flush,500); syncState('busy','저장 중…');
 }
 const isDirty=id=>{const l=lines.find(x=>x.id===id);return !!l&&JSON.stringify(l)!==serverHash[id];};
@@ -620,7 +624,7 @@ async function flush(){
     }
     writeCache(); syncState('ok','저장됨 · 공유 중');
   }catch(e){
-    console.error(e); syncState('err','저장 실패 · 다시 시도 중'); clearTimeout(flushT); flushT=setTimeout(flush,10000);
+    console.error(e); syncState('err',navigator.onLine===false||/fetch|network|Load failed|timeout/i.test(String(e&&e.message||e))?'📵 연결 안 됨 · 휴대폰에 저장됨 (연결되면 자동으로 올림)':'저장 실패 · 다시 시도 중'); clearTimeout(flushT); flushT=setTimeout(flush,10000);
   }finally{
     flushing=false; if(again){again=false;flush();}
   }
@@ -3403,7 +3407,8 @@ const okItem=(i,t,tp)=>inType(i,tp)&&((!i.wire||lineHas(cur(),i.wire))&&(!i.cond
 const allSlots=ITEMS.flatMap(slotsOf);
 const itemOf=id=>ITEMS.find(x=>x.id===id);
 const pType=t=>(t.aviation||t.lamp)?'항공':t.tension?'내장':'현수';
-const photosOf=(tid,sid)=>photos.filter(p=>p.towerId===tid&&p.slot===sid&&p.path).sort((a,b)=>(a.at||0)-(b.at||0));
+let PQ_LIST=[];   // v21.23: 휴대폰에 보관 중인(아직 못 올린) 사진도 칸에 보이게
+const photosOf=(tid,sid)=>photos.concat(PQ_LIST).filter(p=>p.towerId===tid&&p.slot===sid&&p.path).sort((a,b)=>(a.at||0)-(b.at||0));
 const blobUrl=p=>urlCache[p.path]||'';
 function progress(t){
   const sl=ITEMS.filter(i=>okItem(i,t,pType(t))).flatMap(slotsOf).filter(s=>!s.opt);
@@ -3498,7 +3503,7 @@ function renderLedger(){
   gid('lgBar').style.width=p.pct+'%';
   gid('lgSide').textContent='#1 측: '+(l.side1==='right'?'우측':'좌측')+' (바꾸기)';
   gid('lgRO').hidden=!!AS;
-  gid('lgRO').textContent='서버에 연결되지 않아 사진을 올릴 수 없어요. 인터넷 연결을 확인하세요.';
+  gid('lgRO').textContent='📵 연결 안 됨 · 찍은 사진은 휴대폰에 보관했다가 연결되면 자동으로 올려요.';
   const g=gid('photoGrid'), d=gid('diagram'); g.innerHTML='';
   if(!sel||!itemOf(sel)||!okItem(itemOf(sel),t,tp)){
     sel=null; g.hidden=true; d.hidden=false; d.innerHTML=(AS?'<button class="primary seq-open" type="button" id="seqOpen">📷 순서대로 한번에 첨부</button>':'')+diagramHTML(t,tp);
@@ -3569,7 +3574,6 @@ camIn.addEventListener('change',()=>addPhoto(camIn));
 galIn.addEventListener('change',()=>addPhoto(galIn));
 function fileInput(slot,multi){return {slot,multi};}
 function choosePhoto(f){
-  if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요. 왼쪽 위 상태 표시를 확인하세요.');
   const t=LT(); if(!t) return;
   pending={slot:f.slot,multi:f.multi,tid:t.d.id,lineId:curId};
   const ov=el('div','lg-modal'), bx=el('div','lg-modal-box panel');
@@ -3702,28 +3706,24 @@ async function addPhoto(f){
   let files=[...(f.files||[])].filter(x=>!x.type||x.type.startsWith('image/'));
   const job=pending; f.value='';
   if(!files.length||!job) return;
-  if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요.');
   if(!job.multi) files=files.slice(0,1);
   const old=job.multi?[]:photosOf(job.tid,job.slot.id);
   say('사진을 저장하는 중…',true);
   let step='사진 줄이기';
   try{
     let n=0;
+    let q=0;
     for(const file of files){
       step='사진 줄이기'; const blob=await shrink(file);
       const pid='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
       const path=job.tid+'/'+pid+'.jpg';
       step='사진 올리기';
-      const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:'image/jpeg',upsert:true});
-      if(up.error) throw up.error;
-      step='사진 기록';
-      const ins=await sb.from(T_PHOTOS).insert({id:pid,data:{towerId:job.tid,lineId:job.lineId,slot:job.slot.id,path,name:file.name||'',at:Date.now()+n}});
-      if(ins.error) throw ins.error;
-      n++;
+      const r=await putPhoto({pid,path,blob,tid:job.tid,lineId:job.lineId,slot:job.slot.id,name:file.name||'',at:Date.now()+n+q,replace:!job.multi});
+      if(r==='queued')q++; else n++;
     }
-    for(const p of old){try{await deletePhoto(p,true);}catch(e){console.warn(e);}}
-    await pullPhotos(true);
-    say(n>1?n+'장을 저장했어요.':'사진을 저장했어요.');
+    if(n){for(const p of old){if(p.pending)continue;try{await deletePhoto(p,true);}catch(e){console.warn(e);}}await pullPhotos(true);}
+    if(q){renderLedger();say(`📵 전화가 안 터져서 사진 ${q}장을 휴대폰에 보관했어요 · 연결되면 자동으로 올려요`,true);}
+    else say(n>1?n+'장을 저장했어요.':'사진을 저장했어요.');
   }catch(e){
     console.error(e);
     const m=((e&&(e.message||e.error))||String(e));
@@ -3731,8 +3731,59 @@ async function addPhoto(f){
     say(`저장 실패 (${step}): ${m}${hint}`,true);
   }
 }
+
+/* ---------- v21.23 사진 보관함: 전화가 안 될 때 찍은 사진을 휴대폰(IndexedDB)에 두었다가 연결되면 자동으로 올림 ---------- */
+let PQDB=null, pqBusy=false;
+function pqDb(){return PQDB||(PQDB=new Promise((res,rej)=>{const r=indexedDB.open('tower3d-pq',1);r.onupgradeneeded=()=>r.result.createObjectStore('q',{keyPath:'pid'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}));}
+async function pqAdd(it){const db=await pqDb();await new Promise((res,rej)=>{const tx=db.transaction('q','readwrite');tx.objectStore('q').put(it);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});}
+async function pqAll(){const db=await pqDb();return new Promise((res,rej)=>{const r=db.transaction('q').objectStore('q').getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);});}
+async function pqDel(pid){const db=await pqDb();await new Promise((res,rej)=>{const tx=db.transaction('q','readwrite');tx.objectStore('q').delete(pid);tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});}
+async function pqLoad(){
+  let all=[];try{all=await pqAll();}catch(e){}
+  PQ_LIST=all.map(it=>{const path='pending:'+it.pid;if(!urlCache[path])try{urlCache[path]=URL.createObjectURL(it.blob);}catch(e){}
+    return {id:it.pid,towerId:it.tid,lineId:it.lineId,slot:it.slot,path,name:it.name,at:it.at,pending:true};});
+  pqPaint();
+}
+function pqPaint(){
+  const n=PQ_LIST.length;let b=document.getElementById('pqBadge');
+  if(!n){if(b)b.remove();return;}
+  if(!b){b=document.createElement('button');b.id='pqBadge';b.type='button';b.className='btn';b.style.cssText='background:#c98a00;color:#fff;border-color:#c98a00';
+    b.onclick=()=>{if(!cloudReady||navigator.onLine===false)say('📵 아직 연결이 안 돼요 · 연결되면 자동으로 올려요');else pqRun();};
+    const z=gid('xlsBtn');if(z&&z.parentNode)z.parentNode.insertBefore(b,z);else document.body.appendChild(b);}
+  b.textContent='📵 사진 대기 '+n+'장';
+}
+const netErr=e=>navigator.onLine===false||/fetch|network|Load failed|timeout|Failed/i.test(String((e&&(e.message||e.error))||e));
+async function putPhoto(it){   // 올리기 → 연결이 안 되면 보관함으로. 'up' | 'queued'
+  if(AS&&cloudReady&&navigator.onLine!==false){
+    let up;try{up=await sb.storage.from(BUCKET).upload(it.path,it.blob,{contentType:'image/jpeg',upsert:true});}catch(e){up={error:e};}
+    if(!up.error){
+      let ins;try{ins=await sb.from(T_PHOTOS).insert({id:it.pid,data:{towerId:it.tid,lineId:it.lineId,slot:it.slot,path:it.path,name:it.name,at:it.at}});}catch(e){ins={error:e};}
+      if(!ins.error)return 'up';
+      if(!netErr(ins.error))throw ins.error;
+    }else if(!netErr(up.error))throw up.error;
+  }
+  await pqAdd(it); await pqLoad(); return 'queued';
+}
+async function pqRun(){
+  if(pqBusy||!cloudReady||!sb||!canEdit()||navigator.onLine===false){pqPaint();return;}
+  let all=[];try{all=await pqAll();}catch(e){return;}
+  if(!all.length){pqLoad();return;}
+  pqBusy=true;let ok=0;
+  try{
+    for(const it of all.sort((a,b)=>a.at-b.at)){
+      const up=await sb.storage.from(BUCKET).upload(it.path,it.blob,{contentType:'image/jpeg',upsert:true}); if(up.error)throw up.error;
+      const ins=await sb.from(T_PHOTOS).upsert({id:it.pid,data:{towerId:it.tid,lineId:it.lineId,slot:it.slot,path:it.path,name:it.name,at:it.at}}); if(ins.error)throw ins.error;
+      if(it.replace){await pullPhotos(true);for(const p of photos.filter(p=>p.towerId===it.tid&&p.slot===it.slot&&p.id!==it.pid&&(p.at||0)<it.at)){try{await deletePhoto(p,true);}catch(e){console.warn(e);}}}
+      await pqDel(it.pid); ok++;
+    }
+  }catch(e){console.warn(e);}finally{pqBusy=false;}
+  await pqLoad();
+  if(ok){await pullPhotos(true);if(!ledgerEl.hidden)renderLedger();say('📶 보관해 둔 사진 '+ok+'장을 올렸어요.');}
+}
+setInterval(()=>{if(cloudReady&&navigator.onLine!==false&&PQ_LIST.length)pqRun();},30000);
 async function deletePhoto(p,noPull){
   if(!canEdit()){say(RO_MSG);return;}
+  if(p.pending){await pqDel(p.id);await pqLoad();if(!ledgerEl.hidden)renderLedger();return;}
   const {error}=await sb.from(T_PHOTOS).delete().eq('id',p.id); if(error) throw error;
   try{await sb.storage.from(BUCKET).remove([p.path]);}catch(e){console.warn(e);}
   if(!noPull) await pullPhotos(true);
@@ -3788,7 +3839,6 @@ function seqModal(build){
 }
 function openSeq(scope){
   const t=LT(); if(!t) return;
-  if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요.');
   const left=seqLeft(t,scope);
   seqModal((bx,close)=>{
     bx.append(el('p',null,(scope?SEQ_ITEMS[scope]+' ':'')+'여러 장 순서대로 첨부'));
@@ -3828,7 +3878,6 @@ seqIn.addEventListener('change',async()=>{
   const files=[...(seqIn.files||[])].filter(x=>!x.type||x.type.startsWith('image/')); seqIn.value='';
   if(!job||!files.length) return;
   const t=towers.find(x=>x.d.id===job.tid); if(!t) return;
-  if(!AS) return say('서버에 연결되지 않아 사진을 올릴 수 없어요.');
   if(!canEdit()){say(RO_MSG);return;}
   const left=seqLeft(t,job.scope), targets=left.slice(0,files.length);
   const extra=files.length-targets.length, done=[];
@@ -3841,10 +3890,8 @@ seqIn.addEventListener('change',async()=>{
       const pid='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
       const path=job.tid+'/'+pid+'.jpg';
       step='사진 올리기';
-      const up=await sb.storage.from(BUCKET).upload(path,blob,{contentType:'image/jpeg',upsert:true}); if(up.error) throw up.error;
-      step='사진 기록';
-      const ins=await sb.from(T_PHOTOS).insert({id:pid,data:{towerId:job.tid,lineId:job.lineId,slot:s.id,path,name:file.name||'',at:Date.now()+i}}); if(ins.error) throw ins.error;
-      done.push({name:s.name,p:{id:pid,path}});
+      const r=await putPhoto({pid,path,blob,tid:job.tid,lineId:job.lineId,slot:s.id,name:file.name||'',at:Date.now()+i,replace:false});
+      done.push({name:s.name+(r==='queued'?' (📵 휴대폰에 보관 · 연결되면 올림)':''),p:{id:pid,path}});
     }
     await pullPhotos(true);
     seqDone(done,extra,null);
@@ -4031,42 +4078,70 @@ gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syn
   await loadMe();
   if(sb)sb.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'||ev==='TOKEN_REFRESHED')loadMe();});
   let c=null; try{c=JSON.parse(lsGet(CACHE)||'null');}catch(e){}
+  const baseH=(c&&c.baseH)||{};
   if(c&&Array.isArray(c.lines)&&c.lines.length){lines=c.lines.map(normalize); if(c.cur&&lines.find(l=>l.id===c.cur)) curId=c.cur;}
   if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
-  build(); refit(true); syncState('busy','불러오는 중…');
+  build(); refit(true); syncState('busy','불러오는 중…'); pqLoad();
   if(!sb){syncState('err','서버 연결 도구를 못 불러옴 · 이 기기에만 저장');return;}
-  try{
-    const {data:rows,error}=await sb.from(T_LINES).select('id,data,updated_at');
-    if(error) throw error;
-    const localOnly=(lsGet('tower3d-mig')==='1')?[]:lines.filter(l=>!['a','b','c'].includes(l.id)&&!rows.some(r=>r.id===l.id));
-    if(rows.length){
-      lines=rows.map(r=>{const d=normalize(r.data);d.id=r.id;serverHash[r.id]=JSON.stringify(d);serverStamp[r.id]=r.updated_at;return d;});
-      lines.sort((a,b)=>String(a.name).localeCompare(String(b.name),'ko',{numeric:true}));
-      const lastCur=lsGet('tower3d-cur'); if(lastCur&&lines.find(l=>l.id===lastCur)) curId=lastCur;
-    }else{
-      // 서버가 비어 있으면 이 기기의 선로를 전부 올려서 다른 사람도 보게 함 (아래 flush에서 업로드)
-    }
-    if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
-    AS=true; cloudReady=true; selT=null; card.hidden=true; build(); refit(true); writeCache();
-    // v20.25: 첫 화면은 🌐 전체 선로 (위치 찍힌 선로가 있을 때)
-    if(lines.some(l=>l.towers.filter(d=>d.gps&&d.gps.length===2).length>=2))openAll();
-    if(localOnly.length&&rows.length){localOnly.forEach(l=>{if(!lines.find(x=>x.id===l.id))lines.push(l);});build();}
-    if(!rows.length||localOnly.length) await flush();
-    lsSet('tower3d-mig','1');
-    gid('zipBtn').hidden=false;
-    await pullPhotos(true);
-    syncState('ok','저장됨 · 공유 중');
-  }catch(e){
-    console.error(e);
-    const msg=String((e&&e.message)||e)+' '+((e&&e.code)||'');
-    if(/tower3d_|relation|schema cache|42P01|PGRST205/i.test(msg)) syncState('err','서버 준비 안 됨 · SQL을 먼저 실행하세요');
-    else if(/permission|policy|42501|401|403/i.test(msg)) syncState('err','서버 권한 없음 · SQL을 다시 실행하세요');
-    else syncState('err','서버 연결 실패 · 이 기기에만 저장');
-    return;
+  let first=true, connecting=false, after=false;
+  const hasGpsLine=()=>lines.some(l=>l.towers.filter(d=>d.gps&&d.gps.length===2).length>=2);
+  // v21.23: 전화가 안 터져도 휴대폰에 저장된 자료로 열고, 연결되면 자동으로 서버와 맞춤
+  async function connect(){
+    if(connecting||cloudReady)return cloudReady; connecting=true;
+    try{
+      if(!first)await loadMe();
+      const {data:rows,error}=await sb.from(T_LINES).select('id,data,updated_at');
+      if(error) throw error;
+      const localOnly=(lsGet('tower3d-mig')==='1')?[]:lines.filter(l=>!['a','b','c'].includes(l.id)&&!rows.some(r=>r.id===l.id));
+      const keptLocal=[];
+      if(rows.length){
+        const loc={};lines.forEach(l=>loc[l.id]=l);
+        lines=rows.map(r=>{const d=normalize(r.data);d.id=r.id;serverHash[r.id]=JSON.stringify(d);serverStamp[r.id]=r.updated_at;
+          // 연결 안 될 때 이 기기에서 고친 선로는 이 기기 것을 살려서 서버에 올림
+          const L0=loc[r.id], j0=L0&&JSON.stringify(L0);
+          if(L0&&baseH[r.id]&&strHash(j0)!==baseH[r.id]&&j0!==serverHash[r.id]){keptLocal.push(L0);return L0;}
+          return d;});
+        lines.sort((a,b)=>String(a.name).localeCompare(String(b.name),'ko',{numeric:true}));
+        const lastCur=lsGet('tower3d-cur'); if(lastCur&&lines.find(l=>l.id===lastCur)) curId=lastCur;
+      }
+      if(!lines.find(l=>l.id===curId)) curId=lines[0].id;
+      AS=true; cloudReady=true;
+      if(first){selT=null; card.hidden=true; build(); refit(true);} else rebuildSoon();
+      writeCache();
+      // v20.25: 첫 화면은 🌐 전체 선로 (위치 찍힌 선로가 있을 때)
+      if(first&&hasGpsLine())openAll();
+      if(localOnly.length&&rows.length){localOnly.forEach(l=>{if(!lines.find(x=>x.id===l.id))lines.push(l);});rebuildSoon();}
+      if(!rows.length||localOnly.length||keptLocal.length) await flush();
+      if(keptLocal.length)say('📶 연결됐어요 · 연결 안 될 때 고친 내용('+keptLocal.map(l=>LN(l)).join(', ')+')을 서버에 올렸어요',true);
+      else if(!first)say('📶 연결됐어요 · 서버와 맞췄어요');
+      lsSet('tower3d-mig','1');
+      gid('zipBtn').hidden=false;
+      await pullPhotos(true);
+      syncState('ok','저장됨 · 공유 중');
+      if(!after)afterConnect();
+      first=false; pqRun(); if(!ledgerEl.hidden)renderLedger();
+      return true;
+    }catch(e){
+      console.error(e);
+      const msg=String((e&&e.message)||e)+' '+((e&&e.code)||'');
+      if(/tower3d_|relation|schema cache|42P01|PGRST205/i.test(msg)) syncState('err','서버 준비 안 됨 · SQL을 먼저 실행하세요');
+      else if(/permission|policy|42501|401|403/i.test(msg)) syncState('err','서버 권한 없음 · SQL을 다시 실행하세요');
+      else syncState('err','📵 연결 안 됨 · 휴대폰에 저장된 자료로 보는 중 (연결되면 자동으로 맞춤)');
+      return false;
+    }finally{connecting=false;}
   }
-  setInterval(()=>{if(document.visibilityState==='visible') pull();},10000);
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible') pull();});
-  window.addEventListener('online',()=>{flush();pull();});
+  function afterConnect(){
+    after=true;
+    setInterval(()=>{if(document.visibilityState==='visible') pull();},10000);
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible') pull();});
+    window.addEventListener('online',()=>{flush();pull();pqRun();});
+  }
+  if(!await connect()){
+    if(first&&hasGpsLine())openAll();
+    first=false;
+    window.addEventListener('online',()=>{if(!cloudReady)connect();});
+    const iv=setInterval(()=>{if(cloudReady){clearInterval(iv);return;}if(navigator.onLine!==false)connect();},20000);
+  }
 })();
 // v21.17: 순시 지도를 누르기 전에 카카오 지도 프로그램을 미리 받아 둬서 바로 열리게
 setTimeout(()=>{try{if(mapWant()==='kakao')loadKakao(kakaoKey()).catch(()=>{});}catch(e){}},4000);
