@@ -3273,14 +3273,21 @@ card.addEventListener('click',e=>{
 /* ---------- v21.17 내 위치 (카카오맵처럼 켜면 내 위치부터) ----------
    · 앱을 켜면 현재 위치를 받아, 철탑 지도 안이면 그 자리로 화면을 옮기고 파란 표시를 세움
    · 지도 밖이면 가장 가까운 철탑을 알려 줌 · [📍 내 위치]로 언제든 다시 이동 */
-const MYP={pos:null,acc:0,first:true,watch:null,obj:null};
+const MYP={pos:null,acc:0,first:true,watch:null,obj:null,t0:0,flewAcc:0,userMoved:false,refined:false};
+// v21.22: 처음 잡히는 위치는 기지국·와이파이 위치라 수십~수백 m 틀릴 수 있음 →
+//  · 정확도 25m 안쪽이 될 때까지 최대 12초 기다렸다가 이동 · 그래도 안 되면 그때까지 가장 정확한 값으로 이동
+//  · 더 정확한 위치가 나중에 잡히면 (화면을 직접 안 움직였을 때) 한 번 더 맞춰 줌 · 오차 범위를 파란 원으로 표시
+const GOOD_ACC=25;
 function meObj(){
   if(MYP.obj)return MYP.obj;
   const g=new T.Group(), c=0x2f6fd6;
+  const mk=new T.Group();
   const pole=new T.Mesh(new T.CylinderGeometry(.9,.9,30,8),new T.MeshBasicMaterial({color:c}));pole.position.y=15;
   const ball=new T.Mesh(new T.SphereGeometry(5,16,12),new T.MeshBasicMaterial({color:c}));ball.position.y=33;
   const ring=new T.Mesh(new T.RingGeometry(9,12,32),new T.MeshBasicMaterial({color:c,transparent:true,opacity:.7,side:T.DoubleSide,depthTest:false}));ring.rotation.x=-Math.PI/2;ring.position.y=1;ring.renderOrder=6;
-  g.add(pole,ball,ring);g.visible=false;scene.add(g);MYP.obj=g;return g;
+  mk.add(pole,ball,ring);
+  const acc=new T.Mesh(new T.CircleGeometry(1,48),new T.MeshBasicMaterial({color:c,transparent:true,opacity:.18,side:T.DoubleSide,depthTest:false}));acc.rotation.x=-Math.PI/2;acc.position.y=2;acc.renderOrder=5;
+  g.add(mk,acc);g.userData={mk,acc};g.visible=false;scene.add(g);MYP.obj=g;return g;
 }
 function meXZ(){
   if(!MYP.pos||!G||!G.toLL||!G.terr)return null;
@@ -3295,40 +3302,53 @@ function meNearest(){
     if(!best||dist<best.dist)best={l,d,dist};}));
   return best;
 }
+const accTxt=()=>MYP.acc?' (오차 약 '+Math.round(MYP.acc)+'m'+(MYP.acc>GOOD_ACC?' · 더 정확한 위치를 찾는 중':'')+')':'';
 function meGo(say1){
   const q=meXZ();
   if(q&&q.inside){
-    const s=Math.max(1,camera.position.distanceTo(controls.target)/900);
     flyTo(new T.Vector3(q.x+220,q.y+320,q.z+420),new T.Vector3(q.x,q.y,q.z));
-    if(say1)say('📍 현재 위치예요'+(MYP.acc?' (오차 약 '+Math.round(MYP.acc)+'m)':''));
+    MYP.flewAcc=MYP.acc||999; MYP.userMoved=false;
+    if(say1)say('📍 현재 위치예요'+accTxt());
     return true;
   }
   const n=meNearest();
   if(say1)say(n?`📍 현재 위치는 이 지도 밖이에요 · 가장 가까운 철탑: ${n.l.kv}kV ${LN(n.l)} ${NO(n.d.label)} (${(n.dist/1000).toFixed(1)} km)`:'📍 현재 위치가 지도 밖이에요.');
   return false;
 }
+function meFix(p){
+  const a=p.coords.accuracy||999;
+  // 정확도가 많이 나쁜 값이 좋은 값을 덮어쓰지 않게 (20초 넘게 지난 값이면 바꿈)
+  if(MYP.pos&&a>MYP.acc*2.5&&a>GOOD_ACC&&Date.now()-(MYP.at||0)<20000)return;
+  MYP.pos=[p.coords.latitude,p.coords.longitude];MYP.acc=a;MYP.at=Date.now();
+}
 function meStart(){
   if(!('geolocation' in navigator)||MYP.watch!=null)return;
-  MYP.watch=navigator.geolocation.watchPosition(p=>{MYP.pos=[p.coords.latitude,p.coords.longitude];MYP.acc=p.coords.accuracy||0;},
-    e=>{if(e&&e.code===1&&MYP.first){MYP.first=false;}},{enableHighAccuracy:true,maximumAge:5000,timeout:20000});
+  if(!MYP.t0)MYP.t0=Date.now();
+  MYP.watch=navigator.geolocation.watchPosition(meFix,
+    e=>{if(e&&e.code===1&&MYP.first){MYP.first=false;}},{enableHighAccuracy:true,maximumAge:0,timeout:20000});
 }
 function meStop(){if(MYP.watch!=null){navigator.geolocation.clearWatch(MYP.watch);MYP.watch=null;}}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)meStop();else meStart();});
+try{controls.addEventListener('start',()=>{MYP.userMoved=true;});}catch(e){}
 setInterval(()=>{
   const o=meObj(), q=meXZ();
   if(!q){o.visible=false;return;}
   o.visible=q.inside;o.position.set(q.x,q.y,q.z);   // v21.21: 지도 밖(다른 지역)이면 파란 표시를 숨김
-  o.scale.setScalar(Math.min(25,Math.max(1,camera.position.distanceTo(o.position)/700)));
-  // 앱을 켜고 처음 위치가 잡히면 한 번만 그 자리로
-  if(MYP.first&&(typeof cloudReady==='undefined'||cloudReady||performance.now()>8000)&&!selT&&!play){MYP.first=false;meGo(true);}
+  o.userData.mk.scale.setScalar(Math.min(25,Math.max(1,camera.position.distanceTo(o.position)/700)));
+  o.userData.acc.scale.setScalar(Math.max(5,Math.min(2000,MYP.acc||5)));
+  const ready=(typeof cloudReady==='undefined'||cloudReady||performance.now()>8000)&&!selT&&!play;
+  // 앱을 켜고: 정확한 위치(25m 안)가 잡히거나 12초가 지나면 한 번 그 자리로
+  if(MYP.first&&ready&&(MYP.acc<=GOOD_ACC||Date.now()-MYP.t0>12000)){MYP.first=false;meGo(true);return;}
+  // 처음 이동 때 오차가 컸는데 지금 정확해졌으면, 화면을 직접 안 움직였을 때 한 번 더 맞춤
+  if(!MYP.first&&!MYP.refined&&MYP.flewAcc>40&&MYP.acc<=GOOD_ACC&&!MYP.userMoved&&ready&&q.inside){MYP.refined=true;meGo(false);say('📍 위치를 더 정확하게 맞췄어요 (오차 약 '+Math.round(MYP.acc)+'m)');}
 },1000);
 document.getElementById('meBtn').addEventListener('click',()=>{
   if(!('geolocation' in navigator)){say('이 기기는 위치 기능을 쓸 수 없어요.');return;}
   meStart();
-  if(MYP.pos){meGo(true);return;}
-  say('📍 위치를 찾는 중…');
-  navigator.geolocation.getCurrentPosition(p=>{MYP.pos=[p.coords.latitude,p.coords.longitude];MYP.acc=p.coords.accuracy||0;MYP.first=false;meGo(true);},
-    ()=>say('위치를 받을 수 없어요. 위치 권한과 GPS를 확인하세요.'),{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
+  if(MYP.pos&&MYP.acc<=GOOD_ACC*2){MYP.first=false;meGo(true);return;}
+  say('📍 위치를 찾는 중…'+accTxt());
+  navigator.geolocation.getCurrentPosition(p=>{meFix(p);MYP.first=false;MYP.refined=false;meGo(true);},
+    ()=>{if(MYP.pos){MYP.first=false;meGo(true);}else say('위치를 받을 수 없어요. 위치 권한과 GPS를 확인하세요.');},{enableHighAccuracy:true,timeout:15000,maximumAge:0});
 });
 meStart();
 function resize(){const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/Math.max(1,h);camera.updateProjectionMatrix();}
