@@ -3317,7 +3317,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)meStop();el
 setInterval(()=>{
   const o=meObj(), q=meXZ();
   if(!q){o.visible=false;return;}
-  o.visible=true;o.position.set(q.x,q.y,q.z);
+  o.visible=q.inside;o.position.set(q.x,q.y,q.z);   // v21.21: 지도 밖(다른 지역)이면 파란 표시를 숨김
   o.scale.setScalar(Math.min(25,Math.max(1,camera.position.distanceTo(o.position)/700)));
   // 앱을 켜고 처음 위치가 잡히면 한 번만 그 자리로
   if(MYP.first&&(typeof cloudReady==='undefined'||cloudReady||performance.now()>8000)&&!selT&&!play){MYP.first=false;meGo(true);}
