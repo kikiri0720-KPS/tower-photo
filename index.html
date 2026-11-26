@@ -4122,6 +4122,9 @@ bulkIn.addEventListener('change',async()=>{
     const nth=plan.filter(x=>x.d===d&&x.sid===sid).length+photosOf(d.id,sid).length;
     used.add(key); plan.push({d,sid,name:`No.${d.label} ${sl.name}`+(nth?` (${nth+1}번째 장)`:''),file:f});
   }
+  // v21.40: 철탑 순서 → 칸 → 파일 이름 순으로 올림 (결과 목록도 그 순서)
+  plan.sort((a,b)=>(l.towers.indexOf(a.d)-l.towers.indexOf(b.d))||(a.sid<b.sid?-1:a.sid>b.sid?1:0)||a.file.name.localeCompare(b.file.name,'ko',{numeric:true}));
+  { const cnt={}; plan.forEach(it=>{const k=it.d.id+'|'+it.sid;const base=photosOf(it.d.id,it.sid).length;cnt[k]=(cnt[k]==null?base:cnt[k])+1;it.name=it.name.replace(/ \(\d+번째 장\)$/,'')+(cnt[k]>1?` (${cnt[k]}번째 장)`:'');}); }
   const done=[]; let err=null, step='';
   try{
     for(let i=0;i<plan.length;i++){
