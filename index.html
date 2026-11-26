@@ -679,8 +679,13 @@ async function pull(){
   finally{pulling=false;}
 }
 async function pullPhotos(force){
-  const {data,error}=await sb.from(T_PHOTOS).select('id,data,updated_at').order('id').range(0,9999);
-  if(error) throw error;
+  // v21.42: 서버는 한 번에 1000장까지만 줌 → 1000장씩 나눠서 끝까지 받음 (1000장 넘으면 새 사진이 안 보이고 중복 첨부되던 문제)
+  const data=[];
+  for(let from=0;from<200000;from+=1000){
+    const {data:part,error}=await sb.from(T_PHOTOS).select('id,data,updated_at').order('id').range(from,from+999);
+    if(error) throw error;
+    data.push(...part); if(part.length<1000) break;
+  }
   const stamp=data.length+'|'+data.reduce((a,r)=>a>r.updated_at?a:r.updated_at,'');
   if(!force&&stamp===photoStamp) return;
   photoStamp=stamp;
@@ -4084,7 +4089,18 @@ gid('bulkBtn').addEventListener('click',()=>{
     const go=el('button','primary','🖼️ 사진 고르기'); go.type='button';
     go.onclick=()=>{bulkLine=l.id;close();bulkIn.value='';bulkIn.click();};
     const no=el('button','ghost','닫기'); no.type='button'; no.onclick=close;
-    bx.append(go,no);
+    // v21.42: 같은 칸에 같은 파일 이름으로 두 번 들어간 사진 정리 (먼저 올린 것만 남김)
+    const dup=el('button','ghost','🧹 이 선로의 중복 사진 정리'); dup.type='button';
+    dup.onclick=async()=>{
+      const ids=new Set(l.towers.map(d=>d.id)), seen=new Set(), gone=[];
+      photos.filter(p=>ids.has(p.towerId)&&p.name).sort((a,b)=>(a.at||0)-(b.at||0)).forEach(p=>{const k=p.towerId+'|'+p.slot+'|'+p.name;if(seen.has(k))gone.push(p);else seen.add(k);});
+      if(!gone.length){say('중복 사진이 없어요');return;}
+      if(!await askYes(`같은 칸에 같은 이름으로 두 번 들어간 사진 ${gone.length}장을 지울까요? (먼저 올린 것은 남겨요)`,'지우기'))return;
+      close(); let n=0;
+      for(const p of gone){say(`정리 중… ${++n}/${gone.length}`,true);try{await deletePhoto(p,true);}catch(e){console.warn(e);}}
+      await pullPhotos(true); say(`중복 사진 ${gone.length}장을 지웠어요`);
+    };
+    bx.append(go,dup,no);
   });
 });
 bulkIn.addEventListener('change',async()=>{
