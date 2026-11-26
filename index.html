@@ -4091,7 +4091,7 @@ const bulkIn=document.createElement('input'); bulkIn.type='file'; bulkIn.multipl
 bulkIn.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;opacity:0'; bulkIn.tabIndex=-1; document.body.append(bulkIn);
 let bulkLine=null;
 gid('bulkBtn').addEventListener('click',()=>{
-  const l=cur(); if(!l||!l.towers){say('먼저 위에서 선로 하나를 고르세요 (전체 선로 보기에서는 안 돼요)');return;}
+  const l=ALL?null:cur(); if(!l||!l.towers){say('먼저 위에서 선로 하나를 고르세요 (전체 선로 보기에서는 안 돼요)');return;}
   if(!canEdit()){say(RO_MSG);return;}
   seqModal((bx,close)=>{
     bx.append(el('p',null,`📷 ${l.name} 사진 한번에 넣기`));
@@ -4481,7 +4481,7 @@ function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
 
 gid('xlInBtn').addEventListener('click',()=>{
   if(!canEdit()){say(RO_MSG);return;}
-  const l=cur(); xlLine=l&&l.towers?l.id:'*'; xlIn.value=''; xlIn.click();   // 설비 대장(여러 선로)은 전체 보기에서도 됨
+  const l=ALL?null:cur(); xlLine=l&&l.towers?l.id:'*'; xlIn.value=''; xlIn.click();   // 설비 대장(여러 선로)은 전체 보기에서도 됨
 });
 function lgPreview(SR){
   say('설비 대장 읽는 중…',true);
@@ -4493,10 +4493,15 @@ function lgPreview(SR){
     bx.append(el('p','note','장주도(현수/내장)·지지애자·전선댐퍼·가공댐퍼(GW/OPGW)·철탑도장(항공·친환경)·항공구·고광도·피뢰기/아킹혼을 읽었어요. 빈칸·X는 앱 값을 지우지 않아요.'));
     if(!out.length) bx.append(el('p','note','바뀔 내용이 없어요.'));
     else bx.append(el('p','note',`선로 ${byL.size}개 · 철탑 ${out.length}기 · ${out.reduce((a,o)=>a+o.ch.length,0)}곳이 바뀌어요. 선로를 눌러 자세히 보고 [적용]을 누르세요.`));
-    const ol=el('div','sq-list');
+    const ol=el('div','sq-list'), pick=new Set(byL.keys());
+    // v21.47: 선로마다 체크 — 한 선로만 고르기도 됨 (선로 하나를 열어 둔 상태면 그 선로만 체크된 채로 시작)
+    const c0=cur(); if(c0&&c0.towers&&byL.has(c0)&&!ALL){pick.clear();pick.add(c0);}
     [...byL.entries()].forEach(([l,arr])=>{
       arr.sort((a,b)=>l.towers.indexOf(a.d)-l.towers.indexOf(b.d));
-      const det=document.createElement('details');const sm=document.createElement('summary');sm.textContent=`${LN(l)} · ${arr.length}기`;det.append(sm);
+      const det=document.createElement('details');const sm=document.createElement('summary');
+      const cb=document.createElement('input');cb.type='checkbox';cb.checked=pick.has(l);cb.style.marginRight='6px';
+      cb.onclick=e=>e.stopPropagation();cb.onchange=()=>{if(cb.checked)pick.add(l);else pick.delete(l);okUpd();};
+      sm.append(cb,document.createTextNode(`${LN(l)} · ${arr.length}기`));det.append(sm);
       arr.slice(0,400).forEach(o=>det.append(el('div','sq-row',`No.${o.d.label} · `+o.ch.join(' · '))));
       ol.append(det);
     });
@@ -4511,8 +4516,10 @@ function lgPreview(SR){
       bx.append(u);
     }
     if(unmatched.length){bx.append(el('p','err','앱에 없는 철탑 번호 (넣지 않음):'));const u=el('div','sq-list');unmatched.forEach(x=>u.append(el('div','sq-row',x)));bx.append(u);}
+    let okUpd=()=>{};
     if(out.length){const ok=el('button','primary','적용');ok.type='button';
-      ok.onclick=()=>{out.forEach(o=>o.set.forEach(fn=>fn()));save();build();if(selT&&!card.hidden)renderCard();close();say(`설비 대장으로 선로 ${byL.size}개 · 철탑 ${out.length}기를 고쳤어요`);};bx.append(ok);}
+      okUpd=()=>{const n=out.filter(o=>pick.has(o.l)).length;ok.textContent=pick.size?`체크한 선로 ${pick.size}개 · 철탑 ${n}기 적용`:'선로를 체크하세요';ok.disabled=!pick.size;};okUpd();
+      ok.onclick=()=>{const sel=out.filter(o=>pick.has(o.l));if(!sel.length)return;sel.forEach(o=>o.set.forEach(fn=>fn()));save();build();if(selT&&!card.hidden)renderCard();close();say(`설비 대장으로 선로 ${pick.size}개 · 철탑 ${sel.length}기를 고쳤어요`);};bx.append(ok);}
     const no=el('button','ghost',out.length?'취소':'닫기');no.type='button';no.onclick=close;bx.append(no);
   });
 }
