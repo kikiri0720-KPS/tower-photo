@@ -3965,11 +3965,11 @@ function seqSetup(){
   });
 }
 // v21.31: 파일 이름 → 칸 (드론 기별촬영 앱 이름 규칙)
-const seqNorm=s=>String(s||'').replace(/\.[a-z0-9]+$/i,'').replace(/\s*\(\d+\)$/,'').replace(/^(no\.?\s*\d+(-\d+)?|\d+(-\d+)?\s*호)[_\s-]*/i,'').replace(/^\d{1,3}[_\s-]+/,'').replace(/[\s_()\-]+/g,'').toUpperCase();
+const seqNorm=s=>String(s||'').replace(/\.[a-z0-9]+$/i,'').replace(/\s*\(\d+\)$/,'').replace(/^(no\.?\s*\d+(-\d+)?|\d+(-\d+)?\s*호)[_\s-]*/i,'').replace(/^\d{1,3}[_\s-]+/,'').replace(/[\s_()\-]+/g,'').replace(/전원측/g,'전원').replace(/부하측/g,'부하').toUpperCase();   // v21.39: '측'은 있어도 없어도 같게
 function slotByName(fname,ord){
   const n=seqNorm(fname); if(!n) return null;
   // v21.38: 순번표에 없는 칸도 이름으로 (항공장애등·고광도, 함체·제어함, OPGW 여장·함체, 매설지선 등)
-  const sd=/전원측/.test(n)?'src':/부하측/.test(n)?'load':null;
+  const sd=/전원/.test(n)?'src':/부하/.test(n)?'load':null;
   if(/(제어함|함체|제어반)/.test(n)&&/(고광도|항공|장애|저광도|중광도)/.test(n)) return 'air_light_box';
   if(/(고광도|중광도|저광도|항공장애등|장애등|항공등)/.test(n)) return 'air_light_'+(sd||'src');
   if(/OPGW/.test(n)&&/여장/.test(n)) return 'opgw_extra';
@@ -3979,8 +3979,8 @@ function slotByName(fname,ord){
   if(/국가지점/.test(n)) return 'nat_plate';
   if(/전력선종류/.test(n)) return 'power_line';
   if(/SP종류/.test(n)) return 'sp_type';
-  if(/전경/.test(n)) return /#1측/.test(n)?'view_s1':/#2측/.test(n)?'view_s2':/전원측/.test(n)?'view_src':/부하측/.test(n)?'view_load':'skip';
-  const pos=/전원측/.test(n)?'src':/중앙/.test(n)?'mid':/부하측/.test(n)?'load':null;
+  if(/전경/.test(n)) return /#1측/.test(n)?'view_s1':/#2측/.test(n)?'view_s2':/전원/.test(n)?'view_src':/부하/.test(n)?'view_load':'skip';
+  const pos=/전원/.test(n)?'src':/중앙/.test(n)?'mid':/부하/.test(n)?'load':null;
   if(/OPGW/.test(n)&&pos) return 'opgw_'+pos;
   if(/(^|[^P])GW/.test(n)&&pos&&!/애자련/.test(n)) return 'gw_'+pos;
   if(/기초부지/.test(n)) return 'base';
@@ -4109,7 +4109,7 @@ bulkIn.addEventListener('change',async()=>{
     const d=byLab.get(labKey(tl)); if(!d){bad.push(f.name+` · 이 선로에 No.${tl} 없음`);continue;}
     const ord=seqOrder({d}); let sid=slotByName(f.name,ord);
     const sp=spanFromName(f.name);
-    if(sp&&/전경/.test(f.name)&&!/전원측|부하측|#[12]측/.test(f.name)){   // 81~82 전경: 82호가 선로에서 뒤쪽(번호 진행 방향)이면 부하측, 앞쪽이면 전원측
+    if(sp&&/전경/.test(f.name)&&!/전원|부하|#[12]측/.test(f.name)){   // 81~82 전경: 82호가 선로에서 뒤쪽(번호 진행 방향)이면 부하측, 앞쪽이면 전원측
       const i1=l.towers.indexOf(d), d2=byLab.get(labKey(sp[1])), i2=d2?l.towers.indexOf(d2):-1;
       sid=i2<0?null:(i2>i1?'view_load':'view_src');
       if(!sid){bad.push(f.name+` · 이 선로에 No.${sp[1]} 없음`);continue;}
