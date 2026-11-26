@@ -4459,21 +4459,24 @@ function lgTower(l,d,t){
   return {ch,set};
 }
 function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
-  const out=[], unmatched=[];
+  const out=[], unmatched=[], noLine=[];
+  let LGMAP={};try{LGMAP=JSON.parse(lsGet('tower3d-lgmap')||'{}')||{};}catch(e){}
   for(const sn in sheetRows){
     const rows=sheetRows[sn]; if(!rows.some(LG_isHead)) continue;
     const title=String((rows[0]||[])[0]||'');
     const keys=[lgNorm(sn),lgNorm(title.split(/\s{2,}|#/)[0])].filter(x=>x.length>=3);
-    let l=lines.find(x=>keys.includes(lgNorm(x.name)));
+    if(LGMAP[sn]==='skip') continue;
+    let l=LGMAP[sn]?lines.find(x=>x.id===LGMAP[sn]):null;   // v21.46: 직접 고른 선로
+    if(!l) l=lines.find(x=>keys.includes(lgNorm(x.name)));
     if(!l){const c=lines.filter(x=>{const n=lgNorm(x.name);return n.length>=3&&keys.some(k=>k.includes(n)||n.includes(k));});if(c.length===1)l=c[0];}
-    if(!l){unmatched.push(sn);continue;}
+    if(!l){noLine.push(sn);continue;}
     const byLab=new Map(l.towers.map(d=>[labKey(d.label),d]));
     const ts=lgSheet(rows), miss=[]; ts.forEach(t=>t.sheet=sn);
     ts.forEach(t=>{const d=byLab.get(labKey(t.label));if(!d){if(labKey(t.label))miss.push(t.label);return;}
       const r=lgTower(l,d,t);if(r.ch.length){const prev=out.find(o=>o.d===d);if(prev){prev.ch.push(...r.ch);prev.set.push(...r.set);}else out.push({l,d,ch:r.ch,set:r.set,sheet:sn});}});
     if(miss.length) unmatched.push(`${sn}: 앱에 없는 번호 ${miss.slice(0,8).join(', ')}${miss.length>8?' …':''}`);
   }
-  return {out,unmatched};
+  return {out,unmatched,noLine};
 }
 
 gid('xlInBtn').addEventListener('click',()=>{
@@ -4482,7 +4485,7 @@ gid('xlInBtn').addEventListener('click',()=>{
 });
 function lgPreview(SR){
   say('설비 대장 읽는 중…',true);
-  const {out,unmatched}=lgParse(null,SR);
+  const {out,unmatched,noLine}=lgParse(null,SR);
   document.getElementById('toast').hidden=true;
   const byL=new Map();out.forEach(o=>{if(!byL.has(o.l))byL.set(o.l,[]);byL.get(o.l).push(o);});
   seqModal((bx,close)=>{
@@ -4498,7 +4501,16 @@ function lgPreview(SR){
       ol.append(det);
     });
     bx.append(ol);
-    if(unmatched.length){bx.append(el('p','err','못 맞춘 것 (시트 이름과 같은 선로가 앱에 없거나, 앱에 없는 철탑 번호):'));const u=el('div','sq-list');unmatched.forEach(x=>u.append(el('div','sq-row',x)));bx.append(u);}
+    if(noLine.length){   // v21.46: 이름이 안 맞는 시트는 직접 선로를 골라 줌 (다음부터 기억)
+      bx.append(el('p','err',`앱 선로를 못 찾은 시트 ${noLine.length}개 · 맞는 선로를 고르면 바로 다시 읽어요 (다음부터 기억)`));
+      const u=el('div','sq-list');
+      const opts='<option value="">— 선로 고르기 —</option><option value="skip">이 시트는 안 넣음</option>'+[...lines].sort((a,b)=>(b.kv-a.kv)||String(a.name).localeCompare(b.name,'ko')).map(x=>`<option value="${x.id}">${x.kv}kV ${esc(LN(x))}</option>`).join('');
+      noLine.forEach(sn=>{const row=el('div','sq-row');row.append(document.createTextNode(sn+' → '));const sel=document.createElement('select');sel.innerHTML=opts;sel.style.maxWidth='100%';
+        sel.onchange=()=>{if(!sel.value)return;let M={};try{M=JSON.parse(lsGet('tower3d-lgmap')||'{}')||{};}catch(e){}M[sn]=sel.value;lsSet('tower3d-lgmap',JSON.stringify(M));close();lgPreview(SR);};
+        row.append(sel);u.append(row);});
+      bx.append(u);
+    }
+    if(unmatched.length){bx.append(el('p','err','앱에 없는 철탑 번호 (넣지 않음):'));const u=el('div','sq-list');unmatched.forEach(x=>u.append(el('div','sq-row',x)));bx.append(u);}
     if(out.length){const ok=el('button','primary','적용');ok.type='button';
       ok.onclick=()=>{out.forEach(o=>o.set.forEach(fn=>fn()));save();build();if(selT&&!card.hidden)renderCard();close();say(`설비 대장으로 선로 ${byL.size}개 · 철탑 ${out.length}기를 고쳤어요`);};bx.append(ok);}
     const no=el('button','ghost',out.length?'취소':'닫기');no.type='button';no.onclick=close;bx.append(no);
