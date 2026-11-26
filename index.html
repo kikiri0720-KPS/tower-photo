@@ -258,6 +258,8 @@ body.headmin .head h1{font-size:15px}
 .kpop .kx{position:absolute;top:2px;right:4px;border:0;background:transparent;font-size:18px;color:#666;padding:2px 6px}
 .kpop::after{content:'';position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:#fff}
 #mapPick[hidden]{display:none}
+.ledger th,.ledger td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;white-space:pre-line}
+.ledger td:first-child{color:var(--muted,#888);white-space:nowrap}
 .tpop button{display:block;width:100%;margin-top:6px;padding:8px 10px;border:0;border-radius:8px;background:#e8833a;color:#14213d;font-weight:700;font-size:14px}
 .tpop button.b2{background:#e6ecf2}
 #mapOv #gpsbar{margin:6px;border-radius:12px}
@@ -1818,6 +1820,16 @@ function numNear(l,d){const ts=l.towers,i=ts.indexOf(d);for(let j=i-1;j>=0;j--){
 function nextAfterLast(l){const num=l.towers.filter(d=>!isCT(d.label)),last=num[num.length-1];const n=last?parseInt(baseNo(last.label),10):NaN;return isNaN(n)?String(num.length+1):String(n+1);}
 
 /* ---------- UI ---------- */
+// v21.45: 설비 대장(엑셀)에서 가져온 값 — 회선별 표
+function ledgerHTML(d){
+  const L=d.ledger; if(!L||!L.rows||!L.rows.length) return '';
+  const keys=[];L.rows.forEach(o=>Object.keys(o).forEach(k=>{if(!keys.includes(k))keys.push(k);}));
+  const nm=k=>k.replace('|',' ');
+  const head=L.rows.map((o,i)=>`<th>${esc(o['회선']||('#'+(i+1)))}</th>`).join('');
+  const body=keys.filter(k=>k!=='회선').map(k=>`<tr><td>${esc(nm(k))}</td>${L.rows.map(o=>`<td>${esc(o[k]||'')}</td>`).join('')}</tr>`).join('');
+  return `<details class="field ledger"><summary class="lb">📋 설비 대장 (엑셀${L.sheet?' · '+esc(L.sheet):''})</summary>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tr><th></th>${head}</tr>${body}</table></div></details>`;
+}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const lineSel=document.getElementById('lineSel'), chipsEl=document.getElementById('chips'), card=document.getElementById('card');
 const LAMP_MAKERS=['신성','한국항공','서광','스마트IT'];   // v16: 항공장애등 제조사 (여러 개 고를 수 있음)
@@ -2008,6 +2020,7 @@ function renderCard(){
       ${false&&t.i>0&&t.i<towers.length-1?`<div class="field"><span class="lb">각도주 · 선로가 꺾이는 방향과 각도</span>
         ${segHTML('data-angdir',['','L','R'],t.d.angDir||'',v=>v===''?'직선':v==='L'?'↰ 좌로':'우로 ↱')}
         ${t.d.angDir?`<div class="row2" style="margin-top:6px"><div class="unit" data-unit="도"><input id="fAngD" type="number" inputmode="numeric" min="0" max="90" step="1" value="${Math.floor((+t.d.angDeg||0)+1e-9)}" aria-label="각도 도"></div><div class="unit" data-unit="분"><input id="fAngM" type="number" inputmode="numeric" min="0" max="59" step="1" value="${Math.round(((+t.d.angDeg||0)-Math.floor((+t.d.angDeg||0)+1e-9))*60)}" aria-label="각도 분"></div></div>`:''}</div>`:''}
+      ${ledgerHTML(t.d)}
       <div class="field"><span class="lb">피뢰기 · 아킹혼·링 (회선별 · 전원측/부하측)</span>
         ${ARR_POS.map(x=>`<div class="arrrow"><span class="lb">${x.name}</span>${segHTML('data-arr-'+x.k,ARR_KINDS,arrN(t.d['arr'+x.k]),v=>v||'없음')}</div>`).join('')}</div>
       ${dmpGroups(l).map(g=>{const on=!!t.d['on_'+g.k]||dmpSum(t.d,g)>0, gwB=g.k==='dmpGW'&&t.d.gwKind==='bait', nm=g.k==='dmpGW'?(gwB?'GW 배이트':'GW 댐퍼'):g.name;
@@ -4257,6 +4270,7 @@ function xlRows(){
         '철탑 밑':(LAND.find(x=>x.k===d.land)||{}).name||'',
         '위험철탑':d.danger?'○':'',
         '지세 고친 값':jsTxt,
+        '설비 대장':d.ledger&&d.ledger.rows?d.ledger.rows.map((o,i)=>(o['회선']||('#'+(i+1)))+': '+Object.keys(o).filter(k=>k!=='회선').map(k=>k.replace('|',' ')+' '+o[k]).join(', ')).join(' / '):'',
         '하차→철탑 이동':acc?`${Math.round(acc.sec/60)}분 · ${kmT(acc.m)} (${acc.date})`:'',
         '경간 순시 기록':wk?`${kmT(wk.m)} · ${hms(wk.sec)} (${wk.date})`:'',
         '기별사진':pr.total?pr.done+'/'+pr.total:''
@@ -4438,6 +4452,10 @@ function lgTower(l,d,t){
       [['S','전원측'],['L','부하측']].forEach(([s,n])=>{if(!a[s])return;const k='arr'+(i+1)+s;if(arrN(d[k])===a[s])return;
         add(`#${i+1} ${n}`,arrN(d[k])||'없음',a[s],()=>{d[k]=a[s];});});});
   }
+  // v21.45: 엑셀 줄 전체를 '설비 대장'으로 보관 (애자 제작사·년도·종류, 애자수량, 스페이서, 직선스리브, 기타사항…)
+  const keep=t.rows.map(g=>{const o={};Object.keys(g).forEach(k=>{if(/^no\|/i.test(k)||/^\|/.test(k))return;const v=g[k].map(x=>typeof x==='number'?lgLab(x):String(x==null?'':x).trim()).filter(Boolean).join(' / ');if(v)o[k.replace(/\|$/,'')]=v;});return o;}).filter(o=>Object.keys(o).length);
+  if(keep.length){const nv={rows:keep,sheet:t.sheet||''};const ov=d.ledger?JSON.stringify(d.ledger.rows):'';
+    if(ov!==JSON.stringify(keep)) add('설비 대장 기록',d.ledger?'있음':'없음',`${keep.reduce((a,o)=>a+Object.keys(o).length,0)}칸`,()=>{d.ledger={rows:nv.rows,sheet:nv.sheet,at:Date.now()};});}
   return {ch,set};
 }
 function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
@@ -4450,7 +4468,7 @@ function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
     if(!l){const c=lines.filter(x=>{const n=lgNorm(x.name);return n.length>=3&&keys.some(k=>k.includes(n)||n.includes(k));});if(c.length===1)l=c[0];}
     if(!l){unmatched.push(sn);continue;}
     const byLab=new Map(l.towers.map(d=>[labKey(d.label),d]));
-    const ts=lgSheet(rows), miss=[];
+    const ts=lgSheet(rows), miss=[]; ts.forEach(t=>t.sheet=sn);
     ts.forEach(t=>{const d=byLab.get(labKey(t.label));if(!d){if(labKey(t.label))miss.push(t.label);return;}
       const r=lgTower(l,d,t);if(r.ch.length){const prev=out.find(o=>o.d===d);if(prev){prev.ch.push(...r.ch);prev.set.push(...r.set);}else out.push({l,d,ch:r.ch,set:r.set,sheet:sn});}});
     if(miss.length) unmatched.push(`${sn}: 앱에 없는 번호 ${miss.slice(0,8).join(', ')}${miss.length>8?' …':''}`);
