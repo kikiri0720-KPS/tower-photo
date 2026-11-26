@@ -1,4 +1,4 @@
-const C="tower-v15", TC="tiles-v1", LC="libs-v1";
+const C="tower-v16", TC="tiles-v1", LC="libs-v1";
 // v21.17: 항공사진·표고 지도 조각은 휴대폰에 저장해 두고 다음부터 바로 꺼내 씀 (최대 약 4000장)
 const TILE=/^https:\/\/(api\.vworld\.kr\/req\/wmts\/|server\.arcgisonline\.com\/ArcGIS\/rest\/services\/World_Imagery\/|s3\.amazonaws\.com\/elevation-tiles-prod\/)/;
 // v21.23: 3D·서버 연결 프로그램(버전 고정)은 휴대폰에 저장 → 전화가 안 터져도 앱이 열림
@@ -33,6 +33,7 @@ self.addEventListener("fetch",e=>{
     return;
   }
   if(u.origin!==location.origin)return;
-  e.respondWith(timeout(fetch(e.request),e.request.mode==="navigate"?5000:8000).then(r=>{const cp=r.clone();caches.open(C).then(c=>c.put(e.request,cp));return r})
+  // v21.37: 휴대폰에 남은 옛 화면(최대 10분) 대신 항상 서버에 새 버전이 있는지 확인
+  e.respondWith(timeout(fetch(e.request.url,{cache:"no-cache",credentials:"same-origin"}),e.request.mode==="navigate"?5000:8000).then(r=>{const cp=r.clone();caches.open(C).then(c=>c.put(e.request,cp));return r})
     .catch(()=>caches.match(e.request,{ignoreSearch:true}).then(h=>h||(e.request.mode==="navigate"?caches.match("./index.html").then(x=>x||caches.match("./")):undefined)).then(h=>h||Response.error())));
 });
