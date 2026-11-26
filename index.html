@@ -3965,7 +3965,7 @@ function seqSetup(){
   });
 }
 // v21.31: 파일 이름 → 칸 (드론 기별촬영 앱 이름 규칙)
-const seqNorm=s=>String(s||'').replace(/\.[a-z0-9]+$/i,'').replace(/^(no\.?\s*\d+(-\d+)?|\d+(-\d+)?\s*호)[_\s-]*/i,'').replace(/^\d{1,3}[_\s-]+/,'').replace(/[\s_()\-]+/g,'').toUpperCase();
+const seqNorm=s=>String(s||'').replace(/\.[a-z0-9]+$/i,'').replace(/\s*\(\d+\)$/,'').replace(/^(no\.?\s*\d+(-\d+)?|\d+(-\d+)?\s*호)[_\s-]*/i,'').replace(/^\d{1,3}[_\s-]+/,'').replace(/[\s_()\-]+/g,'').toUpperCase();
 function slotByName(fname,ord){
   const n=seqNorm(fname); if(!n) return null;
   if(/전경/.test(n)) return /#1측/.test(n)?'view_s1':/#2측/.test(n)?'view_s2':/전원측/.test(n)?'view_src':/부하측/.test(n)?'view_load':'skip';
@@ -4012,6 +4012,8 @@ seqIn.addEventListener('change',async()=>{
     const sid=slotByName(f.name,ord);
     if(sid==='skip'){skipped.push(f.name);continue;}
     if(sid&&leftIds.has(sid)){pairs.push({s:left.find(x=>x.id===sid),file:f});leftIds.delete(sid);emptyAny.delete(sid);continue;}
+    const again=sid&&pairs.find(p=>p.s.id===sid);
+    if(again){pairs.push({s:again.s,file:f});continue;}   // v21.34: (1)(2) 붙은 같은 이름 → 같은 칸에 한 장 더
     if(sid&&emptyAny.has(sid)){pairs.push({s:emptyAny.get(sid),file:f});emptyAny.delete(sid);continue;}   // 순서표에서 꺼진 칸(전경 등)도 이름이 맞으면 넣음
     if(sid&&ord.some(x=>x.id===sid)&&!inScope(sid,job.scope)){skipped.push(f.name);continue;}
     if(sid&&ord.some(x=>x.id===sid)){skipped.push(f.name+' (이미 사진 있음)');continue;}
@@ -4063,7 +4065,7 @@ gid('bulkBtn').addEventListener('click',()=>{
     bx.append(el('p','note','파일 이름에 철탑 번호와 항목이 있으면 그 철탑의 그 칸에 자동으로 들어가요. 고르는 순서·개수 상관없어요.'));
     const ol=el('div','sq-list');
     ['No23_01_애자련_#1_전원측_하단.jpg  (드론 기별촬영 앱)','23호 애자련 #2 부하측 상단.jpg','No.23 기초부지.jpg · No.23 번호찰.jpg','No.23 OPGW 중앙.jpg · No.23 전경 전원측.jpg'].forEach(x=>ol.append(el('div','sq-row',x)));
-    bx.append(ol,el('p','note','이미 사진이 있는 칸은 건너뛰어요 (덮어쓰지 않음).'));
+    bx.append(ol,el('p','note','이름 뒤에 (1)·(2)가 붙은 사진은 같은 칸에 여러 장으로 들어가요. 이미 있는 사진은 지우지 않고, 똑같은 파일은 다시 올리지 않아요.'));
     const go=el('button','primary','🖼️ 사진 고르기'); go.type='button';
     go.onclick=()=>{bulkLine=l.id;close();bulkIn.value='';bulkIn.click();};
     const no=el('button','ghost','닫기'); no.type='button'; no.onclick=close;
@@ -4084,9 +4086,11 @@ bulkIn.addEventListener('change',async()=>{
     const ord=seqOrder({d}), sid=slotByName(f.name,ord);
     if(!sid||sid==='skip'){bad.push(f.name+' · 항목 이름을 모름');continue;}
     const sl=ord.find(x=>x.id===sid); if(!sl){bad.push(f.name+' · 이 선로에 없는 항목');continue;}
-    const key=d.id+'|'+sid;
-    if(used.has(key)||photosOf(d.id,sid).length){bad.push(f.name+' · 이미 사진 있음');continue;}
-    used.add(key); plan.push({d,sid,name:`No.${d.label} ${sl.name}`,file:f});
+    // v21.34: 같은 칸 이름에 (1)(2)가 붙은 사진은 같은 칸에 여러 장으로 · 똑같은 파일 이름이 이미 그 칸에 있으면 건너뜀(두 번 올리기 방지)
+    const key=d.id+'|'+sid+'|'+f.name;
+    if(used.has(key)||photosOf(d.id,sid).some(p=>(p.name||'')===f.name)){bad.push(f.name+' · 같은 사진이 이미 있음');continue;}
+    const nth=plan.filter(x=>x.d===d&&x.sid===sid).length+photosOf(d.id,sid).length;
+    used.add(key); plan.push({d,sid,name:`No.${d.label} ${sl.name}`+(nth?` (${nth+1}번째 장)`:''),file:f});
   }
   const done=[]; let err=null, step='';
   try{
