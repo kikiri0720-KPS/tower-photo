@@ -3734,7 +3734,7 @@ function groupCard(t,tp,g){
   const head=el('div','group-head');
   head.append(el('b',null,g.label),el('small',null,`${done}/${ids.length}측 등록`));
   c.append(head);
-  if(SEQ_ITEMS[g.id]&&AS){const sb2=el('button','primary seq-mini',`📷 ${SEQ_ITEMS[g.id]} 여러 장 순서대로 (빈 칸부터)`);sb2.type='button';sb2.onclick=()=>openSeq(g.id);c.append(sb2);}
+  if(SEQ_ITEMS[g.id]&&AS){const sb2=el('button','primary seq-mini',`📷 ${SEQ_ITEMS[g.id]} 여러 장 한번에 (빈 칸부터)`);sb2.type='button';sb2.onclick=()=>openSeq(g.id);c.append(sb2);}
   const curN=g.nums?(numSel[gk]||'1'):null;
   const curT=g.nums?(TIER_KEYS.includes(tierSel[gk])?tierSel[gk]:'u'):null;
   const inNo=([s,n,tr])=>!g.nums||((s.includes('2_')?'2':'1')===curN&&(!tr||tr===curT));
@@ -3888,7 +3888,8 @@ function photosChanged(){
 }
 
 /* ---------- 순서대로 한번에 첨부 ----------
-   여러 장을 고르면 고른 순서대로, 아직 사진이 없는 다음 칸부터 자동으로 들어감.
+   v21.31: 고르는 순서는 상관없음 — ① 파일 이름에 항목이 있으면(드론 기별촬영 앱 사진 "01_애자련_#1_전원측_하단.jpg") 그 칸에,
+           ② 나머지는 찍은 시간(사진 속 촬영시각) 순서대로 아직 사진이 없는 칸에 차례로 들어감.
    기초부지까지 올리고 나중에 애자련을 고르면 애자련 첫 빈 칸부터 이어서 들어감 */
 function seqOrder(t){
   const l=cur(), r=[];
@@ -3932,7 +3933,7 @@ function openSeq(scope){
     if(!left.length){
       bx.append(el('p','note',scope?`${SEQ_ITEMS[scope]} 칸에 모두 사진이 있어요. 바꾸려면 사진을 지운 뒤 다시 하세요.`:'순서표의 모든 칸에 사진이 있어요.'));
     }else{
-      bx.append(el('p','note',`사진을 고른 순서대로 아래 빈 칸에 차례로 들어가요. (남은 칸 ${left.length}개)`));
+      bx.append(el('p','note',`고르는 순서는 상관없어요. 드론 기별촬영 사진은 파일 이름대로 그 칸에, 휴대폰 사진은 찍은 시간 순서대로 아래 빈 칸에 차례로 들어가요. (남은 칸 ${left.length}개)`));
       const ol=el('div','sq-list');
       left.forEach((x,i)=>ol.append(el('div','sq-row',`${i+1}. ${x.name}`)));
       bx.append(ol);
@@ -3960,18 +3961,72 @@ function seqSetup(){
     bx.append(ol,ok);
   });
 }
+// v21.31: 파일 이름 → 칸 (드론 기별촬영 앱 이름 규칙)
+const seqNorm=s=>String(s||'').replace(/\.[a-z0-9]+$/i,'').replace(/^\d{1,3}[_\s-]+/,'').replace(/[\s_()\-]+/g,'').toUpperCase();
+function slotByName(fname,ord){
+  const n=seqNorm(fname); if(!n) return null;
+  if(/전경/.test(n)) return 'skip';                       // 드론 전경 사진은 기별 칸이 없음
+  const pos=/전원측/.test(n)?'src':/중앙/.test(n)?'mid':/부하측/.test(n)?'load':null;
+  if(/OPGW/.test(n)&&pos) return 'opgw_'+pos;
+  if(/(^|[^P])GW/.test(n)&&pos&&!/애자련/.test(n)) return 'gw_'+pos;
+  if(/기초부지/.test(n)) return 'base';
+  const hit=ord.find(x=>seqNorm(x.name)===n)||ord.find(x=>n.includes(seqNorm(x.name))&&seqNorm(x.name).length>=4&&/애자련|구명줄|클램프|상부|번호찰|표시찰/.test(x.name));
+  return hit?hit.id:null;
+}
+// 사진 속 촬영시각 (EXIF DateTimeOriginal) — 없으면 파일 수정시각
+async function shotTime(file){
+  try{
+    const buf=await file.slice(0,262144).arrayBuffer(), v=new DataView(buf);
+    if(v.getUint16(0)!==0xFFD8) throw 0;
+    let o=2;
+    while(o+4<v.byteLength){
+      const mk=v.getUint16(o), len=v.getUint16(o+2);
+      if(mk===0xFFE1&&v.getUint32(o+4)===0x45786966){
+        const T=o+10, le=v.getUint16(T)===0x4949, u16=a=>v.getUint16(a,le), u32=a=>v.getUint32(a,le);
+        const ifd=(start,tag)=>{const n=u16(start);for(let i=0;i<n;i++){const e=start+2+i*12;if(u16(e)===tag)return e;}return -1;};
+        const i0=T+u32(T+4), ex=ifd(i0,0x8769); if(ex<0) throw 0;
+        const ei=T+u32(ex+8);
+        for(const tag of [0x9003,0x9004]){const e=ifd(ei,tag);if(e>=0){const at=T+u32(e+8);let str='';for(let k=0;k<19;k++)str+=String.fromCharCode(v.getUint8(at+k));
+          const m=str.match(/(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/);if(m)return new Date(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6]).getTime();}}
+        throw 0;
+      }
+      if((mk&0xFF00)!==0xFF00) break; o+=2+len;
+    }
+  }catch(e){}
+  return file.lastModified||0;
+}
 seqIn.addEventListener('change',async()=>{
   const job=seqJob; seqJob=null;
   const files=[...(seqIn.files||[])].filter(x=>!x.type||x.type.startsWith('image/')); seqIn.value='';
   if(!job||!files.length) return;
   const t=towers.find(x=>x.d.id===job.tid); if(!t) return;
   if(!canEdit()){say(RO_MSG);return;}
-  const left=seqLeft(t,job.scope), targets=left.slice(0,files.length);
-  const extra=files.length-targets.length, done=[];
+  // v21.31: 이름으로 칸 찾기 → 나머지는 찍은 시간 순서로 빈 칸에
+  const left=seqLeft(t,job.scope), ord=seqOrder(t), leftIds=new Set(left.map(x=>x.id));
+  const pairs=[], rest=[], skipped=[];
+  for(const f of files){
+    const sid=slotByName(f.name,ord);
+    if(sid==='skip'){skipped.push(f.name);continue;}
+    if(sid&&leftIds.has(sid)){pairs.push({s:left.find(x=>x.id===sid),file:f});leftIds.delete(sid);continue;}
+    if(sid&&ord.some(x=>x.id===sid)&&!inScope(sid,job.scope)){skipped.push(f.name);continue;}
+    if(sid&&ord.some(x=>x.id===sid)){skipped.push(f.name+' (이미 사진 있음)');continue;}
+    rest.push(f);
+  }
+  if(rest.length){
+    say('찍은 시간 순서 확인 중…',true);
+    const tm=await Promise.all(rest.map(shotTime));
+    const sorted=rest.map((f,i)=>({f,t:tm[i],i})).sort((a,b)=>(a.t-b.t)||(a.i-b.i)).map(x=>x.f);
+    const free=left.filter(x=>leftIds.has(x.id));
+    sorted.forEach((f,i)=>{if(free[i])pairs.push({s:free[i],file:f});});
+  }
+  const ordIdx=id=>ord.findIndex(x=>x.id===id);
+  pairs.sort((a,b)=>ordIdx(a.s.id)-ordIdx(b.s.id));
+  const targets=pairs.map(p=>p.s), fileOf=pairs.map(p=>p.file);
+  const extra=files.length-skipped.length-targets.length, done=[];
   let step='사진 줄이기';
   try{
     for(let i=0;i<targets.length;i++){
-      const s=targets[i], file=files[i];
+      const s=targets[i], file=fileOf[i];
       say(`저장 중… ${i+1}/${targets.length} · ${s.name}`,true);
       step='사진 줄이기'; const blob=await shrink(file);
       const pid='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -3981,18 +4036,19 @@ seqIn.addEventListener('change',async()=>{
       done.push({name:s.name+(r==='queued'?' (📵 휴대폰에 보관 · 연결되면 올림)':''),p:{id:pid,path}});
     }
     await pullPhotos(true);
-    seqDone(done,extra,null);
+    seqDone(done,extra,null,skipped);
   }catch(e){
     console.error(e); try{await pullPhotos(true);}catch(_){}
-    seqDone(done,extra,`${step}: ${(e&&(e.message||e.error))||e}`);
+    seqDone(done,extra,`${step}: ${(e&&(e.message||e.error))||e}`,skipped);
   }
 });
-function seqDone(done,extra,err){
+function seqDone(done,extra,err,skipped){
   document.getElementById('toast').hidden=true;
   seqModal((bx,close)=>{
     bx.append(el('p',null,err?`${done.length}장 저장 후 멈췄어요`:`${done.length}장을 각 칸에 넣었어요`));
     if(err) bx.append(el('p','err',err+' · 다시 하면 남은 빈 칸부터 이어서 들어가요.'));
-    if(extra>0) bx.append(el('p','err',`빈 칸보다 사진이 ${extra}장 많아서 뒤의 ${extra}장은 넣지 않았어요.`));
+    if(extra>0) bx.append(el('p','err',`빈 칸보다 사진이 ${extra}장 많아서 나중에 찍은 ${extra}장은 넣지 않았어요.`));
+    if(skipped&&skipped.length) bx.append(el('p','note',`넣을 칸이 없어 뺀 사진 ${skipped.length}장 (전경 등): `+skipped.slice(0,4).join(', ')+(skipped.length>4?' …':'')));
     const ol=el('div','sq-list'); done.forEach((d,i)=>ol.append(el('div','sq-row',`✓ ${d.name}`))); bx.append(ol);
     const ok=el('button','primary','확인'); ok.type='button'; ok.onclick=close;
     const undo=el('button','ghost danger','방금 넣은 사진 모두 지우기'); undo.type='button';
