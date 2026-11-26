@@ -3466,7 +3466,7 @@ const S12=TIERS.flatMap(([t,tn])=>[["1","#1"],["2","#2"]].flatMap(([no,nn])=>[["
 const SUP=[["sup_src","지지애자 #1 전원측"],["sup_load","지지애자 #1 부하측"],["sup_2_src","지지애자 #2 전원측"],["sup_2_load","지지애자 #2 부하측"]];
 const ITEMS=[
 {id:"top",label:"상부",sides:SL},
-{id:"view",label:"전경",sides:SL},
+{id:"view",label:"전경",sides:SL,optSides:[["s1","#1측"],["s2","#2측"]],optLabel:"옆면 전경 (#1측·#2측) 추가 (선택)"},
 {id:"base",label:"기초부지"},
 {id:"gnd",label:"매설지선",cond:"gnd"},
 {id:"fprot",label:"기초보호설비",cond:"fpOn"},
@@ -3773,7 +3773,7 @@ function groupCard(t,tp,g){
     const lb=el('label','check');
     const cb=document.createElement('input');cb.type='checkbox';cb.id='sup_'+g.id;cb.checked=on;cb.disabled=has;
     cb.onchange=()=>{t.d.sup=t.d.sup||{};t.d.sup[g.id]=cb.checked;save();renderLedger();};
-    lb.append(cb,document.createTextNode('지지애자 추가 (선택)'));
+    lb.append(cb,document.createTextNode(g.optLabel||'지지애자 추가 (선택)'));
     c.append(lb);
     if(on) g.optSides.filter(inNo).forEach(renderSide);
   }
@@ -3907,6 +3907,8 @@ function seqOrder(t){
     [['d','하단'],['m','중단'],['u','상단']].forEach(([tr,tn])=>add('insulator_'+(tr==='u'?'':tr+'_')+p+sd,`애자련 #${no} ${sn} ${tn}`))));
   if(lineHas(l,'OPGW')) [['src','전원측'],['mid','중앙'],['load','부하측']].forEach(([s,n])=>add('opgw_'+s,'OPGW '+n));
   if(lineHas(l,'GW')) [['src','전원측'],['mid','중앙'],['load','부하측']].forEach(([s,n])=>add('gw_'+s,'GW '+n));
+  // v21.32: 전경 4면 — 기본은 꺼짐(휴대폰 사진 시간순 채우기엔 안 씀) · 드론 기별촬영 사진은 이름으로 들어감
+  [['src','전원측'],['s1','#1측'],['load','부하측'],['s2','#2측']].forEach(([k,n])=>add('view_'+k,'전경 '+n,false));
   let off={}; try{off=JSON.parse(lsGet('tower3d-seq-off')||'{}')||{};}catch(e){}
   r.forEach(x=>{if(x.id in off) x.on=!off[x.id];});
   return r;
@@ -3965,7 +3967,7 @@ function seqSetup(){
 const seqNorm=s=>String(s||'').replace(/\.[a-z0-9]+$/i,'').replace(/^\d{1,3}[_\s-]+/,'').replace(/[\s_()\-]+/g,'').toUpperCase();
 function slotByName(fname,ord){
   const n=seqNorm(fname); if(!n) return null;
-  if(/전경/.test(n)) return 'skip';                       // 드론 전경 사진은 기별 칸이 없음
+  if(/전경/.test(n)) return /#1측/.test(n)?'view_s1':/#2측/.test(n)?'view_s2':/전원측/.test(n)?'view_src':/부하측/.test(n)?'view_load':'skip';
   const pos=/전원측/.test(n)?'src':/중앙/.test(n)?'mid':/부하측/.test(n)?'load':null;
   if(/OPGW/.test(n)&&pos) return 'opgw_'+pos;
   if(/(^|[^P])GW/.test(n)&&pos&&!/애자련/.test(n)) return 'gw_'+pos;
@@ -4003,11 +4005,13 @@ seqIn.addEventListener('change',async()=>{
   if(!canEdit()){say(RO_MSG);return;}
   // v21.31: 이름으로 칸 찾기 → 나머지는 찍은 시간 순서로 빈 칸에
   const left=seqLeft(t,job.scope), ord=seqOrder(t), leftIds=new Set(left.map(x=>x.id));
+  const emptyAny=new Map(ord.filter(x=>inScope(x.id,job.scope)&&!photosOf(t.d.id,x.id).length).map(x=>[x.id,x]));
   const pairs=[], rest=[], skipped=[];
   for(const f of files){
     const sid=slotByName(f.name,ord);
     if(sid==='skip'){skipped.push(f.name);continue;}
-    if(sid&&leftIds.has(sid)){pairs.push({s:left.find(x=>x.id===sid),file:f});leftIds.delete(sid);continue;}
+    if(sid&&leftIds.has(sid)){pairs.push({s:left.find(x=>x.id===sid),file:f});leftIds.delete(sid);emptyAny.delete(sid);continue;}
+    if(sid&&emptyAny.has(sid)){pairs.push({s:emptyAny.get(sid),file:f});emptyAny.delete(sid);continue;}   // 순서표에서 꺼진 칸(전경 등)도 이름이 맞으면 넣음
     if(sid&&ord.some(x=>x.id===sid)&&!inScope(sid,job.scope)){skipped.push(f.name);continue;}
     if(sid&&ord.some(x=>x.id===sid)){skipped.push(f.name+' (이미 사진 있음)');continue;}
     rest.push(f);
@@ -4048,7 +4052,7 @@ function seqDone(done,extra,err,skipped){
     bx.append(el('p',null,err?`${done.length}장 저장 후 멈췄어요`:`${done.length}장을 각 칸에 넣었어요`));
     if(err) bx.append(el('p','err',err+' · 다시 하면 남은 빈 칸부터 이어서 들어가요.'));
     if(extra>0) bx.append(el('p','err',`빈 칸보다 사진이 ${extra}장 많아서 나중에 찍은 ${extra}장은 넣지 않았어요.`));
-    if(skipped&&skipped.length) bx.append(el('p','note',`넣을 칸이 없어 뺀 사진 ${skipped.length}장 (전경 등): `+skipped.slice(0,4).join(', ')+(skipped.length>4?' …':'')));
+    if(skipped&&skipped.length) bx.append(el('p','note',`넣을 칸이 없어 뺀 사진 ${skipped.length}장: `+skipped.slice(0,4).join(', ')+(skipped.length>4?' …':'')));
     const ol=el('div','sq-list'); done.forEach((d,i)=>ol.append(el('div','sq-row',`✓ ${d.name}`))); bx.append(ol);
     const ok=el('button','primary','확인'); ok.type='button'; ok.onclick=close;
     const undo=el('button','ghost danger','방금 넣은 사진 모두 지우기'); undo.type='button';
