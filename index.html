@@ -418,6 +418,7 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
       <button class="btn" id="delLine2" type="button">선로 삭제</button>
       <button class="btn" id="backup" type="button">백업</button>
       <button class="btn" id="zipBtn" type="button" hidden>사진 ZIP</button>
+      <button class="btn" id="xlInBtn" type="button" title="선로 기별 엑셀로 철탑 정보 고치기">📥 엑셀로 고치기</button>
       <button class="btn" id="bulkBtn" type="button" title="파일 이름(철탑 번호+항목)으로 선로 전체 사진을 한번에">📷 사진 넣기</button>
       <button class="btn" id="xlsBtn" type="button" title="전체 선로 기별을 엑셀로">📊 엑셀</button>
       <button class="btn" id="tWire" type="button" aria-pressed="true">전선</button>
@@ -4300,6 +4301,99 @@ async function exportXlsx(){
   }catch(e){say('앱에서는 내려받지 못했어요. 크롬에서 앱 주소를 열고 📊 엑셀을 누르세요. ('+(e.message||e)+')',true);}
 }
 gid('xlsBtn').addEventListener('click',exportXlsx);
+
+/* ---------- v21.43: 선로 기별 엑셀로 철탑 정보 고치기 ----------
+   제목 줄(철탑번호·높이·철탑형…)을 스스로 찾아 철탑 번호로 맞춤 → 바뀔 내용을 먼저 보여 주고 [적용]해야 바뀜
+   빈칸·'미수정'은 건너뜀(앱 값 그대로) · 앱에서 내려받은 엑셀(📊)을 고쳐서 다시 넣어도 됨 */
+const XL_COLS={
+  no:['철탑번호','철탑no','철탑 no','no','no.','번호','호수','기번','철탑','탑번호','지지물번호'],
+  form:['철탑형','탑형','형식','철탑형식','철탑 형','type','형'],
+  h:['높이(m)','높이','철탑높이','탑고','높이m','h(m)'],
+  ten:['현수/내장','현수내장','내장/현수','지지방식','현수·내장','현수,내장','장주'],
+  span:['경간(m) 다음 철탑까지','경간(m)','경간','경간장','경간길이','span'],
+  lat:['위도','lat','latitude','y좌표'],
+  lng:['경도','lng','lon','longitude','x좌표'],
+  ll:['좌표','위경도','위치','gps'],
+  cir:['회선수','회선','회선 수'],
+  gw:['가공지선','가공지선조수','gw조수','gw 조수'],
+  line:['선로명','선로']
+};
+const xlKey=s=>String(s==null?'':s).replace(/\s+/g,'').toLowerCase();
+function xlFindCols(rows){
+  for(let r=0;r<Math.min(25,rows.length);r++){
+    const row=rows[r]||[], m={};
+    row.forEach((c,ci)=>{const k=xlKey(c);if(!k)return;
+      for(const f in XL_COLS){if(m[f]!=null)continue;if(XL_COLS[f].some(w=>k===xlKey(w)||(w.length>=3&&k.startsWith(xlKey(w))))){m[f]=ci;break;}}});
+    const more=['form','h','ten','span','lat','ll','cir','gw'].filter(f=>m[f]!=null).length;
+    if(m.no!=null&&more>=1) return {hr:r,m};
+  }
+  return null;
+}
+const xlNum=v=>{if(typeof v==='number')return v;const m=String(v==null?'':v).replace(/,/g,'').match(/-?\d+(\.\d+)?/);return m?parseFloat(m[0]):NaN;};
+const xlEmpty=v=>{const t=String(v==null?'':v).trim();return !t||t==='미수정'||t==='미입력'||t==='-';};
+const xlIn=document.createElement('input'); xlIn.type='file'; xlIn.accept='.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel';
+xlIn.style.cssText='position:fixed;left:-9999px;width:1px;height:1px;opacity:0'; xlIn.tabIndex=-1; document.body.append(xlIn);
+let xlLine=null;
+gid('xlInBtn').addEventListener('click',()=>{
+  const l=cur(); if(!l||!l.towers){say('먼저 위에서 선로 하나를 고르세요 (전체 선로 보기에서는 안 돼요)');return;}
+  if(!canEdit()){say(RO_MSG);return;}
+  xlLine=l.id; xlIn.value=''; xlIn.click();
+});
+xlIn.addEventListener('change',async()=>{
+  const f=xlIn.files&&xlIn.files[0], lid=xlLine; xlLine=null; xlIn.value='';
+  const l=lines.find(x=>x.id===lid); if(!f||!l) return;
+  try{await loadXLSX();}catch(e){say(e.message);return;}
+  let wb; try{wb=XLSX.read(await f.arrayBuffer(),{type:'array'});}catch(e){say('엑셀을 못 읽었어요: '+(e.message||e));return;}
+  const byLab=new Map(l.towers.map(d=>[labKey(d.label),d]));
+  const ln=xlKey(LN(l)).replace(/t\/l$/,''), changes=[], miss=new Set(), used=[];
+  let sheets=0;
+  for(const sn of wb.SheetNames){
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:''});
+    const fc=xlFindCols(rows); if(!fc) continue; sheets++;
+    const m=fc.m; used.push(sn+': '+Object.keys(m).filter(k=>k!=='no'&&k!=='line').map(k=>({form:'철탑형',h:'높이',ten:'현수/내장',span:'경간',lat:'위도',lng:'경도',ll:'좌표',cir:'회선수',gw:'가공지선'})[k]).join('·'));
+    for(let r=fc.hr+1;r<rows.length;r++){
+      const row=rows[r]; if(!row) continue;
+      if(m.line!=null&&!xlEmpty(row[m.line])){const rl=xlKey(row[m.line]).replace(/t\/l$/,'');if(rl&&ln&&!rl.includes(ln)&&!ln.includes(rl))continue;}
+      const raw=row[m.no]; if(xlEmpty(raw)) continue;
+      const key=labKey(raw); if(!key) continue;
+      const d=byLab.get(key); if(!d){miss.add(String(raw).trim());continue;}
+      const ch=[], set={};
+      const add=(lab,from,to,fn)=>{ch.push(`${lab} ${from===''||from==null?'(빈칸)':from} → ${to}`);set[lab]=fn;};
+      if(m.form!=null&&!xlEmpty(row[m.form])){const v=stripForm(row[m.form]);if(v&&v!==stripForm(d.form))add('철탑형',d.form?FORM(d):'',v+'형',()=>{d.form=v;});}
+      if(m.h!=null&&!xlEmpty(row[m.h])){const v=xlNum(row[m.h]);if(v>=10&&v<=250&&v!==+d.h)add('높이',d.h>0?d.h+'m':'',v+'m',()=>{d.h=v;});}
+      if(m.ten!=null&&!xlEmpty(row[m.ten])&&!/자동/.test(String(row[m.ten]))){const t=String(row[m.ten]);const v=/내장/.test(t)?true:/현수/.test(t)?false:null;
+        if(v!=null&&d.type!==v)add('현수/내장',d.type==null?'자동':d.type?'내장':'현수',v?'내장':'현수',()=>{d.type=v;});}
+      if(m.span!=null&&!xlEmpty(row[m.span])){const v=xlNum(row[m.span]);if(v>=30&&v<=3000&&v!==+d.span)add('경간',d.span>0?d.span+'m':'',v+'m',()=>{d.span=v;d.spanSrc='manual';});}
+      let la=NaN,lo=NaN;
+      if(m.lat!=null&&m.lng!=null){la=xlNum(row[m.lat]);lo=xlNum(row[m.lng]);}
+      else if(m.ll!=null){const t=String(row[m.ll]).match(/(-?\d+\.\d+)\s*[, ]\s*(-?\d+\.\d+)/);if(t){la=+t[1];lo=+t[2];}}
+      if(la>30&&la<40&&lo>124&&lo<132){const g=[+la.toFixed(6),+lo.toFixed(6)];if(!d.gps||Math.abs(d.gps[0]-g[0])>1e-6||Math.abs(d.gps[1]-g[1])>1e-6)
+        add('위치',d.gps?d.gps[0].toFixed(5)+','+d.gps[1].toFixed(5):'',g[0].toFixed(5)+','+g[1].toFixed(5),()=>{d.gps=g;d.gpsN=0;d.gpsSrc='input';});}
+      if(m.cir!=null&&!xlEmpty(row[m.cir])){const v=xlNum(row[m.cir]);if([2,4,6].includes(v)&&v!==cirOf(l,d))add('회선수',cirOf(l,d)+'회선',v+'회선',()=>{if(v===l.circuits)delete d.cir;else d.cir=v;});}
+      if(m.gw!=null&&!xlEmpty(row[m.gw])){const v=xlNum(row[m.gw]);if((v===1||v===2)&&v!==gwOf(l,d))add('가공지선',gwOf(l,d)+'조',v+'조',()=>{if(v===l.gw)delete d.gwN;else d.gwN=v;});}
+      if(ch.length){const prev=changes.find(c=>c.d===d);if(prev){Object.assign(prev.set,set);prev.ch.push(...ch);}else changes.push({d,ch,set});}
+    }
+  }
+  if(!sheets){seqModal((bx,close)=>{bx.append(el('p',null,'엑셀에서 철탑 표를 못 찾았어요'),el('p','note','첫 줄(또는 위쪽 25줄 안)에 "철탑번호"(또는 No·번호·호수)와 "높이·철탑형·현수/내장·경간·위도/경도·회선수" 중 하나 이상의 제목이 있어야 해요. 파일을 보내 주시면 양식에 맞춰 드릴게요.'));const ok=el('button','primary','확인');ok.type='button';ok.onclick=close;bx.append(ok);});return;}
+  changes.sort((a,b)=>l.towers.indexOf(a.d)-l.towers.indexOf(b.d));
+  seqModal((bx,close)=>{
+    bx.append(el('p',null,`📥 ${l.name} · 엑셀로 고치기`));
+    bx.append(el('p','note','읽은 칸 · '+used.join(' / ')));
+    if(!changes.length) bx.append(el('p','note','바뀔 내용이 없어요 (엑셀과 앱 값이 같거나 빈칸이에요).'));
+    else{
+      bx.append(el('p','note',`철탑 ${changes.length}기 · ${changes.reduce((a,c)=>a+c.ch.length,0)}곳이 바뀌어요. 확인하고 [적용]을 누르세요.`));
+      const ol=el('div','sq-list');
+      changes.slice(0,300).forEach(c=>ol.append(el('div','sq-row',`No.${c.d.label} · `+c.ch.join(' · '))));
+      if(changes.length>300) ol.append(el('div','sq-row',`… 외 ${changes.length-300}기`));
+      bx.append(ol);
+    }
+    if(miss.size) bx.append(el('p','err',`이 선로에 없는 철탑 번호 ${miss.size}개: `+[...miss].slice(0,15).join(', ')+(miss.size>15?' …':'')));
+    if(changes.length){const ok=el('button','primary','적용'); ok.type='button';
+      ok.onclick=()=>{changes.forEach(c=>Object.values(c.set).forEach(fn=>fn()));save();build();if(selT&&!card.hidden)renderCard();close();say(`엑셀로 철탑 ${changes.length}기를 고쳤어요`);};
+      bx.append(ok);}
+    const no=el('button','ghost',changes.length?'취소':'닫기'); no.type='button'; no.onclick=close; bx.append(no);
+  });
+});
 gid('zipBtn').addEventListener('click',async()=>{
   if(!AS) return say('서버에 연결되지 않았어요.');
   const l=cur(), mine=photos.filter(p=>p.lineId===l.id&&p.path);
