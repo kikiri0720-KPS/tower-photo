@@ -421,6 +421,7 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
       <button class="btn" id="backup" type="button">백업</button>
       <button class="btn" id="zipBtn" type="button" hidden>사진 ZIP</button>
       <button class="btn" id="xlInBtn" type="button" title="선로 기별 엑셀로 철탑 정보 고치기">📥 엑셀로 고치기</button>
+      <button class="btn" id="xlUndoBtn" type="button" title="마지막 엑셀 적용 전으로 되돌리기" hidden>↩ 엑셀 되돌리기</button>
       <button class="btn" id="bulkBtn" type="button" title="파일 이름(철탑 번호+항목)으로 선로 전체 사진을 한번에">📷 사진 넣기</button>
       <button class="btn" id="xlsBtn" type="button" title="전체 선로 기별을 엑셀로">📊 엑셀</button>
       <button class="btn" id="tWire" type="button" aria-pressed="true">전선</button>
@@ -4465,7 +4466,8 @@ function lgTower(l,d,t){
 // ── v21.48: 표준 '송전선로 기별대장' 양식 (지지물·수평각도·애자장치·전력선·가공지선·항공장애등…) ──
 const lgC=v=>String(v==null?'':v).replace(/\s+/g,'');
 const lgT=v=>typeof v==='number'?lgLab(v):String(v==null?'':v).replace(/\s*\n\s*/g,' ').replace(/\s{2,}/g,' ').trim();
-let LG_CM=null;   // v21.52: 엑셀 셀 메모 {시트:{행:{열:글}}}
+let LG_CM=null, LG_CLR=false;   // LG_CLR: 엑셀에 없는 항공구는 지우기 (예전에 잘못 넣은 것 정리)
+   // v21.52: 엑셀 셀 메모 {시트:{행:{열:글}}}
 const STD_isHead=row=>row&&row.some(c=>lgC(c)==='지지물')&&row.some(c=>lgC(c)==='수평각도');
 const INS_isHead=row=>row&&row.some(c=>lgC(c)==='철탑번호')&&row.some(c=>lgC(c)==='애자구분');
 const LG_any=rows=>rows.some(r=>LG_isHead(r)||STD_isHead(r)||INS_isHead(r));
@@ -4608,6 +4610,7 @@ function stdTower(l,d,t,C,ctx){
     const tot=b.ball1R+b.ball1W+b.ball2R+b.ball2W;
     const ix=l.towers.indexOf(d), tg=ctx.rev?(ix<l.towers.length-1?d:null):(ix>0?l.towers[ix-1]:null), nx=tg?l.towers[l.towers.indexOf(tg)+1]:null;
     if(tg&&nx&&gwOf(l,tg)===1){b.ball1R+=b.ball2R;b.ball1W+=b.ball2W;b.ball2R=0;b.ball2W=0;}   // 가공지선 1조 구간은 한 줄에
+    if(!tot&&LG_CLR&&tg&&nx&&tg.ball&&!t.st) add(`🧹 항공구 지움 (경간 ${tg.label}→${nx.label} · 엑셀에 없음)`,`#1 적${tg.ball1R||0} 백${tg.ball1W||0} #2 적${tg.ball2R||0} 백${tg.ball2W||0}`,'없음',()=>{tg.ball=false;tg.ballN=0;tg.ball1R=tg.ball1W=tg.ball2R=tg.ball2W=0;});
     if(tot&&tg&&nx&&(!tg.ball||!(tg.ballN>0)||!Object.keys(b).every(k=>(+tg[k]||0)===b[k])))
       add(`항공구 (경간 ${tg.label}→${nx.label})`,tg.ball?`#1 적${tg.ball1R||0} 백${tg.ball1W||0} #2 적${tg.ball2R||0} 백${tg.ball2W||0}`:'없음',`#1 적${b.ball1R} 백${b.ball1W} #2 적${b.ball2R} 백${b.ball2W}`,()=>{Object.assign(tg,b);tg.ball=true;tg.ballN=tot;});
   }
@@ -4702,6 +4705,18 @@ gid('xlInBtn').addEventListener('click',()=>{
   if(!canEdit()){say(RO_MSG);return;}
   const l=ALL?null:cur(); xlLine=l&&l.towers?l.id:'*'; xlIn.value=''; xlIn.click();   // 설비 대장(여러 선로)은 전체 보기에서도 됨
 });
+// v21.58: 엑셀 적용 전 모습을 휴대폰에 저장 → [↩ 엑셀 되돌리기]
+function lgSnap(ls){const o={at:Date.now(),lines:ls.map(l=>JSON.parse(JSON.stringify(l)))};lsSet('tower3d-lgundo',JSON.stringify(o));undoPaint();}
+function undoPaint(){const b=gid('xlUndoBtn');if(!b)return;let o=null;try{o=JSON.parse(lsGet('tower3d-lgundo')||'null');}catch(e){}b.hidden=!(o&&o.lines&&o.lines.length);}
+gid('xlUndoBtn').addEventListener('click',()=>{
+  if(!canEdit()){say(RO_MSG);return;}
+  let o=null;try{o=JSON.parse(lsGet('tower3d-lgundo')||'null');}catch(e){}if(!o||!o.lines)return;
+  const t=new Date(o.at), nm=o.lines.map(x=>LN(x)).join(', ');
+  if(!confirm(`${t.getMonth()+1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2,'0')} 엑셀 적용 전으로 되돌릴까요?\n${nm}\n(그 뒤에 이 선로에서 고친 것도 같이 되돌아가요)`))return;
+  o.lines.forEach(sv=>{const i=lines.findIndex(x=>x.id===sv.id);if(i>=0)lines[i]=normalize(sv)||sv;});
+  lsSet('tower3d-lgundo','');undoPaint();save();build();if(selT&&!card.hidden)renderCard();say('엑셀 적용 전으로 되돌렸어요');
+});
+undoPaint();
 function lgPreview(SR){
   say('설비 대장 읽는 중…',true);
   const {out,unmatched,noLine,overlap,mapped}=lgParse(null,SR);
@@ -4710,6 +4725,8 @@ function lgPreview(SR){
   seqModal((bx,close)=>{
     bx.append(el('p',null,'📥 설비 대장으로 고치기'));
     bx.append(el('p','note','경간·수평각·형식·높이(하단)·현수/내장·지지애자·피뢰기/아킹혼·전력선 댐퍼·GW/OPGW 댐퍼(배이트)·지목(논·밭·도심지)·철탑도장(항공·친환경)·항공구·항공장애등·피뢰기/아킹혼·RFID를 읽고, 나머지 칸과 셀 메모(스페이서·스리브·애자 종류·특기사항·애자 제작사 등)는 📋 설비 대장에 넣어요. 댐퍼는 셀 메모의 “전원측·부하측 각상 N개”를 먼저 봐요. 빈칸·X는 앱 값을 지우지 않아요.'));
+    {const lb=document.createElement('label');lb.className='check';const c=document.createElement('input');c.type='checkbox';c.checked=LG_CLR;
+      c.onchange=()=>{LG_CLR=c.checked;close();lgPreview(SR);};lb.append(c,document.createTextNode('🧹 엑셀에 없는 항공구는 지우기 (예전에 엉뚱한 경간에 들어간 것 정리)'));bx.append(lb);}
     if(!out.length) bx.append(el('p','note','바뀔 내용이 없어요.'));
     else bx.append(el('p','note',`선로 ${byL.size}개 · 철탑 ${out.length}기 · ${out.reduce((a,o)=>a+o.ch.length,0)}곳이 바뀌어요. 선로를 눌러 자세히 보고 [적용]을 누르세요.`));
     const ol=el('div','sq-list'), pick=new Set(byL.keys());
@@ -4743,7 +4760,7 @@ function lgPreview(SR){
     let okUpd=()=>{};
     if(out.length){const ok=el('button','primary','적용');ok.type='button';
       okUpd=()=>{const n=out.filter(o=>pick.has(o.l)).length;ok.textContent=pick.size?`체크한 선로 ${pick.size}개 · 철탑 ${n}기 적용`:'선로를 체크하세요';ok.disabled=!pick.size;};okUpd();
-      ok.onclick=()=>{const sel=out.filter(o=>pick.has(o.l));if(!sel.length)return;sel.forEach(o=>o.set.forEach(fn=>fn()));save();build();if(selT&&!card.hidden)renderCard();close();say(`설비 대장으로 선로 ${pick.size}개 · 철탑 ${sel.length}기를 고쳤어요`);};bx.append(ok);}
+      ok.onclick=()=>{const sel=out.filter(o=>pick.has(o.l));if(!sel.length)return;lgSnap([...pick]);sel.forEach(o=>o.set.forEach(fn=>fn()));save();build();if(selT&&!card.hidden)renderCard();close();say(`설비 대장으로 선로 ${pick.size}개 · 철탑 ${sel.length}기를 고쳤어요`);};bx.append(ok);}
     const no=el('button','ghost',out.length?'취소':'닫기');no.type='button';no.onclick=close;bx.append(no);
   });
 }
