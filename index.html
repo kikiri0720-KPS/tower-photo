@@ -4441,7 +4441,7 @@ function lgTower(l,d,t){
     const v={ball1R:0,ball1W:0,ball2R:0,ball2W:0};b.forEach((x,i)=>{if(x)v['ball'+(i+1)+x.color]+=x.n;});
     const tot=v.ball1R+v.ball1W+v.ball2R+v.ball2W;
     const same=['ball1R','ball1W','ball2R','ball2W'].every(k=>(+d[k]||0)===v[k]);
-    if(tot&&!same) add('항공구',`#1 적${d.ball1R||0} 백${d.ball1W||0} #2 적${d.ball2R||0} 백${d.ball2W||0}`,`#1 적${v.ball1R} 백${v.ball1W} #2 적${v.ball2R} 백${v.ball2W}`,()=>{Object.assign(d,v);d.ball=true;d.ballN=tot;});
+    if(tot&&(!same||!d.ball)) add('항공구',`#1 적${d.ball1R||0} 백${d.ball1W||0} #2 적${d.ball2R||0} 백${d.ball2W||0}`,`#1 적${v.ball1R} 백${v.ball1W} #2 적${v.ball2R} 백${v.ball2W}`,()=>{Object.assign(d,v);d.ball=true;d.ballN=tot;});
   }
   // 고광도: 상:4 중:4 하:4 → 고광도 개수
   const hv=lgGetAny(r1,['고광도']);
@@ -4599,13 +4599,17 @@ function stdTower(l,d,t,C,ctx){
   const lp=lgNum(v(C.lamp));
   if(lp>0&&!d.lamp) add('항공장애등','없음',`있음 (표시등 ${lp}개)`,()=>{d.lamp=true;});
   // 표시구: '적2/백1' (칸이 둘이면 #1·#2)
+  // v21.57: 엑셀 표시구는 그 줄의 '경간'(앞 철탑 → 이 철탑)에 달린 것 → 앱에서는 앞 철탑 카드의 '경간 앞→이 철탑' 항공구
   if(C.balls.length){
     const b={ball1R:0,ball1W:0,ball2R:0,ball2W:0};
     C.balls.forEach((c,i)=>{const x=lgT(v(c));if(!x||/^x$/i.test(x))return;
       const r=x.match(/(적|주황|주|빨|r)\s*\(?\s*(\d+)/i),w=x.match(/(백|흰|w)\s*\(?\s*(\d+)/i);
       if(r||w){if(r)b['ball'+(i+1)+'R']+=+r[2];if(w)b['ball'+(i+1)+'W']+=+w[2];}else{const p=lgBall(x);if(p)b['ball'+(i+1)+p.color]+=p.n;}});
     const tot=b.ball1R+b.ball1W+b.ball2R+b.ball2W;
-    if(tot&&!Object.keys(b).every(k=>(+d[k]||0)===b[k])) add('항공구',`#1 적${d.ball1R||0} 백${d.ball1W||0} #2 적${d.ball2R||0} 백${d.ball2W||0}`,`#1 적${b.ball1R} 백${b.ball1W} #2 적${b.ball2R} 백${b.ball2W}`,()=>{Object.assign(d,b);d.ball=true;d.ballN=tot;});
+    const ix=l.towers.indexOf(d), tg=ctx.rev?(ix<l.towers.length-1?d:null):(ix>0?l.towers[ix-1]:null), nx=tg?l.towers[l.towers.indexOf(tg)+1]:null;
+    if(tg&&nx&&gwOf(l,tg)===1){b.ball1R+=b.ball2R;b.ball1W+=b.ball2W;b.ball2R=0;b.ball2W=0;}   // 가공지선 1조 구간은 한 줄에
+    if(tot&&tg&&nx&&(!tg.ball||!(tg.ballN>0)||!Object.keys(b).every(k=>(+tg[k]||0)===b[k])))
+      add(`항공구 (경간 ${tg.label}→${nx.label})`,tg.ball?`#1 적${tg.ball1R||0} 백${tg.ball1W||0} #2 적${tg.ball2R||0} 백${tg.ball2W||0}`:'없음',`#1 적${b.ball1R} 백${b.ball1W} #2 적${b.ball2R} 백${b.ball2W}`,()=>{Object.assign(tg,b);tg.ball=true;tg.ballN=tot;});
   }
   // 순시용 RFID TAG: 'A각/202382' → 모바일 태그 A각
   const rf=lgT(v(C.rfid)).match(/^([A-D])\s*각/i);
