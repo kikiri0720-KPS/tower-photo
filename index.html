@@ -1996,6 +1996,7 @@ function renderCard(){
         <div class="field"><label for="fH">철탑 높이</label><div class="unit" data-unit="m"><input id="fH" type="number" inputmode="decimal" min="10" max="250" step="0.1" placeholder="${t.autoH}" value="${t.d.h>0?t.d.h:''}"></div></div>
       </div>
       <div class="field"><label for="fForm">철탑 형</label><div class="unit" data-unit="형"><input id="fForm" type="text" placeholder="예: A, B, SA, D" value="${esc(stripForm(t.d.form))}"></div></div>
+      <div class="row2">${[1,2].map(i=>`<div class="field"><label for="fInsQ${i}">#${i} 애자 수량${t.d['insT'+i]?' · '+esc(t.d['insT'+i]):''}</label><div class="unit" data-unit="개"><input id="fInsQ${i}" type="number" inputmode="numeric" min="0" max="9999" step="1" value="${t.d['insQ'+i]>0?t.d['insQ'+i]:''}"></div></div>`).join('')}</div>
       ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.spanSrc==='manual'?' · 직접 고친 값을 쓰는 중':' · 자동 적용됨'}</span>${t.d.spanSrc==='manual'?`<button class="ghost" type="button" id="spanGps" style="flex:none">위치값으로 되돌리기</button>`:''}</div>`:''}</div>`:''}
       <p class="err" id="tErr" hidden></p>
       <dl>
@@ -2206,6 +2207,7 @@ function renderCard(){
     if(dg<0||dg>90||mn<0||mn>59){bad('각도는 0~90도, 분은 0~59로 입력해 주세요.');return;}
     t.d.angDeg=dg+mn/60; save(); build();};
     q('#fAngD').addEventListener('change',angIn); q('#fAngM').addEventListener('change',angIn);}
+  [1,2].forEach(i=>{const e=q('#fInsQ'+i);if(e)e.addEventListener('change',()=>{const v=parseInt(e.value,10);if(v>0)t.d['insQ'+i]=v;else delete t.d['insQ'+i];save();});});   // v21.56: 애자 수량
   q('#fForm').addEventListener('change',e=>{const v=stripForm(e.target.value);t.d.form=v;e.target.value=v;save();renderHead();renderRail();renderCard();});
   const ballUpd=()=>{save();build();};
   if(q('#xBall')){
@@ -4553,6 +4555,10 @@ function stdTower(l,d,t,C,ctx){
       const sup=ten&&rs.some(x=>tenS.test(x)&&susS.test(x));
       if(sup&&!(d.sup&&d.sup.insulator)) add('지지애자','없음','있음',()=>{d.sup=d.sup||{};d.sup.insulator=true;d.sup.insulator_year=true;});}
   }
+  // v21.56: 애자 수량 #1·#2 (련형 옆 수량 칸) + 련형 기호
+  C.ry.forEach((c,i)=>{const k=i+1,x=v(c+1),n=typeof x==='number'?x:(/^\s*\d+\s*$/.test(String(x))?+x:0),ty=lgT(v(c)).replace(/\s/g,'');
+    if(n>0&&n!==(+d['insQ'+k]||0))add(`#${k} 애자 수량`,d['insQ'+k]?d['insQ'+k]+'개':'없음',n+'개',()=>{d['insQ'+k]=n;});
+    if(ty&&!/^x$/i.test(ty)&&ty!==d['insT'+k])add(`#${k} 련형`,d['insT'+k]||'없음',ty,()=>{d['insT'+k]=ty;});});
   // 아킹혼·링 #1/#2 (전원·부하) → 피뢰기 칸이 있으면 그 자리는 피뢰기
   const A={};
   if(C.arc>0)[0,1].forEach(i=>{const x=lgT(v(C.arc+i)).replace(/\s/g,'');if(!x||/^x$/i.test(x))return;
@@ -4649,7 +4655,7 @@ function insTower(d,t){
   return {ch,set};
 }
 function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
-  const out=[], unmatched=[], noLine=[];
+  const out=[], unmatched=[], noLine=[], overlap=[], mapped=[], stdSrc=new Map();
   let LGMAP={};try{LGMAP=JSON.parse(lsGet('tower3d-lgmap')||'{}')||{};}catch(e){}
   const push=(l,d,r,sn)=>{if(!r.ch.length)return;const prev=out.find(o=>o.d===d);if(prev){prev.ch.push(...r.ch);prev.set.push(...r.set);}else out.push({l,d,ch:r.ch.slice(),set:r.set.slice(),sheet:sn});};
   for(const sn in sheetRows){
@@ -4661,6 +4667,7 @@ function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
     const title=P?P.title:String((rows[0]||[])[0]||'').split(/\s{2,}|#/)[0];
     const keys=[lgNorm(sn),lgNorm(title)].filter(x=>x.length>=3);
     let l=LGMAP[sn]?lines.find(x=>x.id===LGMAP[sn]):null;   // v21.46: 직접 고른 선로
+    if(l)mapped.push(`${sn.trim()} → ${LN(l)}`);
     if(!l) l=lines.find(x=>keys.includes(lgNorm(x.name)));
     if(!l){const c=lines.filter(x=>{const n=lgNorm(x.name);return n.length>=3&&keys.some(k=>k.includes(n)||n.includes(k));});if(c.length===1)l=c[0];}
     if(!l){noLine.push(sn);continue;}
@@ -4673,15 +4680,18 @@ function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
       ctx={rev:bw>fw,circ:P.C.circ};
       // 경간: 엑셀은 '앞 철탑 → 이 철탑' 거리
       for(let i=1;i<ts.length;i++){const a=ix(ts[i-1]),b=ix(ts[i]),sp=lgNum(ts[i].row[P.C.span]);if(a<0||b<0||!(sp>0))continue;
-        const tg=b===a+1?l.towers[a]:a===b+1?l.towers[b]:null;if(!tg)continue;
+        const tg=b===a+1?l.towers[a]:a===b+1?l.towers[b]:null;if(!tg)continue;{const s0=stdSrc.get(tg);if(s0&&s0!==sn)continue;}
         if(Math.abs((+tg.span||0)-sp)>0.5){const nx=l.towers[l.towers.indexOf(tg)+1];
           push(l,tg,{ch:[`경간(→${nx?nx.label:''}) ${tg.span>0?tg.span+'m':'자동'} → ${sp}m`],set:[()=>{tg.span=sp;tg.spanSrc='manual';}]},sn);}}
     }
+    const ov=[];
     ts.forEach(t=>{const d=byLab.get(labKey(t.label));if(!d){if(labKey(t.label))miss.push(t.label);return;}
+      if(kind==='std'){const s0=stdSrc.get(d);if(s0&&s0!==sn){ov.push(t.label);return;}stdSrc.set(d,sn);}   // v21.56: 다른 시트가 이미 넣은 철탑은 건너뜀
       push(l,d,kind==='std'?stdTower(l,d,t,P.C,ctx):kind==='ins'?insTower(d,t):lgTower(l,d,t),sn);});
+    if(ov.length) overlap.push(`${sn.trim()} → ${LN(l)}: 다른 시트와 번호가 겹쳐 안 넣음 (No.${ov.slice(0,8).join(', ')}${ov.length>8?' …':''})`);
     if(miss.length) unmatched.push(`${sn}: 앱에 없는 번호 ${miss.slice(0,8).join(', ')}${miss.length>8?' …':''}`);
   }
-  return {out,unmatched,noLine};
+  return {out,unmatched,noLine,overlap,mapped};
 }
 
 gid('xlInBtn').addEventListener('click',()=>{
@@ -4690,7 +4700,7 @@ gid('xlInBtn').addEventListener('click',()=>{
 });
 function lgPreview(SR){
   say('설비 대장 읽는 중…',true);
-  const {out,unmatched,noLine}=lgParse(null,SR);
+  const {out,unmatched,noLine,overlap,mapped}=lgParse(null,SR);
   document.getElementById('toast').hidden=true;
   const byL=new Map();out.forEach(o=>{if(!byL.has(o.l))byL.set(o.l,[]);byL.get(o.l).push(o);});
   seqModal((bx,close)=>{
@@ -4722,6 +4732,9 @@ function lgPreview(SR){
         row.append(sel);u.append(row);});
       bx.append(u);
     }
+    if(overlap.length){bx.append(el('p','err','⚠ 같은 선로에 여러 시트가 겹쳐요 (병가 구간 등). 먼저 읽은 시트만 넣었어요:'));const u=el('div','sq-list');overlap.forEach(x=>u.append(el('div','sq-row',x)));bx.append(u);}
+    if(mapped.length){bx.append(el('p','note','직접 고른 시트 → 선로: '+mapped.join(' · ')));const rb=el('button','ghost','↺ 직접 고른 연결 지우고 다시 읽기');rb.type='button';
+      rb.onclick=()=>{let M={};try{M=JSON.parse(lsGet('tower3d-lgmap')||'{}')||{};}catch(e){}Object.keys(SR).forEach(k=>delete M[k]);lsSet('tower3d-lgmap',JSON.stringify(M));close();lgPreview(SR);};bx.append(rb);}
     if(unmatched.length){bx.append(el('p','err','앱에 없는 철탑 번호 (넣지 않음):'));const u=el('div','sq-list');unmatched.forEach(x=>u.append(el('div','sq-row',x)));bx.append(u);}
     let okUpd=()=>{};
     if(out.length){const ok=el('button','primary','적용');ok.type='button';
