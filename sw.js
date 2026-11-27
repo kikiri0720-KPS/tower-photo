@@ -1,4 +1,4 @@
-const C="tower-v32", TC="tiles-v1", LC="libs-v1";
+const C="tower-v33", TC="tiles-v1", LC="libs-v1";
 // v21.17: 항공사진·표고 지도 조각은 휴대폰에 저장해 두고 다음부터 바로 꺼내 씀 (최대 약 4000장)
 const TILE=/^https:\/\/(api\.vworld\.kr\/req\/wmts\/|server\.arcgisonline\.com\/ArcGIS\/rest\/services\/World_Imagery\/|s3\.amazonaws\.com\/elevation-tiles-prod\/)/;
 // v21.23: 3D·서버 연결 프로그램(버전 고정)은 휴대폰에 저장 → 전화가 안 터져도 앱이 열림

@@ -4694,7 +4694,7 @@ function lgPreview(SR){
   const byL=new Map();out.forEach(o=>{if(!byL.has(o.l))byL.set(o.l,[]);byL.get(o.l).push(o);});
   seqModal((bx,close)=>{
     bx.append(el('p',null,'📥 설비 대장으로 고치기'));
-    bx.append(el('p','note','경간·수평각·형식·높이(전장)·현수/내장·지지애자·피뢰기/아킹혼·전력선 댐퍼·GW/OPGW 댐퍼(배이트)·지목(논·밭·도심지)·철탑도장(항공·친환경)·항공구·항공장애등·피뢰기/아킹혼·RFID를 읽고, 나머지 칸과 셀 메모(스페이서·스리브·애자 종류·특기사항·애자 제작사 등)는 📋 설비 대장에 넣어요. 댐퍼는 셀 메모의 '전원측·부하측 각상 N개'를 먼저 봐요. 빈칸·X는 앱 값을 지우지 않아요.'));
+    bx.append(el('p','note','경간·수평각·형식·높이(전장)·현수/내장·지지애자·피뢰기/아킹혼·전력선 댐퍼·GW/OPGW 댐퍼(배이트)·지목(논·밭·도심지)·철탑도장(항공·친환경)·항공구·항공장애등·피뢰기/아킹혼·RFID를 읽고, 나머지 칸과 셀 메모(스페이서·스리브·애자 종류·특기사항·애자 제작사 등)는 📋 설비 대장에 넣어요. 댐퍼는 셀 메모의 “전원측·부하측 각상 N개”를 먼저 봐요. 빈칸·X는 앱 값을 지우지 않아요.'));
     if(!out.length) bx.append(el('p','note','바뀔 내용이 없어요.'));
     else bx.append(el('p','note',`선로 ${byL.size}개 · 철탑 ${out.length}기 · ${out.reduce((a,o)=>a+o.ch.length,0)}곳이 바뀌어요. 선로를 눌러 자세히 보고 [적용]을 누르세요.`));
     const ol=el('div','sq-list'), pick=new Set(byL.keys());
