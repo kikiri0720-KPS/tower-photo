@@ -4680,7 +4680,9 @@ function lgPreview(SR){
     else bx.append(el('p','note',`선로 ${byL.size}개 · 철탑 ${out.length}기 · ${out.reduce((a,o)=>a+o.ch.length,0)}곳이 바뀌어요. 선로를 눌러 자세히 보고 [적용]을 누르세요.`));
     const ol=el('div','sq-list'), pick=new Set(byL.keys());
     // v21.47: 선로마다 체크 — 한 선로만 고르기도 됨 (선로 하나를 열어 둔 상태면 그 선로만 체크된 채로 시작)
-    const c0=cur(); if(c0&&c0.towers&&byL.has(c0)&&!ALL){pick.clear();pick.add(c0);}
+    // v21.49: 처음엔 바뀌는 선로 전부 체크 · [전체 선택/해제] 버튼
+    const allB=el('button','ghost','☑ 전체 해제');allB.type='button';allB.onclick=()=>{const on=pick.size<byL.size;pick.clear();if(on)byL.forEach((_,l)=>pick.add(l));ol.querySelectorAll('summary input[type=checkbox]').forEach((c,i)=>c.checked=on);allB.textContent=on?'☑ 전체 해제':'☐ 전체 선택';okUpd();};
+    if(byL.size>1)bx.append(allB);
     [...byL.entries()].forEach(([l,arr])=>{
       arr.sort((a,b)=>l.towers.indexOf(a.d)-l.towers.indexOf(b.d));
       const det=document.createElement('details');const sm=document.createElement('summary');
