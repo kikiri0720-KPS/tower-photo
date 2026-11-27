@@ -1822,13 +1822,14 @@ function nextAfterLast(l){const num=l.towers.filter(d=>!isCT(d.label)),last=num[
 /* ---------- UI ---------- */
 // v21.45: 설비 대장(엑셀)에서 가져온 값 — 회선별 표
 function ledgerHTML(d){
-  const L=d.ledger; if(!L||!L.rows||!L.rows.length) return '';
+  const tb=(L,title)=>{if(!L||!L.rows||!L.rows.length) return '';
   const keys=[];L.rows.forEach(o=>Object.keys(o).forEach(k=>{if(!keys.includes(k))keys.push(k);}));
   const nm=k=>k.replace('|',' ');
   const head=L.rows.map((o,i)=>`<th>${esc(o['회선']||('#'+(i+1)))}</th>`).join('');
   const body=keys.filter(k=>k!=='회선').map(k=>`<tr><td>${esc(nm(k))}</td>${L.rows.map(o=>`<td>${esc(o[k]||'')}</td>`).join('')}</tr>`).join('');
-  return `<details class="field ledger"><summary class="lb">📋 설비 대장 (엑셀${L.sheet?' · '+esc(L.sheet):''})</summary>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tr><th></th>${head}</tr>${body}</table></div></details>`;
+  return `<details class="field ledger"><summary class="lb">${title} (엑셀${L.sheet?' · '+esc(L.sheet):''})</summary>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tr><th></th>${head}</tr>${body}</table></div></details>`;};
+  return tb(d.ledger,'📋 설비 대장')+tb(d.insul,'🔩 애자 제작사·연월');   // v21.48
 }
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const lineSel=document.getElementById('lineSel'), chipsEl=document.getElementById('chips'), card=document.getElementById('card');
@@ -4271,6 +4272,7 @@ function xlRows(){
         '위험철탑':d.danger?'○':'',
         '지세 고친 값':jsTxt,
         '설비 대장':d.ledger&&d.ledger.rows?d.ledger.rows.map((o,i)=>(o['회선']||('#'+(i+1)))+': '+Object.keys(o).filter(k=>k!=='회선').map(k=>k.replace('|',' ')+' '+o[k]).join(', ')).join(' / '):'',
+        '애자 제작사·연월':d.insul&&d.insul.rows?d.insul.rows.map(o=>o['회선']+': '+Object.keys(o).filter(k=>k!=='회선').map(k=>k+' '+o[k]).join(', ')).join(' / '):'',
         '하차→철탑 이동':acc?`${Math.round(acc.sec/60)}분 · ${kmT(acc.m)} (${acc.date})`:'',
         '경간 순시 기록':wk?`${kmT(wk.m)} · ${hms(wk.sec)} (${wk.date})`:'',
         '기별사진':pr.total?pr.done+'/'+pr.total:''
@@ -4357,7 +4359,7 @@ function lgCols(r1,r2){   // 두 줄 제목 → 칸마다 "큰제목|작은제�
   for(let c=0;c<n;c++){const a=String(r1[c]==null?'':r1[c]).replace(/\s+/g,'');if(a)h1=a;cols.push(h1+'|'+String(r2[c]==null?'':r2[c]).replace(/\s+/g,''));}
   return cols;
 }
-const lgNorm=s=>String(s||'').replace(/\d+\s*kv/ig,'').replace(/t\s*\/\s*l/ig,'').replace(/\(.*?\)/g,'').replace(/[\s·\-–_~]/g,'').toLowerCase();
+const lgNorm=s=>String(s||'').replace(/\d+\s*kv/ig,'').replace(/t\s*\/\s*l/ig,'').replace(/\(.*?\)/g,'').replace(/[\s·\-–_~#]/g,'').replace(/량/g,'랑').toLowerCase();
 const lgO=v=>/^(o|○|◯|0|ㅇ)$/i.test(String(v||'').trim())&&String(v).trim()!=='0';
 const lgNum=v=>{if(typeof v==='number')return v;const t=String(v||'').trim();if(!t||/^x$/i.test(t)||t==='-')return 0;const m=t.match(/\d+(\.\d+)?/);return m?+m[0]:0;};
 const lgLab=v=>typeof v==='number'?(Number.isInteger(v)?String(v):String(+v.toFixed(2))):String(v||'').trim().replace(/[ㅡ–—~_]/g,'-').replace(/\s+/g,'');
@@ -4458,22 +4460,205 @@ function lgTower(l,d,t){
     if(ov!==JSON.stringify(keep)) add('설비 대장 기록',d.ledger?'있음':'없음',`${keep.reduce((a,o)=>a+Object.keys(o).length,0)}칸`,()=>{d.ledger={rows:nv.rows,sheet:nv.sheet,at:Date.now()};});}
   return {ch,set};
 }
+// ── v21.48: 표준 '송전선로 기별대장' 양식 (지지물·수평각도·애자장치·전력선·가공지선·항공장애등…) ──
+const lgC=v=>String(v==null?'':v).replace(/\s+/g,'');
+const lgT=v=>typeof v==='number'?lgLab(v):String(v==null?'':v).replace(/\s*\n\s*/g,' ').replace(/\s{2,}/g,' ').trim();
+const STD_isHead=row=>row&&row.some(c=>lgC(c)==='지지물')&&row.some(c=>lgC(c)==='수평각도');
+const INS_isHead=row=>row&&row.some(c=>lgC(c)==='철탑번호')&&row.some(c=>lgC(c)==='애자구분');
+const LG_any=rows=>rows.some(r=>LG_isHead(r)||STD_isHead(r)||INS_isHead(r));
+function stdCols(rows,h){
+  const n=Math.max(...[0,1,2,3,4].map(k=>(rows[h+k]||[]).length));
+  const seg=[],G=[],G1=[];let g='',g1='';
+  for(let c=0;c<n;c++){
+    const s=[0,1,2,3,4].map(k=>lgC((rows[h+k]||[])[c])).filter(Boolean);seg.push(s);
+    const a=lgC((rows[h]||[])[c]),b=lgC((rows[h+1]||[])[c]);if(a){g=a;g1='';}if(b)g1=b;G.push(g);G1.push(g1);
+  }
+  const J=seg.map(s=>s.join(''));
+  const f=(re,from)=>{for(let c=from||1;c<n;c++)if(re.test(J[c]))return c;return -1;};
+  const C={span:f(/^경간/),dir:f(/방향/),deg:f(/도분/),form:J.indexOf('형'),tot:f(/전장/),rfid:f(/RFID/i),
+    ry:J.map((x,c)=>/련형/.test(x)?c:-1).filter(c=>c>0).slice(0,2),arc:f(/^아킹/),arr:f(/^피뢰기/),
+    paint:f(/철탑도장/),lamp:f(/^표시등/),ball:f(/^표시구/),note:f(/^특기/)};
+  C.sb1=f(/^SB/i);C.sb2=C.sb1>0?f(/^SB/i,C.sb1+2):-1;
+  C.balls=C.ball>0?[C.ball].concat(C.ball+1<n&&!/기초/.test(J[C.ball+1])&&!/기초/.test(G[C.ball+1]||'')&&G[C.ball+1]===G[C.ball]?[C.ball+1]:[]):[];
+  // 가공지선 댐퍼 칸마다 GW / OPGW (제목에 적힌 대로, 없으면 null → 앱 선로 설정)
+  C.gwTy=[C.sb2,C.sb2+1].map(c=>{if(c<1)return null;const own=seg[c].slice(1).join('')+(c===C.sb2?'':seg[c][0]||''),all=J[c]+G1[c];
+    if(/OPGW/i.test(own))return 'OPGW';if(/가공|GW/i.test(own))return 'GW';if(/OPGW/i.test(all))return 'OPGW';return null;});
+  // 설비 대장 칸 이름
+  const last=C.note>0?C.note:Math.min(n-1,44), names={};
+  const nice=s=>s.filter(x=>!/^(m|개|각)$/.test(x)).reduce((a,x,i,arr)=>a+(i&&!(x.length===1&&arr[i-1].length===1)?' ':'')+x,'');
+  for(let c=1;c<=last;c++){let nm=nice(seg[c]);if(!nm)continue;
+    if(G1[c]&&!nm.includes(G1[c])&&G1[c]!==G[c])nm=G1[c]+' '+nm;
+    if(Object.values(names).includes(nm)){const p=nice((seg[c-1]||[]).slice(0,1));nm=(p&&!nm.startsWith(p)?p+' ':G[c]+' ')+nm;}
+    names[c]=nm;}
+  C.circ=[C.arc,C.arc+1].map(c=>c>0?(seg[c].find(x=>!/아킹|혼|링|전\/부|^#?\d$/.test(x))||''):'').map(x=>x.replace(/^(우측|좌측|우|좌)/,'').replace(/[-·#]/g,''));
+  C.names=names;return C;
+}
+function stdSheet(rows){
+  const towers=[];let C=null,cur=null,title='';
+  for(let r=0;r<rows.length;r++){
+    const row=rows[r]||[];
+    if(!C){const t=row.map(lgT).find(x=>/선로명/.test(x));if(t&&!title)title=t.replace(/^.*?선로명\s*[:：]?\s*/,'').split(/\s{2,}|NO\./)[0].trim();}
+    if(STD_isHead(row)){C=stdCols(rows,r);r+=4;continue;}
+    if(!C) continue;
+    const s0=lgT(row[0]);
+    if(!row.some(x=>lgT(x))) continue;
+    if(s0){
+      const lab=s0.split('/')[0].trim();
+      if(/^(s\/?t|c\/?h)$/i.test(s0.replace(/\s/g,''))){cur={label:s0,row,notes:[],st:true};towers.push(cur);continue;}
+      const m=lab.match(/^\d+(?:\s*-\s*\d+)*/);   // '1/자선로' · '54\n구48' · '55신설' · '45-1' → 앞 번호만
+      if(m&&lab.length<=12){cur={label:typeof row[0]==='number'?lgLab(row[0]):m[0].replace(/\s/g,''),row,notes:[]};towers.push(cur);continue;}
+      cur=null;continue;   // 표 밖 설명 글
+    }
+    if(cur){const xs=row.map(lgT).filter(Boolean);if(xs.length<=3&&!xs.some(x=>/kv/i.test(x)&&/t\/l/i.test(x)))cur.notes.push(xs.join(' '));}
+  }
+  return {towers,C,title};
+}
+// 피뢰기 칸: '#1 부하' · '#북삼 #북양 전원' · '#1전/#2전' · '정보 전원' · 'X' → {arr1S:..,arr2L:..}
+function stdArr(v,circ){
+  const t=lgT(v);if(!t||/^x$/i.test(t))return {};
+  const r={},parts=t.split('/');let pend=[];
+  const cOf=p=>{const m=p.match(/#\s*(\d)/g);if(m)return m.map(x=>+x.replace(/\D/g,''));
+    const ws=p.replace(/전원|부하|[전부](?=\s|$)/g,' ').split(/[\s#]+/).filter(w=>w&&/[가-힣]/.test(w));
+    return ws.map(w=>{const i=circ.findIndex(c=>c&&(c.includes(w)||w.includes(c)));return i>=0?i+1:(circ.filter(Boolean).length?0:1);}).filter(x=>x);};
+  parts.forEach(p=>{const cs=cOf(p),side=/전/.test(p)?'S':/부/.test(p)?'L':null;
+    if(side){(cs.length?cs:pend.length?pend:[1,2]).forEach(c=>{if(c<=2)r['arr'+c+side]='피뢰기';});pend=[];}else pend=pend.concat(cs);});
+  return r;
+}
+function stdTower(l,d,t,C,ctx){
+  const ch=[],set=[],row=t.row;
+  const add=(lab,from,to,fn)=>{ch.push(`${lab} ${from} → ${to}`);set.push(fn);};
+  const v=c=>c>0?row[c]:'';
+  // 수평각도: 방향 L/R + 도분 '24-36' (엑셀 순서가 앱과 반대면 좌우를 뒤집음)
+  const dir=lgC(v(C.dir)).toUpperCase(), dg=lgT(v(C.deg));
+  if(/^[LR]$/.test(dir)){
+    let deg=NaN;const m=dg.match(/^(\d+)\s*[-:°˚도]\s*(\d+)/);if(m)deg=+m[1]+(+m[2])/60;else if(/^\d+(\.\d+)?$/.test(dg))deg=+dg;
+    const D=ctx.rev?(dir==='L'?'R':'L'):dir;
+    if(deg>0&&(d.angDir!==D||Math.abs((+d.angDeg||0)-deg)>0.02)){const f=x=>Math.floor(x)+'°'+String(Math.round((x%1)*60)).padStart(2,'0')+"'";
+      add('수평각',d.angDir?(d.angDir==='L'?'좌 ':'우 ')+f(+d.angDeg||0):'직선',(D==='L'?'좌 ':'우 ')+f(deg),()=>{d.angDir=D;d.angDeg=+deg.toFixed(4);});}
+  }
+  // 철탑 형식·전장
+  const fm=stripForm(lgT(v(C.form)));
+  if(fm&&fm.length<=8&&!/^(s\/?t|x|-)$/i.test(fm)&&fm!==stripForm(d.form)) add('형식',d.form?stripForm(d.form):'없음',fm,()=>{d.form=fm;});
+  const H=lgNum(v(C.tot));
+  if(H>=8&&H<=200&&Math.abs((+d.h||0)-H)>0.05) add('철탑 높이(전장)',d.h>0?d.h+'m':'자동',H+'m',()=>{d.h=H;});
+  // 련형: 〓 내장 · │∥ 현수 · 〓│〓 / =II= 지지애자
+  const rs=C.ry.map(c=>lgT(v(c)).replace(/\s/g,'')).filter(x=>x&&!/^x$/i.test(x));
+  if(rs.length){
+    const tenS=/[〓=＝≡―━─]/, susS=/[│|∥ⅡlI┃]/;
+    const ten=rs.some(x=>tenS.test(x)), sus=rs.some(x=>susS.test(x));
+    if(ten||sus){if(d.type!==ten) add('현수/내장',d.type==null?'자동':d.type?'내장':'현수',ten?'내장':'현수',()=>{d.type=ten;});
+      const sup=ten&&rs.some(x=>tenS.test(x)&&susS.test(x));
+      if(sup&&!(d.sup&&d.sup.insulator)) add('지지애자','없음','있음',()=>{d.sup=d.sup||{};d.sup.insulator=true;d.sup.insulator_year=true;});}
+  }
+  // 아킹혼·링 #1/#2 (전원·부하) → 피뢰기 칸이 있으면 그 자리는 피뢰기
+  const A={};
+  if(C.arc>0)[0,1].forEach(i=>{const x=lgT(v(C.arc+i)).replace(/\s/g,'');if(!x||/^x$/i.test(x))return;
+    if(/전/.test(x))A['arr'+(i+1)+'S']='아킹혼·링';if(/부/.test(x))A['arr'+(i+1)+'L']='아킹혼·링';});
+  if(C.arr>0)Object.assign(A,stdArr(v(C.arr),ctx.circ));
+  Object.keys(A).forEach(k=>{if(arrN(d[k])===A[k])return;const n=`#${k[3]} ${k[4]==='S'?'전원측':'부하측'}`;add(n,arrN(d[k])||'없음',A[k],()=>{d[k]=A[k];});});
+  // 가공지선 SB댐퍼 (철탑 전체 개수 → 전원·부하 반반)
+  if(C.sb2>0){
+    const acc={GW:0,OPGW:0};let any=false;
+    [0,1].forEach(i=>{const x=v(C.sb2+i),n=lgNum(x);if(String(x).trim()&&!/^x$/i.test(String(x).trim()))any=true;if(!n)return;
+      const ty=C.gwTy[i]||((i===0||gwOf(l,d)===1?l.gw1:l.gw2)==='OPGW'?'OPGW':'GW');acc[ty]+=n;});
+    if(any)[['GW','dmpGWS','dmpGWL','dmpGW'],['OPGW','dmpOPS','dmpOPL','dmpOP']].forEach(([ty,ks,kl,on])=>{
+      const n=acc[ty],cur=(+d[ks]||0)+(+d[kl]||0);if(!n||n===cur)return;const S=Math.ceil(n/2),L=n-S;
+      add(ty+' 댐퍼',`${cur}개`,`${n}개 (전원 ${S}·부하 ${L})`,()=>{d[ks]=S;d[kl]=L;d['on_'+on]=true;});});
+  }
+  // 철탑도장: 항공 → 항공장애 도색 · 환경 → 친환경 녹색
+  const pt=lgC(v(C.paint));
+  if(/항공/.test(pt)&&d.av!==true) add('항공 도색','없음','있음',()=>{d.av=true;});
+  if(/환경/.test(pt)&&!d.green) add('친환경 녹색 도장','없음','있음',()=>{d.green=true;});
+  // 표시등 개수 → 항공장애등 있음
+  const lp=lgNum(v(C.lamp));
+  if(lp>0&&!d.lamp) add('항공장애등','없음',`있음 (표시등 ${lp}개)`,()=>{d.lamp=true;});
+  // 표시구: '적2/백1' (칸이 둘이면 #1·#2)
+  if(C.balls.length){
+    const b={ball1R:0,ball1W:0,ball2R:0,ball2W:0};
+    C.balls.forEach((c,i)=>{const x=lgT(v(c));if(!x||/^x$/i.test(x))return;
+      const r=x.match(/(적|주황|주|빨|r)\s*\(?\s*(\d+)/i),w=x.match(/(백|흰|w)\s*\(?\s*(\d+)/i);
+      if(r||w){if(r)b['ball'+(i+1)+'R']+=+r[2];if(w)b['ball'+(i+1)+'W']+=+w[2];}else{const p=lgBall(x);if(p)b['ball'+(i+1)+p.color]+=p.n;}});
+    const tot=b.ball1R+b.ball1W+b.ball2R+b.ball2W;
+    if(tot&&!Object.keys(b).every(k=>(+d[k]||0)===b[k])) add('항공구',`#1 적${d.ball1R||0} 백${d.ball1W||0} #2 적${d.ball2R||0} 백${d.ball2W||0}`,`#1 적${b.ball1R} 백${b.ball1W} #2 적${b.ball2R} 백${b.ball2W}`,()=>{Object.assign(d,b);d.ball=true;d.ballN=tot;});
+  }
+  // 순시용 RFID TAG: 'A각/202382' → 모바일 태그 A각
+  const rf=lgT(v(C.rfid)).match(/^([A-D])\s*각/i);
+  if(rf){const k=rf[1].toUpperCase();if(!(d.mtag||[]).includes(k)) add('RFID 태그',(d.mtag||[]).join('·')||'없음',k+'각',()=>{d.mtag=[...new Set([...(d.mtag||[]),k])];});}
+  // 나머지 전부 → 📋 설비 대장
+  const o={'회선':'기별대장'};Object.keys(C.names).forEach(c=>{const x=lgT(row[c]);if(x)o[C.names[c]]=x;});
+  if(t.notes.length)o['메모']=t.notes.join(' / ');
+  const keep=[o];
+  if(Object.keys(o).length>1&&JSON.stringify(d.ledger&&d.ledger.rows)!==JSON.stringify(keep))
+    add('설비 대장 기록',d.ledger?'있음':'없음',`${Object.keys(o).length-1}칸`,()=>{d.ledger={rows:keep,sheet:t.sheet||'',at:Date.now()};});
+  return {ch,set};
+}
+// 애자 제작사·제작연월 시트 (번호·선로명·회선명·철탑번호·상·애자구분·애자규격·제작사/제작연월…)
+function insSheet(rows){
+  const h=rows.findIndex(INS_isHead);if(h<0)return {towers:[],title:''};
+  const hr=rows[h].map(lgC),ix=k=>hr.indexOf(k);
+  const cL=ix('선로명'),cC=ix('회선명'),cT=ix('철탑번호'),cP=ix('상'),cK=ix('애자구분'),cS=ix('애자규격');
+  const h2=(rows[h+2]||[]).map(lgC), cIn=hr.findIndex(x=>/^내측/.test(x)), cOut=hr.indexOf('외측');
+  let cEnd=hr.findIndex((x,i)=>i>Math.max(cIn,cOut)&&x&&x!=='외측');if(cEnd<0)cEnd=999;
+  const secs=[['내측',cIn,cOut>0?cOut:cEnd],['외측',cOut,cEnd]].filter(x=>x[1]>0&&x[2]>x[1]);
+  const xtra=['애자재질','애자제작사','제작일','설치일','애자수','내염종류'].map(k=>[k,ix(k)]).filter(x=>x[1]>0);
+  const map=new Map();let title='';
+  for(let r=h+1;r<rows.length;r++){const row=rows[r]||[];const tv=row[cT];
+    if(tv===''||tv==null)continue;
+    if(typeof tv==='number'&&Math.abs(tv-Math.round(tv))>1e-6)continue;   // 0.01 · 16.99 = S/T
+    const lab=lgLab(tv);if(!/^\d/.test(lab))continue;
+    if(!title&&cL>=0)title=lgT(row[cL]);
+    if(!map.has(lab))map.set(lab,{label:lab,rows:new Map()});
+    const T=map.get(lab),cn=lgT(row[cC]),circ=(cn.match(/#\s*\d+\s*$/)||[cn])[0].replace(/\s/g,'');
+    if(!T.rows.has(circ))T.rows.set(circ,{});
+    const key=`${lgT(row[cP])} ${lgT(row[cK])}`.trim();
+    const parts=[];
+    secs.forEach(([nm,a,b])=>{const mk={};for(let c=a;c<b;c++){if(h2[c]!=='제작사')continue;const m=lgT(row[c]),y=h2[c+1]==='제작연월'?lgT(row[c+1]):'';if(!m&&!y)continue;const k=[m,y].filter(Boolean).join(' ');mk[k]=(mk[k]||0)+1;}
+      const t=Object.entries(mk).map(([k,n])=>n>1?`${k} ×${n}`:k).join(', ');if(t)parts.push(nm+' '+t);});
+    xtra.forEach(([k,c])=>{const x=lgT(row[c]);if(x)parts.push(k==='애자수'?x+'개':k==='설치일'?'설치 '+x:k==='제작일'?'제작 '+x:x);});
+    const sp=lgT(row[cS]),s=[...new Set(parts)].filter(x=>x!==sp).join(' · ');
+    const val=[lgT(row[cS]),s].filter(Boolean).join(' · ');
+    const o=T.rows.get(circ);o[key]=o[key]?(o[key].split(' | ').includes(val)?o[key]:o[key]+' | '+val):val;
+  }
+  return {title,towers:[...map.values()].map(t=>({label:t.label,rows:[...t.rows.entries()].map(([c,o])=>Object.assign({'회선':c},o))}))};
+}
+function insTower(d,t){
+  const ch=[],set=[];
+  if(t.rows.length&&JSON.stringify(d.insul&&d.insul.rows)!==JSON.stringify(t.rows)){
+    ch.push(`애자 제작사·연월 ${d.insul?'있음':'없음'} → ${t.rows.reduce((a,o)=>a+Object.keys(o).length-1,0)}칸`);
+    set.push(()=>{d.insul={rows:t.rows,sheet:t.sheet||'',at:Date.now()};});}
+  return {ch,set};
+}
 function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
   const out=[], unmatched=[], noLine=[];
   let LGMAP={};try{LGMAP=JSON.parse(lsGet('tower3d-lgmap')||'{}')||{};}catch(e){}
+  const push=(l,d,r,sn)=>{if(!r.ch.length)return;const prev=out.find(o=>o.d===d);if(prev){prev.ch.push(...r.ch);prev.set.push(...r.set);}else out.push({l,d,ch:r.ch.slice(),set:r.set.slice(),sheet:sn});};
   for(const sn in sheetRows){
-    const rows=sheetRows[sn]; if(!rows.some(LG_isHead)) continue;
-    const title=String((rows[0]||[])[0]||'');
-    const keys=[lgNorm(sn),lgNorm(title.split(/\s{2,}|#/)[0])].filter(x=>x.length>=3);
-    if(LGMAP[sn]==='skip') continue;
+    const rows=sheetRows[sn];
+    const kind=rows.some(STD_isHead)?'std':rows.some(INS_isHead)?'ins':rows.some(LG_isHead)?'lg':null;
+    if(!kind) continue;
+    if(LGMAP[sn]==='skip'||/작성\s*(방법|예시)|^sheet\d*$/i.test(sn.trim())) continue;   // 작성 예시·빈 시트는 안 넣음
+    const P=kind==='std'?stdSheet(rows):kind==='ins'?insSheet(rows):null;
+    const title=P?P.title:String((rows[0]||[])[0]||'').split(/\s{2,}|#/)[0];
+    const keys=[lgNorm(sn),lgNorm(title)].filter(x=>x.length>=3);
     let l=LGMAP[sn]?lines.find(x=>x.id===LGMAP[sn]):null;   // v21.46: 직접 고른 선로
     if(!l) l=lines.find(x=>keys.includes(lgNorm(x.name)));
     if(!l){const c=lines.filter(x=>{const n=lgNorm(x.name);return n.length>=3&&keys.some(k=>k.includes(n)||n.includes(k));});if(c.length===1)l=c[0];}
     if(!l){noLine.push(sn);continue;}
     const byLab=new Map(l.towers.map(d=>[labKey(d.label),d]));
-    const ts=lgSheet(rows), miss=[]; ts.forEach(t=>t.sheet=sn);
+    const ts=kind==='lg'?lgSheet(rows):P.towers, miss=[]; ts.forEach(t=>t.sheet=sn);
+    let ctx={};
+    if(kind==='std'){   // 엑셀 순서가 앱과 같은 방향인지 (경간·좌우 방향에 씀)
+      const ix=t=>{const d=byLab.get(labKey(t.label));return d?l.towers.indexOf(d):-1;};let fw=0,bw=0;
+      for(let i=1;i<ts.length;i++){const a=ix(ts[i-1]),b=ix(ts[i]);if(a<0||b<0)continue;if(b===a+1)fw++;else if(a===b+1)bw++;}
+      ctx={rev:bw>fw,circ:P.C.circ};
+      // 경간: 엑셀은 '앞 철탑 → 이 철탑' 거리
+      for(let i=1;i<ts.length;i++){const a=ix(ts[i-1]),b=ix(ts[i]),sp=lgNum(ts[i].row[P.C.span]);if(a<0||b<0||!(sp>0))continue;
+        const tg=b===a+1?l.towers[a]:a===b+1?l.towers[b]:null;if(!tg)continue;
+        if(Math.abs((+tg.span||0)-sp)>0.5){const nx=l.towers[l.towers.indexOf(tg)+1];
+          push(l,tg,{ch:[`경간(→${nx?nx.label:''}) ${tg.span>0?tg.span+'m':'자동'} → ${sp}m`],set:[()=>{tg.span=sp;tg.spanSrc='manual';}]},sn);}}
+    }
     ts.forEach(t=>{const d=byLab.get(labKey(t.label));if(!d){if(labKey(t.label))miss.push(t.label);return;}
-      const r=lgTower(l,d,t);if(r.ch.length){const prev=out.find(o=>o.d===d);if(prev){prev.ch.push(...r.ch);prev.set.push(...r.set);}else out.push({l,d,ch:r.ch,set:r.set,sheet:sn});}});
+      push(l,d,kind==='std'?stdTower(l,d,t,P.C,ctx):kind==='ins'?insTower(d,t):lgTower(l,d,t),sn);});
     if(miss.length) unmatched.push(`${sn}: 앱에 없는 번호 ${miss.slice(0,8).join(', ')}${miss.length>8?' …':''}`);
   }
   return {out,unmatched,noLine};
@@ -4490,7 +4675,7 @@ function lgPreview(SR){
   const byL=new Map();out.forEach(o=>{if(!byL.has(o.l))byL.set(o.l,[]);byL.get(o.l).push(o);});
   seqModal((bx,close)=>{
     bx.append(el('p',null,'📥 설비 대장으로 고치기'));
-    bx.append(el('p','note','장주도(현수/내장)·지지애자·전선댐퍼·가공댐퍼(GW/OPGW)·철탑도장(항공·친환경)·항공구·고광도·피뢰기/아킹혼을 읽었어요. 빈칸·X는 앱 값을 지우지 않아요.'));
+    bx.append(el('p','note','경간·수평각·형식·높이(전장)·현수/내장·지지애자·댐퍼(GW/OPGW)·철탑도장(항공·친환경)·항공구·항공장애등·피뢰기/아킹혼·RFID를 읽고, 나머지 칸(스페이서·스리브·애자 종류·특기사항·애자 제작사 등)은 📋 설비 대장에 넣어요. 빈칸·X는 앱 값을 지우지 않아요.'));
     if(!out.length) bx.append(el('p','note','바뀔 내용이 없어요.'));
     else bx.append(el('p','note',`선로 ${byL.size}개 · 철탑 ${out.length}기 · ${out.reduce((a,o)=>a+o.ch.length,0)}곳이 바뀌어요. 선로를 눌러 자세히 보고 [적용]을 누르세요.`));
     const ol=el('div','sq-list'), pick=new Set(byL.keys());
@@ -4530,7 +4715,7 @@ xlIn.addEventListener('change',async()=>{
   let wb; try{wb=XLSX.read(await f.arrayBuffer(),{type:'array'});}catch(e){say('엑셀을 못 읽었어요: '+(e.message||e));return;}
   // v21.44: 설비 대장 양식(장주도·회선…)이면 시트마다 선로를 찾아 한꺼번에
   const SR={};wb.SheetNames.forEach(sn=>{SR[sn]=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:''});});
-  if(Object.values(SR).some(rows=>rows.some(LG_isHead))){lgPreview(SR);return;}
+  if(Object.values(SR).some(LG_any)){lgPreview(SR);return;}   // v21.48: 표준 기별대장·애자 제작사 시트도
   const l=lines.find(x=>x.id===lid); if(!l){say('이 엑셀은 선로 하나씩 넣는 양식이에요. 위에서 선로를 고른 뒤 다시 하세요.');return;}
   const byLab=new Map(l.towers.map(d=>[labKey(d.label),d]));
   const ln=xlKey(LN(l)).replace(/t\/l$/,''), changes=[], miss=new Set(), used=[];
