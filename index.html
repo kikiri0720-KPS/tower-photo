@@ -1998,7 +1998,7 @@ function renderCard(){
       </div>
       <div class="field"><label for="fForm">철탑 형</label><div class="unit" data-unit="형"><input id="fForm" type="text" placeholder="예: A, B, SA, D" value="${esc(stripForm(t.d.form))}"></div></div>
       <div class="row2">${[1,2].map(i=>`<div class="field"><label for="fInsQ${i}">#${i} 애자 (상별)${t.d['insT'+i]?' · '+esc(t.d['insT'+i]):''}${t.d['insD'+i]?'<br><small style="color:var(--muted)">'+esc(t.d['insD'+i].replace(/^상별 \d+개 ?/,''))+'</small>':''}</label><div class="unit" data-unit="개"><input id="fInsQ${i}" type="number" inputmode="numeric" min="0" max="9999" step="1" value="${t.d['insQ'+i]>0?t.d['insQ'+i]:''}"></div></div>`).join('')}</div>
-      <div class="field"><span class="lb">애자련 · 1련 / 2련 (회선별)</span>${[1,2].map(i=>`<div class="row2" style="align-items:center;margin-top:4px"><span class="lb" style="min-width:28px">#${i}</span>${segHTML('data-ren'+i,[0,1,2],+t.d['ren'+i]||0,v=>v===0?'기본('+(l.kv>=300?'2련':'1련')+')':v+'련')}</div>`).join('')}</div>
+      <div class="field"><span class="lb">애자련 · 1련 / 2련 (회선별)</span>${[1,2].map(i=>`<div class="row2" style="align-items:center;margin-top:4px"><span class="lb" style="min-width:28px">#${i}</span>${segHTML('data-ren'+i,l.kv>=700?[0,1,2,3]:[0,1,2],+t.d['ren'+i]||0,v=>v===0?'기본('+(l.kv>=300?'2련':'1련')+')':v+'련')}</div>`).join('')}</div>
       ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.spanSrc==='manual'?' · 직접 고친 값을 쓰는 중':' · 자동 적용됨'}</span>${t.d.spanSrc==='manual'?`<button class="ghost" type="button" id="spanGps" style="flex:none">위치값으로 되돌리기</button>`:''}</div>`:''}</div>`:''}
       <p class="err" id="tErr" hidden></p>
       <dl>
@@ -4571,8 +4571,12 @@ function stdTower(l,d,t,C,ctx){
       if(per!==(+d['insQ'+k]||0)||lbl!==d['insD'+k])add(`#${k} 애자 수량(상별)`,d['insQ'+k]?d['insQ'+k]+'개':'없음',lbl,()=>{d['insQ'+k]=per;d['insD'+k]=lbl;});}
     // v21.61: 1련/2련 — 셀 메모 '각상 2련 …'(지지 제외) 먼저, 없으면 련형 기호(〓·∥·ll = 2련, │·l·= = 1련)
     {const m=((t.cm||{})[c+1]||'')+' '+((t.cm||{})[c]||'');const ns=[...m.matchAll(/(\d)\s*련(?!\s*지지)/g)].map(x=>+x[1]);
-      let rn=ns.length?Math.min(2,Math.max(...ns)):0;
-      if(!rn&&ty&&!/^x$/i.test(ty)){const y=ty.replace(/[`'"]/g,'');rn=/[〓≡∥Ⅱ]|ll|II|\|\||││/i.test(y)?2:/[│|lI=―]/.test(y)?1:0;}
+      // v21.62: 련형 기호를 먼저 봄 — 선 개수 = 련 수 (│·l 1련, ∥·ll 2련, ― 1련 내장, = 〓 2련 내장, ≡ 3련)
+      let rn=0;if(ty&&!/^x$/i.test(ty)){const y=ty.replace(/[`'"\s]/g,'');
+        if(/[〓=＝≡―─ㅡ]/.test(y))rn=/≡/.test(y)?3:/[〓=＝]/.test(y)?2:1;   // 내장: 가로선 수 (가운데 세로선은 지지애자라 뺌)
+        else{const v=(y.match(/[│|lIｌ]/g)||[]).length+2*(y.match(/[∥Ⅱ]/g)||[]).length+3*(y.match(/Ⅲ/g)||[]).length;rn=v;}
+        rn=Math.min(rn,l.kv>=700?3:2);}   // 현수: 세로선 수 · 154·345kV는 2련까지
+      if(!rn&&ns.length)rn=Math.min(3,Math.max(...ns));
       if(rn&&rn!==(+d['ren'+k]||0))add(`#${k} 애자련`,d['ren'+k]?d['ren'+k]+'련':'기본',rn+'련',()=>{d['ren'+k]=rn;});}
     if(ty&&!/^x$/i.test(ty)&&ty!==d['insT'+k])add(`#${k} 련형`,d['insT'+k]||'없음',ty,()=>{d['insT'+k]=ty;});});
   // 아킹혼·링 #1/#2 (전원·부하) → 피뢰기 칸이 있으면 그 자리는 피뢰기
