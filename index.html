@@ -765,11 +765,11 @@ function fitting(a,b,kind,H){
 // 회선 번호: 선로 진행 방향 왼쪽(s=+1)·오른쪽(s=-1) 중 #1 쪽은 선로 정보의 '#1 측' 설정을 따름
 const noOf=(l,s)=>(s===(l.side1==='right'?-1:1))?'1':'2';
 function hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att){
-  const H=t.H, kv=l.kv, no=noOf(l,s), kS=arrN(t.d['arr'+no+'S']), kL=arrN(t.d['arr'+no+'L']);
+  const H=t.H, kv=l.kv, no=noOf(l,s), kS=arrN(t.d['arr'+no+'S']), kL=arrN(t.d['arr'+no+'L']), rn=+t.d['ren'+no]||0;   // v21.61: ren1·ren2 = 1련/2련 (없으면 전압 기본)
   if(t.tension){
     const bk=[x,hy-.8,-ins], fw=[x,hy-.8,ins], mid=[x,hy-ins*.55,0];
     seg(bk,mid,steel); seg(mid,fw,steel);
-    const off=kv>=300?Math.max(.3,H*.006):0;   // 345kV 이상은 내장 2련
+    const off=(rn?rn>=2:kv>=300)?Math.max(.3,H*.006):0;   // 345kV 이상은 내장 2련 (철탑마다 고를 수 있음)
     [[bk,kS],[fw,kL]].forEach(([e,kind])=>{
       (off?[-off,off]:[0]).forEach(o=>EXTRA.discs.push([W([hang[0]+o,hang[1],hang[2]]),W([e[0]+o,e[1],e[2]]),H]));
       fitting(W(hang),W(e),kind,H);
@@ -777,8 +777,8 @@ function hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att){
     att[key]={back:W(bk),fwd:W(fw)};
   }else{
     const at=[x,hy-ins,0];
-    if(kv>=700){const sv=Math.max(1.2,H*.03);EXTRA.discs.push([W([x-sv,hang[1],0]),W(at),H]);EXTRA.discs.push([W([x+sv,hang[1],0]),W(at),H]);}   // 765kV V련
-    else if(kv>=300){const o=Math.max(.3,H*.006);EXTRA.discs.push([W([x,hang[1],-o]),W([x,at[1],-o]),H]);EXTRA.discs.push([W([x,hang[1],o]),W([x,at[1],o]),H]);seg([x,at[1],-o],[x,at[1],o],steel);}   // 345kV 현수 2련
+    if(kv>=700&&rn!==1){const sv=Math.max(1.2,H*.03);EXTRA.discs.push([W([x-sv,hang[1],0]),W(at),H]);EXTRA.discs.push([W([x+sv,hang[1],0]),W(at),H]);}   // 765kV V련
+    else if(rn?rn>=2:kv>=300){const o=Math.max(.3,H*.006);EXTRA.discs.push([W([x,hang[1],-o]),W([x,at[1],-o]),H]);EXTRA.discs.push([W([x,hang[1],o]),W([x,at[1],o]),H]);seg([x,at[1],-o],[x,at[1],o],steel);}   // 345kV 현수 2련
     else EXTRA.discs.push([W(hang),W(at),H]);
     fitting(W(hang),W(at),kS||kL,H);
     att[key]={back:W(at),fwd:W(at)};
@@ -1998,6 +1998,7 @@ function renderCard(){
       </div>
       <div class="field"><label for="fForm">철탑 형</label><div class="unit" data-unit="형"><input id="fForm" type="text" placeholder="예: A, B, SA, D" value="${esc(stripForm(t.d.form))}"></div></div>
       <div class="row2">${[1,2].map(i=>`<div class="field"><label for="fInsQ${i}">#${i} 애자 (상별)${t.d['insT'+i]?' · '+esc(t.d['insT'+i]):''}${t.d['insD'+i]?'<br><small style="color:var(--muted)">'+esc(t.d['insD'+i].replace(/^상별 \d+개 ?/,''))+'</small>':''}</label><div class="unit" data-unit="개"><input id="fInsQ${i}" type="number" inputmode="numeric" min="0" max="9999" step="1" value="${t.d['insQ'+i]>0?t.d['insQ'+i]:''}"></div></div>`).join('')}</div>
+      <div class="field"><span class="lb">애자련 · 1련 / 2련 (회선별)</span>${[1,2].map(i=>`<div class="row2" style="align-items:center;margin-top:4px"><span class="lb" style="min-width:28px">#${i}</span>${segHTML('data-ren'+i,[0,1,2],+t.d['ren'+i]||0,v=>v===0?'기본('+(l.kv>=300?'2련':'1련')+')':v+'련')}</div>`).join('')}</div>
       ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.spanSrc==='manual'?' · 직접 고친 값을 쓰는 중':' · 자동 적용됨'}</span>${t.d.spanSrc==='manual'?`<button class="ghost" type="button" id="spanGps" style="flex:none">위치값으로 되돌리기</button>`:''}</div>`:''}</div>`:''}
       <p class="err" id="tErr" hidden></p>
       <dl>
@@ -2208,6 +2209,7 @@ function renderCard(){
     if(dg<0||dg>90||mn<0||mn>59){bad('각도는 0~90도, 분은 0~59로 입력해 주세요.');return;}
     t.d.angDeg=dg+mn/60; save(); build();};
     q('#fAngD').addEventListener('change',angIn); q('#fAngM').addEventListener('change',angIn);}
+  [1,2].forEach(i=>card.querySelectorAll('[data-ren'+i+']').forEach(b=>b.addEventListener('click',()=>{const v=+b.getAttribute('data-ren'+i);if(v)t.d['ren'+i]=v;else delete t.d['ren'+i];save();build();renderCard();})));   // v21.61
   [1,2].forEach(i=>{const e=q('#fInsQ'+i);if(e)e.addEventListener('change',()=>{const v=parseInt(e.value,10);if(v>0)t.d['insQ'+i]=v;else delete t.d['insQ'+i];save();});});   // v21.56: 애자 수량
   q('#fForm').addEventListener('change',e=>{const v=stripForm(e.target.value);t.d.form=v;e.target.value=v;save();renderHead();renderRail();renderCard();});
   const ballUpd=()=>{save();build();};
@@ -4567,6 +4569,11 @@ function stdTower(l,d,t,C,ctx){
       if(!(per>0)||(n%3===0&&per*3!==n&&Math.abs(per*3-n)>n*0.2)){per=n%3===0?n/3:n;how='';}
       const lbl=`상별 ${per}개${how&&how!==per+'개'?' ('+how+')':''} · 합계 ${n}${per*3!==n&&per!==n?' · 상마다 다름(상단 기준)':''}`;
       if(per!==(+d['insQ'+k]||0)||lbl!==d['insD'+k])add(`#${k} 애자 수량(상별)`,d['insQ'+k]?d['insQ'+k]+'개':'없음',lbl,()=>{d['insQ'+k]=per;d['insD'+k]=lbl;});}
+    // v21.61: 1련/2련 — 셀 메모 '각상 2련 …'(지지 제외) 먼저, 없으면 련형 기호(〓·∥·ll = 2련, │·l·= = 1련)
+    {const m=((t.cm||{})[c+1]||'')+' '+((t.cm||{})[c]||'');const ns=[...m.matchAll(/(\d)\s*련(?!\s*지지)/g)].map(x=>+x[1]);
+      let rn=ns.length?Math.min(2,Math.max(...ns)):0;
+      if(!rn&&ty&&!/^x$/i.test(ty)){const y=ty.replace(/[`'"]/g,'');rn=/[〓≡∥Ⅱ]|ll|II|\|\||││/i.test(y)?2:/[│|lI=―]/.test(y)?1:0;}
+      if(rn&&rn!==(+d['ren'+k]||0))add(`#${k} 애자련`,d['ren'+k]?d['ren'+k]+'련':'기본',rn+'련',()=>{d['ren'+k]=rn;});}
     if(ty&&!/^x$/i.test(ty)&&ty!==d['insT'+k])add(`#${k} 련형`,d['insT'+k]||'없음',ty,()=>{d['insT'+k]=ty;});});
   // 아킹혼·링 #1/#2 (전원·부하) → 피뢰기 칸이 있으면 그 자리는 피뢰기
   const A={};
