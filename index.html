@@ -4523,11 +4523,11 @@ function stdSheet(rows,cm){   // cm: {행:{열:메모}} (엑셀 셀 메모)
 function stdArr(v,circ){
   const t=lgT(v);if(!t||/^x$/i.test(t))return {};
   const r={},parts=t.split('/');let pend=[];
-  const cOf=p=>{const m=p.match(/#\s*(\d)/g);if(m)return m.map(x=>+x.replace(/\D/g,''));
+  const cOf=p=>{const m=p.match(/#\s*\d(?:\s*[.,·&]\s*\d)*/g);if(m)return m.flatMap(x=>x.replace(/^#/,'').split(/[.,·&]/).map(y=>+y.replace(/\D/g,''))).filter(Boolean);   // v21.59: '#1.2' = #1·#2
     const ws=p.replace(/전원|부하|[전부](?=\s|$)/g,' ').split(/[\s#]+/).filter(w=>w&&/[가-힣]/.test(w));
     return ws.map(w=>{const i=circ.findIndex(c=>c&&(c.includes(w)||w.includes(c)));return i>=0?i+1:(circ.filter(Boolean).length?0:1);}).filter(x=>x);};
-  parts.forEach(p=>{const cs=cOf(p),side=/전/.test(p)?'S':/부/.test(p)?'L':null;
-    if(side){(cs.length?cs:pend.length?pend:[1,2]).forEach(c=>{if(c<=2)r['arr'+c+side]='피뢰기';});pend=[];}else pend=pend.concat(cs);});
+  parts.forEach(p=>{const cs=cOf(p),q=p.replace(/#\s*\d(?:\s*[.,·&]\s*\d)*/g,' ').replace(/#[가-힣A-Za-z]+/g,w=>/(전원|부하)$/.test(w)?w.slice(-2):' '),sides=[/전/.test(q)?'S':null,/부/.test(q)?'L':null].filter(Boolean);   // '부하 전원' 이면 양쪽
+    if(sides.length){(cs.length?cs:pend.length?pend:[1,2]).forEach(c=>{if(c<=2)sides.forEach(sd=>r['arr'+c+sd]='피뢰기');});pend=[];}else pend=pend.concat(cs);});
   return r;
 }
 function stdTower(l,d,t,C,ctx){
