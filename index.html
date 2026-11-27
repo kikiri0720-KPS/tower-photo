@@ -167,6 +167,7 @@ body.headmin .head h1{font-size:15px}
 .unit input{padding-right:34px !important}
 .unit::after{content:attr(data-unit);position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.renrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}.renrow>.lb{width:56px;flex:none}.renrow>.seg{flex:1 1 150px;min-width:150px}.renrow>.unit{flex:0 0 84px}.renrow .seg button{padding-left:4px;padding-right:4px}
 .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .seg button{flex:1;border:0;background:transparent;color:var(--ink);padding:7px 8px;font-size:12.5px;cursor:pointer;white-space:nowrap}
 .seg button + button{border-left:1px solid var(--line)}
@@ -684,6 +685,9 @@ async function pull(){
 }
 async function pullPhotos(force){
   // v21.42: 서버는 한 번에 1000장까지만 줌 → 1000장씩 나눠서 끝까지 받음 (1000장 넘으면 새 사진이 안 보이고 중복 첨부되던 문제)
+  // v21.63: 10초마다 사진 목록 전체를 받던 것 → 개수·마지막 수정 시각만 먼저 보고, 바뀌었을 때만 전체를 받음 (버퍼링 줄임)
+  if(!force&&photoStamp){const {data:top,count,error:e0}=await sb.from(T_PHOTOS).select('updated_at',{count:'exact'}).order('updated_at',{ascending:false}).limit(1);
+    if(!e0&&(count+'|'+((top&&top[0]&&top[0].updated_at)||''))===photoStamp) return;}
   const data=[];
   for(let from=0;from<200000;from+=1000){
     const {data:part,error}=await sb.from(T_PHOTOS).select('id,data,updated_at').order('id').range(from,from+999);
@@ -763,14 +767,15 @@ function fitting(a,b,kind,H){
   }
 }
 // 회선 번호: 선로 진행 방향 왼쪽(s=+1)·오른쪽(s=-1) 중 #1 쪽은 선로 정보의 '#1 측' 설정을 따름
+const renOf=(d,i,sd)=>+d['ren'+i+sd]||+d['ren'+i]||0;   // v21.63: 전원·부하 따로 (예전 ren1·ren2 도 읽음)
 const noOf=(l,s)=>(s===(l.side1==='right'?-1:1))?'1':'2';
 function hangIns(l,t,W,seg,steel,s,x,hy,hang,ins,key,att){
-  const H=t.H, kv=l.kv, no=noOf(l,s), kS=arrN(t.d['arr'+no+'S']), kL=arrN(t.d['arr'+no+'L']), rn=+t.d['ren'+no]||0;   // v21.61: ren1·ren2 = 1련/2련 (없으면 전압 기본)
+  const H=t.H, kv=l.kv, no=noOf(l,s), kS=arrN(t.d['arr'+no+'S']), kL=arrN(t.d['arr'+no+'L']), rn=renOf(t.d,no,'S'), rnL=renOf(t.d,no,'L');   // v21.61: ren1·ren2 = 1련/2련 (없으면 전압 기본)
   if(t.tension){
     const bk=[x,hy-.8,-ins], fw=[x,hy-.8,ins], mid=[x,hy-ins*.55,0];
     seg(bk,mid,steel); seg(mid,fw,steel);
-    const off=(rn?rn>=2:kv>=300)?Math.max(.3,H*.006):0;   // 345kV 이상은 내장 2련 (철탑마다 고를 수 있음)
-    [[bk,kS],[fw,kL]].forEach(([e,kind])=>{
+    const o2=Math.max(.3,H*.006);   // 345kV 이상은 내장 2련 (철탑·전원/부하마다 고를 수 있음)
+    [[bk,kS,rn],[fw,kL,rnL]].forEach(([e,kind,r])=>{const off=(r?r>=2:kv>=300)?o2:0;
       (off?[-off,off]:[0]).forEach(o=>EXTRA.discs.push([W([hang[0]+o,hang[1],hang[2]]),W([e[0]+o,e[1],e[2]]),H]));
       fitting(W(hang),W(e),kind,H);
     });
@@ -1997,8 +2002,9 @@ function renderCard(){
         <div class="field"><label for="fH">철탑 높이</label><div class="unit" data-unit="m"><input id="fH" type="number" inputmode="decimal" min="10" max="250" step="0.1" placeholder="${t.autoH}" value="${t.d.h>0?t.d.h:''}"></div></div>
       </div>
       <div class="field"><label for="fForm">철탑 형</label><div class="unit" data-unit="형"><input id="fForm" type="text" placeholder="예: A, B, SA, D" value="${esc(stripForm(t.d.form))}"></div></div>
-      <div class="row2">${[1,2].map(i=>`<div class="field"><label for="fInsQ${i}">#${i} 애자 (상별)${t.d['insT'+i]?' · '+esc(t.d['insT'+i]):''}${t.d['insD'+i]?'<br><small style="color:var(--muted)">'+esc(t.d['insD'+i].replace(/^상별 \d+개 ?/,''))+'</small>':''}</label><div class="unit" data-unit="개"><input id="fInsQ${i}" type="number" inputmode="numeric" min="0" max="9999" step="1" value="${t.d['insQ'+i]>0?t.d['insQ'+i]:''}"></div></div>`).join('')}</div>
-      <div class="field"><span class="lb">애자련 · 1련 / 2련 (회선별)</span>${[1,2].map(i=>`<div class="row2" style="align-items:center;margin-top:4px"><span class="lb" style="min-width:28px">#${i}</span>${segHTML('data-ren'+i,l.kv>=700?[0,1,2,3]:[0,1,2],+t.d['ren'+i]||0,v=>v===0?'기본('+(l.kv>=300?'2련':'1련')+')':v+'련')}</div>`).join('')}</div>
+      <div class="field"><span class="lb">애자련 · 회선별 ${t.tension?'전원/부하':'현수'} · 련 수 · 련당 애자 개수</span>
+        ${[1,2].map(i=>(t.tension?['S','L']:['S']).map(sd=>`<div class="renrow"><span class="lb">#${i} ${t.tension?(sd==='S'?'전원':'부하'):'현수'}</span>${segHTML('data-ren'+i+sd,l.kv>=700?[0,1,2,3]:[0,1,2],renOf(t.d,i,sd),v=>v===0?'-':v+'련')}<div class="unit" data-unit="개"><input data-insq="${i}${sd}" type="number" inputmode="numeric" min="0" max="999" step="1" aria-label="#${i} 련당 애자 개수" value="${t.d['insQ'+i+sd]>0?t.d['insQ'+i+sd]:''}"></div></div>`).join('')).join('')}
+        ${[1,2].some(i=>t.d['insT'+i]||t.d['insD'+i])?`<span class="lb" style="font-size:12px">엑셀 ${[1,2].map(i=>`#${i} ${esc(t.d['insT'+i]||'')} ${esc((t.d['insD'+i]||'').replace(/^상별 \d+개 ?(\([^)]*\) )?· ?/,''))}`).join(' · ')}</span>`:''}</div>
       ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.spanSrc==='manual'?' · 직접 고친 값을 쓰는 중':' · 자동 적용됨'}</span>${t.d.spanSrc==='manual'?`<button class="ghost" type="button" id="spanGps" style="flex:none">위치값으로 되돌리기</button>`:''}</div>`:''}</div>`:''}
       <p class="err" id="tErr" hidden></p>
       <dl>
@@ -2209,8 +2215,8 @@ function renderCard(){
     if(dg<0||dg>90||mn<0||mn>59){bad('각도는 0~90도, 분은 0~59로 입력해 주세요.');return;}
     t.d.angDeg=dg+mn/60; save(); build();};
     q('#fAngD').addEventListener('change',angIn); q('#fAngM').addEventListener('change',angIn);}
-  [1,2].forEach(i=>card.querySelectorAll('[data-ren'+i+']').forEach(b=>b.addEventListener('click',()=>{const v=+b.getAttribute('data-ren'+i);if(v)t.d['ren'+i]=v;else delete t.d['ren'+i];save();build();renderCard();})));   // v21.61
-  [1,2].forEach(i=>{const e=q('#fInsQ'+i);if(e)e.addEventListener('change',()=>{const v=parseInt(e.value,10);if(v>0)t.d['insQ'+i]=v;else delete t.d['insQ'+i];save();});});   // v21.56: 애자 수량
+  [1,2].forEach(i=>['S','L'].forEach(sd=>card.querySelectorAll('[data-ren'+i+sd+']').forEach(b=>b.addEventListener('click',()=>{const v=+b.getAttribute('data-ren'+i+sd);if(v)t.d['ren'+i+sd]=v;else delete t.d['ren'+i+sd];delete t.d['ren'+i];save();build();renderCard();}))));   // v21.63
+  card.querySelectorAll('[data-insq]').forEach(e=>e.addEventListener('change',()=>{const k='insQ'+e.dataset.insq,v=parseInt(e.value,10);if(v>0)t.d[k]=v;else delete t.d[k];save();}));   // v21.63: 련당 애자 개수
   q('#fForm').addEventListener('change',e=>{const v=stripForm(e.target.value);t.d.form=v;e.target.value=v;save();renderHead();renderRail();renderCard();});
   const ballUpd=()=>{save();build();};
   if(q('#xBall')){
@@ -4561,23 +4567,36 @@ function stdTower(l,d,t,C,ctx){
   }
   // v21.56: 애자 수량 #1·#2 (련형 옆 수량 칸) + 련형 기호
   C.ry.forEach((c,i)=>{const k=i+1,x=v(c+1),n=typeof x==='number'?x:(/^\s*\d+\s*$/.test(String(x))?+x:0),ty=lgT(v(c)).replace(/\s/g,'');
-    // v21.60: 엑셀 수량은 회선 합계(3상) → 셀 메모 '상단 … 1-9번 애자' 로 상별 개수, 없으면 합계 ÷ 3
-    if(n>0){const m=(t.cm||{})[c+1]||(t.cm||{})[c]||'';let per=0,how='';
-      const top=m.split(/상단/).slice(1).map(x=>x.split(/중단|하단|지지\s*:|내장\s*:|현수\s*:/)[0]).join(' ');   // 내장·지지 블록마다 '상단' 부분
-      const rg=[...top.matchAll(/(\d+)\s*-\s*(\d+)\s*번/g)];
-      if(rg.length){per=rg.reduce((a,x)=>a+Math.max(0,+x[2]-+x[1]+1),0);how=rg.map(x=>+x[2]-+x[1]+1).join('+')+'개';}
-      if(!(per>0)||(n%3===0&&per*3!==n&&Math.abs(per*3-n)>n*0.2)){per=n%3===0?n/3:n;how='';}
-      const lbl=`상별 ${per}개${how&&how!==per+'개'?' ('+how+')':''} · 합계 ${n}${per*3!==n&&per!==n?' · 상마다 다름(상단 기준)':''}`;
-      if(per!==(+d['insQ'+k]||0)||lbl!==d['insD'+k])add(`#${k} 애자 수량(상별)`,d['insQ'+k]?d['insQ'+k]+'개':'없음',lbl,()=>{d['insQ'+k]=per;d['insD'+k]=lbl;});}
-    // v21.61: 1련/2련 — 셀 메모 '각상 2련 …'(지지 제외) 먼저, 없으면 련형 기호(〓·∥·ll = 2련, │·l·= = 1련)
-    {const m=((t.cm||{})[c+1]||'')+' '+((t.cm||{})[c]||'');const ns=[...m.matchAll(/(\d)\s*련(?!\s*지지)/g)].map(x=>+x[1]);
-      // v21.62: 련형 기호를 먼저 봄 — 선 개수 = 련 수 (│·l 1련, ∥·ll 2련, ― 1련 내장, = 〓 2련 내장, ≡ 3련)
-      let rn=0;if(ty&&!/^x$/i.test(ty)){const y=ty.replace(/[`'"\s]/g,'');
-        if(/[〓=＝≡―─ㅡ]/.test(y))rn=/≡/.test(y)?3:/[〓=＝]/.test(y)?2:1;   // 내장: 가로선 수 (가운데 세로선은 지지애자라 뺌)
-        else{const v=(y.match(/[│|lIｌ]/g)||[]).length+2*(y.match(/[∥Ⅱ]/g)||[]).length+3*(y.match(/Ⅲ/g)||[]).length;rn=v;}
-        rn=Math.min(rn,l.kv>=700?3:2);}   // 현수: 세로선 수 · 154·345kV는 2련까지
-      if(!rn&&ns.length)rn=Math.min(3,Math.max(...ns));
-      if(rn&&rn!==(+d['ren'+k]||0))add(`#${k} 애자련`,d['ren'+k]?d['ren'+k]+'련':'기본',rn+'련',()=>{d['ren'+k]=rn;});}
+    // v21.63: 회선마다 전원·부하 따로 — 련 수(ren1S…) · 련당 애자 개수(insQ1S…)
+    //   련형 기호: 내장은 가로 기호 순서대로 전원·부하 (〓·= 2련, ― 1련, ≡ 3련) · 현수는 세로선 수
+    //   셀 메모: (지지 앞까지) '상단 전원 내측 1-10번 … 부하 외측 1-10번' → 쪽마다 련 수·개수
+    {const m=(((t.cm||{})[c+1]||'')+'\n'+((t.cm||{})[c]||'')).split(/지지\s*[:：]/)[0];
+      const y=(ty&&!/^x$/i.test(ty))?ty.replace(/[`'"\s]/g,''):'', cap=l.kv>=700?3:2;
+      const tch=y.match(/[〓=＝≡―─ㅡ]/g)||[], ten=tch.length>0||(!y&&d.type===true);
+      const R={S:0,L:0},Q={S:0,L:0};
+      if(tch.length){const w=ch=>/≡/.test(ch)?3:/[〓=＝]/.test(ch)?2:1;R.S=Math.min(cap,w(tch[0]));R.L=Math.min(cap,w(tch[tch.length-1]));}
+      else if(y){R.S=Math.min(cap,(y.match(/[│|lIｌ]/g)||[]).length+2*(y.match(/[∥Ⅱ]/g)||[]).length+3*(y.match(/Ⅲ/g)||[]).length);}
+      // 메모 '상단' 부분 (첫 블록)
+      const top=(m.split(/상단/)[1]||'').split(/중단|하단/)[0];
+      const rng=s=>[...s.matchAll(/(\d+)\s*-\s*(\d+)\s*번/g)].map(x=>Math.max(0,+x[2]-+x[1]+1));
+      if(top){const hasS=/전원/.test(top),hasL=/부하/.test(top);
+        if(ten&&(hasS||hasL)){const ps=top.split(/(전원|부하)/);let sd=null;const acc={S:[],L:[]};
+          ps.forEach(p=>{if(p==='전원')sd='S';else if(p==='부하')sd='L';else if(sd)acc[sd].push(...rng(p));});
+          ['S','L'].forEach(k2=>{if(acc[k2].length){R[k2]=Math.min(cap,acc[k2].length);Q[k2]=Math.max(...acc[k2]);}});
+          if(!hasS&&/부하\s*측?/.test(m)&&!tch.length)R.S=0;}
+        else{const r=rng(top);if(r.length){const k2=ten?(/전원\s*측/.test(m)&&!/부하\s*측/.test(m)?'S':/부하\s*측/.test(m)&&!/전원\s*측/.test(m)?'L':'both'):'S';
+          const rr=Math.min(cap,r.length),qq=Math.max(...r);
+          if(k2==='both'){R.S=R.S||rr;R.L=R.L||rr;Q.S=Q.L=qq;}else{R[k2]=R[k2]||rr;Q[k2]=qq;}}}}
+      // 메모가 없으면 합계 ÷ (3상 × 련 수)
+      const nr=ten?(R.S+R.L):R.S;
+      if(n>0&&nr>0){['S','L'].forEach(k2=>{if(R[k2]&&!Q[k2]&&n%(3*nr)===0)Q[k2]=n/(3*nr);});}
+      const sides=ten?['S','L']:['S'];
+      sides.forEach(k2=>{const nm=`#${k} ${ten?(k2==='S'?'전원':'부하'):'현수'}`;
+        if(R[k2]&&R[k2]!==(+d['ren'+k+k2]||0))add(nm+' 애자련',d['ren'+k+k2]?d['ren'+k+k2]+'련':'없음',R[k2]+'련',()=>{d['ren'+k+k2]=R[k2];});
+        if(Q[k2]&&Q[k2]!==(+d['insQ'+k+k2]||0))add(nm+' 련당 애자',d['insQ'+k+k2]?d['insQ'+k+k2]+'개':'없음',Q[k2]+'개',()=>{d['insQ'+k+k2]=Q[k2];});});
+      if(!ten&&(d['ren'+k+'L']||d['insQ'+k+'L']))add(`#${k} 부하 애자련`,'있음','지움 (현수)',()=>{delete d['ren'+k+'L'];delete d['insQ'+k+'L'];});
+      const lbl=n>0?`합계 ${n}개`:'';
+      if(lbl&&lbl!==d['insD'+k])add(`#${k} 애자 합계`,d['insD'+k]||'없음',lbl,()=>{d['insD'+k]=lbl;delete d['insQ'+k];delete d['ren'+k];});}
     if(ty&&!/^x$/i.test(ty)&&ty!==d['insT'+k])add(`#${k} 련형`,d['insT'+k]||'없음',ty,()=>{d['insT'+k]=ty;});});
   // 아킹혼·링 #1/#2 (전원·부하) → 피뢰기 칸이 있으면 그 자리는 피뢰기
   const A={};
