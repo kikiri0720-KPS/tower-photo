@@ -258,8 +258,8 @@ body.headmin .head h1{font-size:15px}
 .kpop .kx{position:absolute;top:2px;right:4px;border:0;background:transparent;font-size:18px;color:#666;padding:2px 6px}
 .kpop::after{content:'';position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:#fff}
 #mapPick[hidden]{display:none}
-.ledger th,.ledger td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;white-space:pre-line}
-.ledger td:first-child{color:var(--muted,#888);white-space:nowrap}
+.ldg th,.ldg td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;white-space:pre-line}
+.ldg td:first-child{color:var(--muted,#888);white-space:nowrap}
 .tpop button{display:block;width:100%;margin-top:6px;padding:8px 10px;border:0;border-radius:8px;background:#e8833a;color:#14213d;font-weight:700;font-size:14px}
 .tpop button.b2{background:#e6ecf2}
 #mapOv #gpsbar{margin:6px;border-radius:12px}
@@ -1827,7 +1827,7 @@ function ledgerHTML(d){
   const nm=k=>k.replace('|',' ');
   const head=L.rows.map((o,i)=>`<th>${esc(o['회선']||('#'+(i+1)))}</th>`).join('');
   const body=keys.filter(k=>k!=='회선').map(k=>`<tr><td>${esc(nm(k))}</td>${L.rows.map(o=>`<td>${esc(o[k]||'')}</td>`).join('')}</tr>`).join('');
-  return `<details class="field ledger"><summary class="lb">${title} (엑셀${L.sheet?' · '+esc(L.sheet):''})</summary>
+  return `<details class="field ldg"><summary class="lb">${title} (엑셀${L.sheet?' · '+esc(L.sheet):''})</summary>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tr><th></th>${head}</tr>${body}</table></div></details>`;};
   return tb(d.ledger,'📋 설비 대장')+tb(d.insul,'🔩 애자 제작사·연월');   // v21.48
 }
