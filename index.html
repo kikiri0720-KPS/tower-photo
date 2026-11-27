@@ -2005,6 +2005,9 @@ function renderCard(){
       <div class="field"><span class="lb">애자련 · 회선별 ${t.tension?'전원/부하':'현수'} · 련 수 · 련당 애자 개수</span>
         ${[1,2].map(i=>(t.tension?['S','L']:['S']).map(sd=>`<div class="renrow"><span class="lb">#${i} ${t.tension?(sd==='S'?'전원':'부하'):'현수'}</span>${segHTML('data-ren'+i+sd,l.kv>=700?[0,1,2,3]:[0,1,2],renOf(t.d,i,sd),v=>v===0?'-':v+'련')}<div class="unit" data-unit="개"><input data-insq="${i}${sd}" type="number" inputmode="numeric" min="0" max="999" step="1" aria-label="#${i} 련당 애자 개수" value="${t.d['insQ'+i+sd]>0?t.d['insQ'+i+sd]:''}"></div></div>`).join('')).join('')}
         ${[1,2].some(i=>t.d['insT'+i]||t.d['insD'+i])?`<span class="lb" style="font-size:12px">엑셀 ${[1,2].map(i=>`#${i} ${esc(t.d['insT'+i]||'')} ${esc((t.d['insD'+i]||'').replace(/^상별 \d+개 ?(\([^)]*\) )?· ?/,''))}`).join(' · ')}</span>`:''}</div>
+      ${t.tension||[1,2].some(i=>+t.d['supR'+i]>0)?`<div class="field"><span class="lb">지지애자 · 회선별 (2련 = 전원·부하, 3련 = 전원·중앙·부하) · 련당 애자 개수</span>
+        ${[1,2].map(i=>{const r=+t.d['supR'+i]||0,pos=r===1?[['C','지지']]:r===2?[['S','전원'],['L','부하']]:r>=3?[['S','전원'],['C','중앙'],['L','부하']]:[];
+          return `<div class="renrow"><span class="lb">#${i} 지지</span>${segHTML('data-supr'+i,[0,1,2,3],r,v=>v===0?'없음':v+'련')}</div>`+(pos.length?`<div style="display:grid;grid-template-columns:repeat(${pos.length},1fr);gap:6px;margin:4px 0 0 62px">${pos.map(([k,n])=>`<div><span class="lb" style="font-size:12px">${n}</span><div class="unit" data-unit="개"><input data-supq="${i}${k}" type="number" inputmode="numeric" min="0" max="999" step="1" aria-label="#${i} 지지애자 ${n} 개수" value="${t.d['supQ'+i+k]>0?t.d['supQ'+i+k]:''}"></div></div>`).join('')}</div>`:'');}).join('')}</div>`:''}
       ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.spanSrc==='manual'?' · 직접 고친 값을 쓰는 중':' · 자동 적용됨'}</span>${t.d.spanSrc==='manual'?`<button class="ghost" type="button" id="spanGps" style="flex:none">위치값으로 되돌리기</button>`:''}</div>`:''}</div>`:''}
       <p class="err" id="tErr" hidden></p>
       <dl>
@@ -2019,7 +2022,7 @@ function renderCard(){
       <div class="field"><span class="lb">회선 수 · 이 철탑만</span>${segHTML('data-tcir',[2,4,6],cirOf(l,t.d),v=>v+'회선'+(v===l.circuits?' (기본)':''))}
         <span class="lb" style="font-size:12px">선로 기본 ${l.circuits}회선 · 다르게 고른 철탑만 바뀌어요. 기본값은 선로 정보에서 바꿔요.</span></div>
       <div class="field"><span class="lb">가공지선 · ${gwScope==='one'?'이 철탑만':gwScope==='from'?'이 철탑부터 끝까지':'선로 전체'} 바꿈</span>${segHTML('data-tgw',[1,2],gwOf(l,t.d),v=>(v===1?'1조 · 가운데':'2조 · 양쪽')+(v===l.gw?' (기본)':''))}
-        <div class="row2" style="align-items:center;margin-top:6px"><span class="lb" style="min-width:44px">적용</span>${segHTML('data-gwsc',['one','from','all'],gwScope,v=>v==='one'?'이 철탑만':v==='from'?'여기부터 끝까지':'선로 전체')}</div>
+        <div style="margin-top:6px"><span class="lb">적용 범위</span>${segHTML('data-gwsc',['one','from','all'],gwScope,v=>v==='one'?'이 철탑만':v==='from'?'여기부터 끝까지':'선로 전체')}</div>
         <span class="lb" style="font-size:12px">선로 기본 ${l.gw}조 · ${towers.filter(x=>gwOf(l,x.d)!==l.gw).length?'다르게 고른 철탑 '+towers.filter(x=>gwOf(l,x.d)!==l.gw).length+'기':'모든 철탑이 기본값'}</span></div>
       <div class="field"><span class="lb">가공지선 종류 · OPGW / GW</span>
         <div class="row2" style="align-items:center"><span class="lb" style="min-width:44px">${l.gw===1?'가운데':'#1'}</span>${segHTML('data-wt1',WT,l.gw1,v=>v)}</div>
@@ -2216,6 +2219,11 @@ function renderCard(){
     t.d.angDeg=dg+mn/60; save(); build();};
     q('#fAngD').addEventListener('change',angIn); q('#fAngM').addEventListener('change',angIn);}
   [1,2].forEach(i=>['S','L'].forEach(sd=>card.querySelectorAll('[data-ren'+i+sd+']').forEach(b=>b.addEventListener('click',()=>{const v=+b.getAttribute('data-ren'+i+sd);if(v)t.d['ren'+i+sd]=v;else delete t.d['ren'+i+sd];delete t.d['ren'+i];save();build();renderCard();}))));   // v21.63
+  [1,2].forEach(i=>card.querySelectorAll('[data-supr'+i+']').forEach(b=>b.addEventListener('click',()=>{const v=+b.getAttribute('data-supr'+i);   // v21.64: 지지애자 련 수
+    if(v)t.d['supR'+i]=v;else{delete t.d['supR'+i];['S','C','L'].forEach(k=>delete t.d['supQ'+i+k]);}
+    if([1,2].some(k=>+t.d['supR'+k]>0)){t.d.sup=t.d.sup||{};t.d.sup.insulator=true;t.d.sup.insulator_year=true;}
+    save();renderCard();})));
+  card.querySelectorAll('[data-supq]').forEach(e=>e.addEventListener('change',()=>{const k='supQ'+e.dataset.supq,v=parseInt(e.value,10);if(v>0)t.d[k]=v;else delete t.d[k];save();}));
   card.querySelectorAll('[data-insq]').forEach(e=>e.addEventListener('change',()=>{const k='insQ'+e.dataset.insq,v=parseInt(e.value,10);if(v>0)t.d[k]=v;else delete t.d[k];save();}));   // v21.63: 련당 애자 개수
   q('#fForm').addEventListener('change',e=>{const v=stripForm(e.target.value);t.d.form=v;e.target.value=v;save();renderHead();renderRail();renderCard();});
   const ballUpd=()=>{save();build();};
@@ -4595,6 +4603,17 @@ function stdTower(l,d,t,C,ctx){
         if(R[k2]&&R[k2]!==(+d['ren'+k+k2]||0))add(nm+' 애자련',d['ren'+k+k2]?d['ren'+k+k2]+'련':'없음',R[k2]+'련',()=>{d['ren'+k+k2]=R[k2];});
         if(Q[k2]&&Q[k2]!==(+d['insQ'+k+k2]||0))add(nm+' 련당 애자',d['insQ'+k+k2]?d['insQ'+k+k2]+'개':'없음',Q[k2]+'개',()=>{d['insQ'+k+k2]=Q[k2];});});
       if(!ten&&(d['ren'+k+'L']||d['insQ'+k+'L']))add(`#${k} 부하 애자련`,'있음','지움 (현수)',()=>{delete d['ren'+k+'L'];delete d['insQ'+k+'L'];});
+      // v21.64: 지지애자 — 련형의 내장 기호 사이 세로선 수 (=I= 1련 · =II= 2련 · =III= 3련) · 메모 '지지: … 상단 전원 1-9번 …'
+      {const mf=((t.cm||{})[c+1]||'')+'\n'+((t.cm||{})[c]||''), sb=mf.split(/지지\s*[:：]/)[1]||'';
+        let sr=0;if(tch.length){const inner=y.replace(/[〓=＝≡―─ㅡ]/g,'');sr=Math.min(3,(inner.match(/[│|lIｌ]/g)||[]).length+2*(inner.match(/[∥Ⅱ]/g)||[]).length+3*(inner.match(/Ⅲ/g)||[]).length);}
+        const hm=mf.match(/(\d)\s*련\s*지지/);if(!sr&&hm)sr=Math.min(3,+hm[1]);
+        const sq={};const st=(sb.split(/상단/)[1]||'').split(/중단|하단/)[0];
+        if(st){const ps=st.split(/(전원|중앙|부하)/);let cur=null;const acc={S:[],C:[],L:[]},free=[];
+          ps.forEach(p=>{if(p==='전원')cur='S';else if(p==='중앙')cur='C';else if(p==='부하')cur='L';else{const r=rng(p);if(cur)acc[cur].push(...r);else free.push(...r);}});
+          ['S','C','L'].forEach(k2=>{if(acc[k2].length)sq[k2]=Math.max(...acc[k2]);});
+          if(free.length&&!Object.keys(sq).length){if(!sr)sr=Math.min(3,free.length);const ord=sr===1?['C']:sr===2?['S','L']:['S','C','L'];ord.forEach((k2,ii)=>{if(free[ii]!=null)sq[k2]=free[ii];else if(free.length)sq[k2]=free[0];});}}
+        if(sr&&sr!==(+d['supR'+k]||0))add(`#${k} 지지애자`,d['supR'+k]?d['supR'+k]+'련':'없음',sr+'련',()=>{d['supR'+k]=sr;d.sup=d.sup||{};d.sup.insulator=true;d.sup.insulator_year=true;});
+        Object.keys(sq).forEach(k2=>{if(sq[k2]!==(+d['supQ'+k+k2]||0))add(`#${k} 지지 ${({S:'전원',C:'중앙',L:'부하'})[k2]}`,d['supQ'+k+k2]?d['supQ'+k+k2]+'개':'없음',sq[k2]+'개',()=>{d['supQ'+k+k2]=sq[k2];});});}
       const lbl=n>0?`합계 ${n}개`:'';
       if(lbl&&lbl!==d['insD'+k])add(`#${k} 애자 합계`,d['insD'+k]||'없음',lbl,()=>{d['insD'+k]=lbl;delete d['insQ'+k];delete d['ren'+k];});}
     if(ty&&!/^x$/i.test(ty)&&ty!==d['insT'+k])add(`#${k} 련형`,d['insT'+k]||'없음',ty,()=>{d['insT'+k]=ty;});});
