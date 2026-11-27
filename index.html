@@ -1997,7 +1997,7 @@ function renderCard(){
         <div class="field"><label for="fH">철탑 높이</label><div class="unit" data-unit="m"><input id="fH" type="number" inputmode="decimal" min="10" max="250" step="0.1" placeholder="${t.autoH}" value="${t.d.h>0?t.d.h:''}"></div></div>
       </div>
       <div class="field"><label for="fForm">철탑 형</label><div class="unit" data-unit="형"><input id="fForm" type="text" placeholder="예: A, B, SA, D" value="${esc(stripForm(t.d.form))}"></div></div>
-      <div class="row2">${[1,2].map(i=>`<div class="field"><label for="fInsQ${i}">#${i} 애자 수량${t.d['insT'+i]?' · '+esc(t.d['insT'+i]):''}</label><div class="unit" data-unit="개"><input id="fInsQ${i}" type="number" inputmode="numeric" min="0" max="9999" step="1" value="${t.d['insQ'+i]>0?t.d['insQ'+i]:''}"></div></div>`).join('')}</div>
+      <div class="row2">${[1,2].map(i=>`<div class="field"><label for="fInsQ${i}">#${i} 애자 (상별)${t.d['insT'+i]?' · '+esc(t.d['insT'+i]):''}${t.d['insD'+i]?'<br><small style="color:var(--muted)">'+esc(t.d['insD'+i].replace(/^상별 \d+개 ?/,''))+'</small>':''}</label><div class="unit" data-unit="개"><input id="fInsQ${i}" type="number" inputmode="numeric" min="0" max="9999" step="1" value="${t.d['insQ'+i]>0?t.d['insQ'+i]:''}"></div></div>`).join('')}</div>
       ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.spanSrc==='manual'?' · 직접 고친 값을 쓰는 중':' · 자동 적용됨'}</span>${t.d.spanSrc==='manual'?`<button class="ghost" type="button" id="spanGps" style="flex:none">위치값으로 되돌리기</button>`:''}</div>`:''}</div>`:''}
       <p class="err" id="tErr" hidden></p>
       <dl>
@@ -4559,7 +4559,14 @@ function stdTower(l,d,t,C,ctx){
   }
   // v21.56: 애자 수량 #1·#2 (련형 옆 수량 칸) + 련형 기호
   C.ry.forEach((c,i)=>{const k=i+1,x=v(c+1),n=typeof x==='number'?x:(/^\s*\d+\s*$/.test(String(x))?+x:0),ty=lgT(v(c)).replace(/\s/g,'');
-    if(n>0&&n!==(+d['insQ'+k]||0))add(`#${k} 애자 수량`,d['insQ'+k]?d['insQ'+k]+'개':'없음',n+'개',()=>{d['insQ'+k]=n;});
+    // v21.60: 엑셀 수량은 회선 합계(3상) → 셀 메모 '상단 … 1-9번 애자' 로 상별 개수, 없으면 합계 ÷ 3
+    if(n>0){const m=(t.cm||{})[c+1]||(t.cm||{})[c]||'';let per=0,how='';
+      const top=m.split(/상단/).slice(1).map(x=>x.split(/중단|하단|지지\s*:|내장\s*:|현수\s*:/)[0]).join(' ');   // 내장·지지 블록마다 '상단' 부분
+      const rg=[...top.matchAll(/(\d+)\s*-\s*(\d+)\s*번/g)];
+      if(rg.length){per=rg.reduce((a,x)=>a+Math.max(0,+x[2]-+x[1]+1),0);how=rg.map(x=>+x[2]-+x[1]+1).join('+')+'개';}
+      if(!(per>0)||(n%3===0&&per*3!==n&&Math.abs(per*3-n)>n*0.2)){per=n%3===0?n/3:n;how='';}
+      const lbl=`상별 ${per}개${how&&how!==per+'개'?' ('+how+')':''} · 합계 ${n}${per*3!==n&&per!==n?' · 상마다 다름(상단 기준)':''}`;
+      if(per!==(+d['insQ'+k]||0)||lbl!==d['insD'+k])add(`#${k} 애자 수량(상별)`,d['insQ'+k]?d['insQ'+k]+'개':'없음',lbl,()=>{d['insQ'+k]=per;d['insD'+k]=lbl;});}
     if(ty&&!/^x$/i.test(ty)&&ty!==d['insT'+k])add(`#${k} 련형`,d['insT'+k]||'없음',ty,()=>{d['insT'+k]=ty;});});
   // 아킹혼·링 #1/#2 (전원·부하) → 피뢰기 칸이 있으면 그 자리는 피뢰기
   const A={};
