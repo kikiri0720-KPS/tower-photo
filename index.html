@@ -3503,7 +3503,7 @@ const SML=[["src","전원측"],["mid","중앙"],["load","부하측"]];
 const TIERS=[["u","상"],["m","중"],["d","하"]];
 const TIER_KEYS=["u","m","d"];
 const S12=TIERS.flatMap(([t,tn])=>[["1","#1"],["2","#2"]].flatMap(([no,nn])=>[["src","전원측"],["load","부하측"]].map(([sd,sn])=>[(t==="u"?"":t+"_")+(no==="2"?"2_":"")+sd,`${nn} ${tn} ${sn}`,t])));
-const SUP=[["sup_src","지지애자 #1 전원측"],["sup_load","지지애자 #1 부하측"],["sup_2_src","지지애자 #2 전원측"],["sup_2_load","지지애자 #2 부하측"]];
+const SUP=[["sup_src","지지애자 #1 전원측"],["sup_mid","지지애자 #1 중앙"],["sup_load","지지애자 #1 부하측"],["sup_2_src","지지애자 #2 전원측"],["sup_2_mid","지지애자 #2 중앙"],["sup_2_load","지지애자 #2 부하측"]];   // v21.65: 중앙(3련)
 const ITEMS=[
 {id:"top",label:"상부",sides:SL},
 {id:"view",label:"전경",sides:SL,optSides:[["s1","#1측"],["s2","#2측"]],optLabel:"옆면 전경 (#1측·#2측) 추가 (선택)"},
@@ -3815,7 +3815,12 @@ function groupCard(t,tp,g){
     cb.onchange=()=>{t.d.sup=t.d.sup||{};t.d.sup[g.id]=cb.checked;save();renderLedger();};
     lb.append(cb,document.createTextNode(g.optLabel||'지지애자 추가 (선택)'));
     c.append(lb);
-    if(on) g.optSides.filter(inNo).forEach(renderSide);
+    // v21.65: 지지애자 련 수에 맞춰 칸을 보여 줌 — 1련 지지 · 2련 전원/부하 · 3련 전원/중앙/부하 (련 수를 안 정했으면 전원/부하)
+    const supCut=([s,n])=>{if(g.optSides!==SUP)return [[s,n]];const no=s.includes('2_')?'2':'1',r=+t.d['supR'+no]||0,pos=s.replace(/^sup_(2_)?/,''),has2=photosOf(tid,g.id+'_'+s).length>0;
+      if(r===1)return pos==='src'?[[s,`지지애자 #${no}`]]:has2?[[s,n]]:[];
+      if(r>=3)return [[s,n]];
+      return pos==='mid'&&!has2?[]:[[s,n]];};
+    if(on) g.optSides.filter(inNo).flatMap(supCut).forEach(renderSide);
   }
   return c;
 }
@@ -4020,6 +4025,7 @@ function slotByName(fname,ord){
   if(/SP종류/.test(n)) return 'sp_type';
   if(/전경/.test(n)) return /#1측/.test(n)?'view_s1':/#2측/.test(n)?'view_s2':/전원/.test(n)?'view_src':/부하/.test(n)?'view_load':'skip';
   const pos=/전원/.test(n)?'src':/중앙/.test(n)?'mid':/부하/.test(n)?'load':null;
+  if(/지지/.test(n)&&!/OPGW|GW/.test(n)) return (/년도/.test(n)?'insulator_year':'insulator')+'_sup'+(/#2|2회선/.test(n)?'_2':'')+'_'+(pos||'src');   // v21.65: 지지애자 (#1·#2, 전원·중앙·부하)
   if(/OPGW/.test(n)&&pos) return 'opgw_'+pos;
   if(/(^|[^P])GW/.test(n)&&pos&&!/애자련/.test(n)) return 'gw_'+pos;
   if(/기초부지/.test(n)) return 'base';
