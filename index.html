@@ -4477,7 +4477,7 @@ function stdCols(rows,h){
   const f=(re,from)=>{for(let c=from||1;c<n;c++)if(re.test(J[c]))return c;return -1;};
   const C={span:f(/^경간/),dir:f(/방향/),deg:f(/도분/),form:J.indexOf('형'),tot:f(/전장/),rfid:f(/RFID/i),
     ry:J.map((x,c)=>/련형/.test(x)?c:-1).filter(c=>c>0).slice(0,2),arc:f(/^아킹/),arr:f(/^피뢰기/),
-    paint:f(/철탑도장/),lamp:f(/^표시등/),ball:f(/^표시구/),note:f(/^특기/)};
+    paint:f(/철탑도장/),jm:f(/^지목/),lamp:f(/^표시등/),ball:f(/^표시구/),note:f(/^특기/)};
   C.sb1=f(/^SB/i);C.sb2=C.sb1>0?f(/^SB/i,C.sb1+2):-1;
   C.balls=C.ball>0?[C.ball].concat(C.ball+1<n&&!/기초/.test(J[C.ball+1])&&!/기초/.test(G[C.ball+1]||'')&&G[C.ball+1]===G[C.ball]?[C.ball+1]:[]):[];
   // 가공지선 댐퍼 칸마다 GW / OPGW (제목에 적힌 대로, 없으면 null → 앱 선로 설정)
@@ -4556,6 +4556,15 @@ function stdTower(l,d,t,C,ctx){
     if(/전/.test(x))A['arr'+(i+1)+'S']='아킹혼·링';if(/부/.test(x))A['arr'+(i+1)+'L']='아킹혼·링';});
   if(C.arr>0)Object.assign(A,stdArr(v(C.arr),ctx.circ));
   Object.keys(A).forEach(k=>{if(arrN(d[k])===A[k])return;const n=`#${k[3]} ${k[4]==='S'?'전원측':'부하측'}`;add(n,arrN(d[k])||'없음',A[k],()=>{d[k]=A[k];});});
+  // v21.50: 전력선 SB댐퍼 #1+#2 → 전력선 댐퍼 (전원·부하 반반)
+  if(C.sb1>0){const n=lgNum(v(C.sb1))+lgNum(v(C.sb1+1)),cur=(+d.dmpPS||0)+(+d.dmpPL||0);
+    if(n>0&&n!==cur){const S=Math.ceil(n/2),L=n-S;add('전력선 댐퍼',`${cur}개`,`${n}개 (전원 ${S}·부하 ${L})`,()=>{d.dmpPS=S;d.dmpPL=L;d.on_dmpP=true;});}}
+  // v21.50: 가공지선 칸에 '베이트' → GW 배이트
+  if(C.sb2>0&&[0,1].some(i=>/베\s*이\s*트|bait/i.test(lgT(v(C.sb2+i))))&&d.gwKind!=='bait')
+    add('GW 댐퍼·배이트',d.gwKind==='bait'?'배이트':'댐퍼','배이트',()=>{d.gwKind='bait';d.on_dmpGW=true;});
+  // v21.50: 지목 → 철탑 밑 표시 (답·논 → 논 · 전·밭·과수원 → 밭 · 대지·도로·공장 → 도심지)
+  if(C.jm>0){const j=lgC(v(C.jm));const k=/^(답|논)/.test(j)?'paddy':/^(전|밭|과)/.test(j)?'field':/^(대|도로|공장|잡종|학교|주차)/.test(j)?'urban':null;
+    if(k&&d.land!==k){const nm=x=>({paddy:'논',field:'밭',urban:'도심지'})[x]||'없음';add('철탑 밑 표시',nm(d.land),nm(k)+` (지목 ${j})`,()=>{d.land=k;});}}
   // 가공지선 SB댐퍼 (철탑 전체 개수 → 전원·부하 반반)
   if(C.sb2>0){
     const acc={GW:0,OPGW:0};let any=false;
@@ -4675,7 +4684,7 @@ function lgPreview(SR){
   const byL=new Map();out.forEach(o=>{if(!byL.has(o.l))byL.set(o.l,[]);byL.get(o.l).push(o);});
   seqModal((bx,close)=>{
     bx.append(el('p',null,'📥 설비 대장으로 고치기'));
-    bx.append(el('p','note','경간·수평각·형식·높이(전장)·현수/내장·지지애자·댐퍼(GW/OPGW)·철탑도장(항공·친환경)·항공구·항공장애등·피뢰기/아킹혼·RFID를 읽고, 나머지 칸(스페이서·스리브·애자 종류·특기사항·애자 제작사 등)은 📋 설비 대장에 넣어요. 빈칸·X는 앱 값을 지우지 않아요.'));
+    bx.append(el('p','note','경간·수평각·형식·높이(전장)·현수/내장·지지애자·피뢰기/아킹혼·전력선 댐퍼·GW/OPGW 댐퍼(배이트)·지목(논·밭·도심지)·철탑도장(항공·친환경)·항공구·항공장애등·피뢰기/아킹혼·RFID를 읽고, 나머지 칸(스페이서·스리브·애자 종류·특기사항·애자 제작사 등)은 📋 설비 대장에 넣어요. 빈칸·X는 앱 값을 지우지 않아요.'));
     if(!out.length) bx.append(el('p','note','바뀔 내용이 없어요.'));
     else bx.append(el('p','note',`선로 ${byL.size}개 · 철탑 ${out.length}기 · ${out.reduce((a,o)=>a+o.ch.length,0)}곳이 바뀌어요. 선로를 눌러 자세히 보고 [적용]을 누르세요.`));
     const ol=el('div','sq-list'), pick=new Set(byL.keys());
