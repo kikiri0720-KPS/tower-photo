@@ -423,6 +423,7 @@ body.split .ledger{left:auto;width:var(--pw);border-left:2px solid var(--accent)
       <button class="btn" id="zipBtn" type="button" hidden>사진 ZIP</button>
       <button class="btn" id="xlInBtn" type="button" title="선로 기별 엑셀로 철탑 정보 고치기">📥 엑셀로 고치기</button>
       <button class="btn" id="xlUndoBtn" type="button" title="마지막 엑셀 적용 전으로 되돌리기" hidden>↩ 엑셀 되돌리기</button>
+      <button class="btn" id="faultBtn" type="button" title="계전기 고장점 표정 거리로 고장 지점 표시">⚡ 고장점</button>
       <button class="btn" id="bulkBtn" type="button" title="파일 이름(철탑 번호+항목)으로 선로 전체 사진을 한번에">📷 사진 넣기</button>
       <button class="btn" id="xlsBtn" type="button" title="전체 선로 기별을 엑셀로">📊 엑셀</button>
       <button class="btn" id="tWire" type="button" aria-pressed="true">전선</button>
@@ -1396,7 +1397,7 @@ function buildAll(){
   {const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(ring,3));g.setAttribute('color',new T.Float32BufferAttribute(ringC,3));world.add(new T.LineSegments(g,new T.LineBasicMaterial({vertexColors:true})));}
   {const mk=(arr,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(arr,3));return new T.LineSegments(gg,new T.LineBasicMaterial({color}));};
    const wires=new T.Group();wires.add(mk(ph,wireC));if(gwA.length)wires.add(mk(gwA,steel));wires.visible=showWires;world.add(wires);world.userData.wires=wires;}
-  scene.add(world); try{lot3Redraw();}catch(e){}
+  scene.add(world); try{lot3Redraw();}catch(e){} try{faultRedraw();}catch(e){}
   towers=all; pathInfo=null; strobes=[];
   // 번호표: 선로 색 + 번호, 누르면 그 선로로 들어감
   towers.forEach(t=>{
@@ -1769,7 +1770,7 @@ function build(){
   const pl=new T.Line(new T.BufferGeometry().setFromPoints(pts),new T.LineDashedMaterial({color:new T.Color(cssVar('--accent')),dashSize:20,gapSize:12}));
   pl.computeLineDistances(); pl.visible=showPath; world.add(pl); world.userData.path=pl;
   pathInfo={pts,cum,dirs,towerS,total:cum[cum.length-1]||1};
-  scene.add(world); try{lot3Redraw();}catch(e){}
+  scene.add(world); try{lot3Redraw();}catch(e){} try{faultRedraw();}catch(e){}
 
   // 라벨
   towers.forEach(t=>{
@@ -4762,6 +4763,118 @@ function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
   }
   return {out,unmatched,noLine,overlap,mapped};
 }
+
+// ── v21.66: ⚡ 고장점 표시 — 계전기 고장점 표정 거리(km)를 넣으면 그 지점 경간을 3D에 빨갛게 ──
+//   선로마다: No.1 쪽 변전소(ssA)·끝 번호 쪽 변전소(ssB), 변전소~첫/끝 철탑 거리(지중·인출, ugA/ugB km)
+let FAULT=null;   // {lineId, pts:[{ss,km,d}], err(km)}
+const ssDef=l=>{const n=stripTL(l.name).replace(/#\s*\d+/g,'').split(/\s*[-–~]\s*/);return [(l.ssA||n[0]||'').trim(),(l.ssB||n[n.length-1]||'').trim()];};
+const ssKey=s=>String(s||'').replace(/\s|S\/S|SS|변전소|발전소|개폐소|S\.S/gi,'');
+function faultSpans(l){const n=l.towers.length,cum=[0];for(let i=0;i<n-1;i++){const d=l.towers[i];cum.push(cum[i]+(d.span>0?+d.span:defSpan(i,l.seed)));}return cum;}
+// 변전소 기준 km → 선로(No.1 철탑부터) 거리 m
+function faultD(l,end,km){const cum=faultSpans(l),L=cum[cum.length-1],ug=(+(end==='A'?l.ugA:l.ugB)||0)*1000,m=km*1000-ug;return end==='A'?m:L-m;}
+function faultWhere(l,d){const cum=faultSpans(l),n=cum.length,L=cum[n-1];
+  if(d<0)return {txt:`${ssDef(l)[0]} S/S ~ ${NO(l.towers[0].label)} 사이 (지중·인출 구간, 첫 철탑에서 ${Math.round(-d)}m 전)`,i:-1};
+  if(d>L)return {txt:`${NO(l.towers[n-1].label)} ~ ${ssDef(l)[1]} S/S 사이 (지중·인출 구간, 끝 철탑에서 ${Math.round(d-L)}m 뒤)`,i:n-1};
+  let i=0;while(i<n-2&&cum[i+1]<d)i++;const a=d-cum[i],b=cum[i+1]-d;
+  return {i,u:(cum[i+1]-cum[i])?a/(cum[i+1]-cum[i]):0,txt:`${NO(l.towers[i].label)} → ${NO(l.towers[i+1].label)} 경간 · ${NO(l.towers[i].label)}에서 ${Math.round(a)}m (${NO(l.towers[i+1].label)}까지 ${Math.round(b)}m)`};}
+function faultRangeTxt(l,d0,d1){const cum=faultSpans(l),n=cum.length;const ix=d=>{let i=0;while(i<n-1&&cum[i+1]<d)i++;return Math.max(0,Math.min(n-1,i));};
+  const a=ix(Math.max(0,d0)),b=Math.min(n-1,ix(Math.max(0,d1))+1);return `${NO(l.towers[a].label)} ~ ${NO(l.towers[b].label)}`;}
+function faultRedraw(){
+  if(!FAULT||ALL||!world||!cur()||cur().id!==FAULT.lineId)return;
+  const l=cur(),cum=faultSpans(l),n=cum.length;if(n<2||towers.length!==n)return;
+  const P=d=>{d=Math.max(0,Math.min(cum[n-1],d));let i=0;while(i<n-2&&cum[i+1]<d)i++;const u=(cum[i+1]-cum[i])?(d-cum[i])/(cum[i+1]-cum[i]):0,A=towers[i],B=towers[i+1];
+    return new T.Vector3(A.x+(B.x-A.x)*u,(A.y+A.H*.78)+((B.y+B.H*.78)-(A.y+A.H*.78))*u-Math.sin(Math.PI*u)*(cum[i+1]-cum[i])*.02,A.z+(B.z-A.z)*u);};
+  const g=new T.Group(),red=new T.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:.95,depthTest:false}),band=new T.MeshBasicMaterial({color:0xff3b3b,transparent:true,opacity:.5,depthTest:false});
+  const tube=(a,b,r,mat)=>{const v=b.clone().sub(a),len=v.length();if(len<.1)return;const m=new T.Mesh(new T.CylinderGeometry(r,r,len,8,1,true),mat);m.position.copy(a).addScaledVector(v,.5);m.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),v.normalize());m.renderOrder=9;g.add(m);};
+  const lab=(txt,p)=>{const c=document.createElement('canvas'),x=c.getContext('2d');c.width=512;c.height=96;x.fillStyle='rgba(200,20,20,.92)';x.fillRect(0,0,512,96);x.fillStyle='#fff';x.font='bold 44px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(txt,256,50);
+    const s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(c),depthTest:false}));const k=Math.max(40,(towers[0].H||40)*1.4);s.scale.set(k*2.1,k*.4,1);s.position.copy(p);s.renderOrder=11;g.add(s);};
+  const e=(FAULT.err||0)*1000;
+  FAULT.pts.forEach((f,ii)=>{
+    // 오차 범위: 전선 높이를 따라 빨간 띠
+    if(e>0){let prev=null;for(let d=f.d-e;d<=f.d+e+1;d+=Math.max(10,e/20)){const q=P(d);if(prev)tube(prev,q,1.4,band);prev=q;}}
+    const p=P(f.d),gy=p.y-(towers[Math.max(0,Math.min(n-1,faultWhere(l,f.d).i))].H||40)*.78;
+    tube(new T.Vector3(p.x,gy,p.z),new T.Vector3(p.x,p.y+120,p.z),2.2,red);
+    const s=new T.Mesh(new T.SphereGeometry(9,16,12),red);s.position.copy(p);s.renderOrder=10;g.add(s);
+    lab(`⚡ ${f.ss} ${f.km}km`,new T.Vector3(p.x,p.y+150+ii*40,p.z));
+  });
+  world.add(g);
+}
+function faultBox(){
+  let b=document.getElementById('faultBox');
+  if(!FAULT){if(b)b.remove();return;}
+  const l=lines.find(x=>x.id===FAULT.lineId);if(!l){FAULT=null;if(b)b.remove();return;}
+  if(!b){b=document.createElement('div');b.id='faultBox';b.className='lot3';b.style.top='auto';b.style.bottom='calc(150px + env(safe-area-inset-bottom,0px))';document.body.appendChild(b);
+    b.addEventListener('click',ev=>{const x=ev.target.closest('[data-fb]');if(!x)return;
+      if(x.dataset.fb==='clear'){FAULT=null;faultBox();build();}
+      if(x.dataset.fb==='fly')faultFly();
+      if(x.dataset.fb==='edit')openFault();});}
+  const e=FAULT.err||0,rows=FAULT.pts.map(f=>`<div class="lotr"><b>${esc(f.ss)} S/S ${f.km}km</b> → ${esc(faultWhere(l,f.d).txt.replace(/<[^>]+>/g,''))}${e?`<br>오차 ±${e}km 범위: ${esc(faultRangeTxt(l,f.d-e*1000,f.d+e*1000).replace(/<[^>]+>/g,''))}`:''}</div>`).join('');
+  const both=FAULT.pts.length===2?`<div class="lotw">양쪽 표정 차이 ${Math.round(Math.abs(FAULT.pts[0].d-FAULT.pts[1].d))}m · 두 지점 사이가 유력</div>`:'';
+  b.innerHTML=`<button type="button" class="lot3x" data-fb="clear" aria-label="고장점 지우기">×</button><div class="lotpop"><span class="lotj">⚡ 고장점 · ${esc(LN(l))}</span>${rows}${both}
+    <div style="display:flex;gap:6px;margin-top:6px"><button class="ghost" type="button" data-fb="fly">📍 가 보기</button><button class="ghost" type="button" data-fb="edit">✏ 고치기</button><button class="ghost" type="button" data-fb="clear">지우기</button></div></div>`;
+}
+function faultFly(){if(!FAULT)return;const l=cur();if(!l||l.id!==FAULT.lineId)return;const w=faultWhere(l,FAULT.pts[0].d),i=Math.max(0,Math.min(towers.length-1,w.i));const t=towers[i],t2=towers[Math.min(towers.length-1,i+1)];if(!t)return;const tg=new T.Vector3((t.x+t2.x)/2,(t.y+t2.y)/2+t.H*.6,(t.z+t2.z)/2),D=Math.max(550,(FAULT.err||0)*1400);
+  const hx=t2.x-t.x,hz=t2.z-t.z,hl=Math.hypot(hx,hz)||1;flyTo(new T.Vector3(tg.x-hz/hl*D*.9,tg.y+D*.6,tg.z+hx/hl*D*.9),tg);}
+// 메시지 읽기: 고장선로 · '○○S/S … 17.5km'
+function faultParse(txt){
+  const r={line:null,ss:[],km:[]};const s=String(txt||'');
+  const m=s.match(/고장\s*선로\s*[:：]\s*([^\n(]+)/);const nm=m?m[1]:'';
+  if(nm){const k=lgNorm(nm);let best=null,bs=0;lines.forEach(l=>{const n=lgNorm(l.name);if(!n)return;const sc=n===k?3:(k.includes(n)||n.includes(k))?2:0;if(sc>bs){bs=sc;best=l;}});r.line=best;r.name=nm.trim();}
+  [...s.matchAll(/([가-힣A-Za-z]{1,8})\s*(?:S\/S|SS|S\.S|변전소|개폐소|발전소)/gi)].forEach(x=>{if(!r.ss.includes(x[1]))r.ss.push(x[1]);});
+  // 줄마다: 그 줄의 '○○S/S' + 'N.Nkm' (154kV 같은 숫자는 km가 아니라 안 읽음)
+  s.split(/\n/).forEach(ln=>{const k=[...ln.matchAll(/(\d+(?:\.\d+)?)\s*(?:km|㎞|키로|킬로)/gi)];if(!k.length)return;
+    const sm=ln.match(/([가-힣A-Za-z]{1,8})\s*(?:S\/S|SS|S\.S|변전소|개폐소|발전소)/i);
+    k.forEach(x=>{const before=ln.slice(0,x.index),m2=[...before.matchAll(/([가-힣A-Za-z]{1,8})\s*(?:S\/S|SS|S\.S|변전소|개폐소|발전소)/gi)].pop();
+      r.km.push({ss:(m2||sm||[,''])[1],km:+x[1]});});});
+  return r;
+}
+function openFault(pre){
+  seqModal((bx,close)=>{
+    bx.append(el('p',null,'⚡ 고장점 표시'));
+    bx.append(el('p','note','계전기 고장점 표정 거리(km)를 넣으면 그 지점 경간을 3D에 빨갛게 표시해요. 모의훈련·고장 메시지를 붙여 넣으면 선로·변전소·거리를 읽어요.'));
+    const ta=document.createElement('textarea');ta.rows=3;ta.placeholder='메시지 붙여넣기 (선택) — 예: 고장선로 : 154kV 대동-매리#1T/L … 매리S/S 17.5km';ta.style.cssText='width:100%;font:14px var(--ui);padding:8px;border-radius:8px;border:1px solid var(--line,#ccc)';bx.append(ta);
+    const sel=document.createElement('select');sel.style.cssText='width:100%;margin-top:8px';lines.forEach(l=>{const o=document.createElement('option');o.value=l.id;o.textContent=LN(l);sel.append(o);});
+    sel.value=(FAULT&&FAULT.lineId)||(cur()&&cur().id)||lines[0].id;bx.append(sel);
+    const f=el('div');bx.append(f);
+    const inp=(ph,v,w)=>{const i=document.createElement('input');i.type=ph==='km'?'number':'text';if(ph==='km'){i.inputMode='decimal';i.step='0.01';i.min='0';}i.placeholder=ph;i.value=v==null?'':v;i.style.cssText=`width:${w||'100%'}`;return i;};
+    let A,B,UA,UB,KA,KB,ERR=FAULT?FAULT.err:0.5;
+    const draw=()=>{const l=lines.find(x=>x.id===sel.value);const [a,b]=ssDef(l);f.innerHTML='';
+      const row=(lbl,...xs)=>{const r=el('div');r.style.cssText='display:grid;grid-template-columns:96px 1fr 1fr;gap:6px;align-items:center;margin-top:6px';r.append(el('span','lb',lbl),...xs);f.append(r);};
+      A=inp('변전소',a);B=inp('변전소',b);UA=inp('km',l.ugA);UB=inp('km',l.ugB);
+      const old=FAULT&&FAULT.lineId===l.id?FAULT.pts:[];KA=inp('km',(old.find(p=>p.end==='A')||{}).km);KB=inp('km',(old.find(p=>p.end==='B')||{}).km);
+      const hd=el('div');hd.style.cssText='display:grid;grid-template-columns:96px 1fr 1fr;gap:6px;margin-top:8px;font-size:12px';hd.append(el('span'),el('span','lb',`${NO(l.towers[0].label)} 쪽`.replace(/<[^>]+>/g,'')),el('span','lb',`${NO(l.towers[l.towers.length-1].label)} 쪽`.replace(/<[^>]+>/g,'')));f.append(hd);
+      row('변전소',A,B);row('지중·인출 km',UA,UB);row('표정 거리 km',KA,KB);
+      f.append(el('p','note','지중·인출 km = 변전소에서 첫(끝) 철탑까지 지중 케이블·인출 길이. 없으면 비워 두세요. 거리는 한쪽만 넣어도 돼요.'));
+      const er=el('div');er.innerHTML=`<span class="lb">오차 범위</span>`+segHTML('data-ferr',[0,0.3,0.5,1,2],ERR,v=>v?'±'+v+'km':'없음');f.append(er);
+      er.querySelectorAll('[data-ferr]').forEach(x=>x.onclick=()=>{ERR=+x.getAttribute('data-ferr');er.querySelectorAll('[data-ferr]').forEach(y=>y.setAttribute('aria-pressed',String(y===x)));});
+    };
+    sel.onchange=draw;draw();
+    const rd=el('button','ghost','📄 메시지 읽기');rd.type='button';
+    rd.onclick=()=>{const r=faultParse(ta.value);if(r.line){sel.value=r.line.id;draw();}else if(r.name)say(`'${r.name}' 선로를 앱에서 못 찾았어요. 선로를 직접 고르세요.`);
+      const l=lines.find(x=>x.id===sel.value),[a,b]=ssDef(l);
+      if(r.ss.length>=2&&!l.ssA&&!l.ssB){const ia=r.ss.findIndex(x=>ssKey(x)===ssKey(a)),ib=r.ss.findIndex(x=>ssKey(x)===ssKey(b));if(ia<0&&ib<0){A.value=r.ss[0];B.value=r.ss[1];}}
+      r.km.forEach(k=>{const ka=ssKey(k.ss);if(ka&&ka===ssKey(A.value))KA.value=k.km;else if(ka&&ka===ssKey(B.value))KB.value=k.km;else if(!KA.value)KA.value=k.km;});
+      say(r.km.length?`거리 ${r.km.map(k=>k.ss+' '+k.km+'km').join(', ')} 를 읽었어요.`:'메시지에 km 거리가 없어요. 거리를 직접 넣어 주세요.');};
+    const go=el('button','primary','📍 표시');go.type='button';
+    go.onclick=()=>{const l=lines.find(x=>x.id===sel.value);
+      const pts=[];[['A',A,KA],['B',B,KB]].forEach(([end,s,k])=>{const km=parseFloat(k.value);if(km>=0&&k.value!=='')pts.push({end,ss:s.value.trim()||(end==='A'?'기점':'종점'),km});});
+      if(!pts.length){say('표정 거리(km)를 넣어 주세요.');return;}
+      // 선로에 변전소 이름·지중 길이 저장 (고칠 수 있는 사람만)
+      const ua=parseFloat(UA.value),ub=parseFloat(UB.value),[a0,b0]=ssDef(l);
+      if(canEdit()){let ch=false;const setK=(k,v)=>{if((l[k]??'')!==(v??'')){if(v===''||v==null||Number.isNaN(v))delete l[k];else l[k]=v;ch=true;}};
+        if(A.value.trim()!==a0)setK('ssA',A.value.trim());if(B.value.trim()!==b0)setK('ssB',B.value.trim());setK('ugA',ua>0?ua:'');setK('ugB',ub>0?ub:'');if(ch)save();}
+      else{l.ugA=ua>0?ua:undefined;l.ugB=ub>0?ub:undefined;}
+      FAULT={lineId:l.id,err:ERR,pts:pts.map(p=>({...p,d:faultD(l,p.end,p.km)}))};
+      close();if(curId!==l.id){curId=l.id;lineSel.value=l.id;lsSet('tower3d-cur',curId);selT=null;card.hidden=true;}
+      build();faultBox();setTimeout(faultFly,60);};
+    const cl=el('button','ghost','닫기');cl.type='button';cl.onclick=close;
+    const bar=el('div');bar.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:10px';bar.append(rd,go,cl);
+    if(FAULT){const x=el('button','ghost','고장점 지우기');x.type='button';x.onclick=()=>{FAULT=null;faultBox();close();build();};bar.append(x);}
+    bx.append(bar);
+    if(pre){ta.value=pre;rd.onclick();}
+  });
+}
+gid('faultBtn').addEventListener('click',()=>openFault());
 
 gid('xlInBtn').addEventListener('click',()=>{
   if(!canEdit()){say(RO_MSG);return;}
