@@ -4764,14 +4764,6 @@ function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
       const ix=t=>{const d=byLab.get(labKey(t.label));return d?l.towers.indexOf(d):-1;};let fw=0,bw=0;
       for(let i=1;i<ts.length;i++){const a=ix(ts[i-1]),b=ix(ts[i]);if(a<0||b<0)continue;if(b===a+1)fw++;else if(a===b+1)bw++;}
       ctx={rev:bw>fw,circ:P.C.circ};
-      // v21.69: 제목의 '구간 : 고리NP S/S ~ 북부산 S/S' → No.1(작은 번호) 쪽 변전소 / 끝 쪽 변전소 (고장점 거리 기준)
-      {const h=rows.findIndex(STD_isHead),tt=rows.slice(0,Math.max(0,h)).flat().map(lgT).join(' ');
-        const seg=(tt.match(/구간\s*[:：]?([^\n]*?S\/S[^\n]*?S\/S)/)||[])[1]||tt;
-        const found=[...seg.matchAll(/([가-힣A-Za-z0-9]{2,12})\s*S\/S/g)].map(x=>x[1]);
-        const parts=stripTL(l.name).replace(/#\s*\d+/g,'').split(/\s*[-–~]\s*/).map(x=>x.trim()).filter(Boolean);
-        const mp=found.map(f=>parts.find(pp=>f.includes(pp)||pp.includes(f))).filter(Boolean),ord=[...new Set(mp)];
-        if(ord.length===2&&l.towers.length){let a=ord[0],b=ord[1];if(ctx.rev)[a,b]=[b,a];const [a0,b0]=ssDef(l);
-          if(a!==a0||b!==b0){const d0=l.towers[0];push(l,d0,{ch:[`고장점 기준 변전소 (${NO(d0.label).replace(/<[^>]+>/g,'')} 쪽 / 끝 쪽) ${a0}/${b0} → ${a}/${b}`],set:[()=>{l.ssA=a;l.ssB=b;}]},sn);}}}
       // 경간: 엑셀은 '앞 철탑 → 이 철탑' 거리
       for(let i=1;i<ts.length;i++){const a=ix(ts[i-1]),b=ix(ts[i]),sp=lgNum(ts[i].row[P.C.span]);if(a<0||b<0||!(sp>0))continue;
         const tg=b===a+1?l.towers[a]:a===b+1?l.towers[b]:null;if(!tg)continue;{const s0=stdSrc.get(tg);if(s0&&s0!==sn)continue;}
@@ -4853,7 +4845,7 @@ function faultBox(){
         FAULT.pts.forEach(p=>{if(p.amb){p.ss=p.end==='A'?b:a;}else{p.end=p.end==='A'?'B':'A';}p.d=faultD(L,p.end,p.km);});if(canEdit())save();build();faultBox();say(`${NO(L.towers[0].label).replace(/<[^>]+>/g,'')} 쪽 = ${b} S/S, 끝 쪽 = ${a} S/S 로 바꿨어요`);}});}
   const e=FAULT.err||0,rows=FAULT.pts.map(f=>`<div class="lotr"><b>${f.amb?'❓ ':''}${esc(f.ss)} S/S ${f.km}km${f.amb?' 기준이면':''}</b> → ${esc(faultWhere(l,f.d).txt.replace(/<[^>]+>/g,''))}${e?`<br>오차 ±${e}km 범위: ${esc(faultRangeTxt(l,f.d-e*1000,f.d+e*1000).replace(/<[^>]+>/g,''))}`:''}</div>`).join('');
   const both=FAULT.pts.length===2&&!FAULT.pts[0].amb?`<div class="lotw">양쪽 표정 차이 ${Math.round(Math.abs(FAULT.pts[0].d-FAULT.pts[1].d))}m · 두 지점 사이가 유력</div>`:'';
-  b.innerHTML=`<button type="button" class="lot3x" data-fb="clear" aria-label="고장점 지우기">×</button><div class="lotpop"><span class="lotj">⚡ 고장점 · ${esc(LN(l))}</span>${rows}${both}${(()=>{const f0=String(l.towers[0].label),n0=parseInt(f0,10);return n0>1&&!(+l.ugA>0)?`<div class="lotw">⚠ 앱 선로가 ${NO(f0).replace(/<[^>]+>/g,'')}부터라 ${esc(ssDef(l)[0])} S/S~${NO(f0).replace(/<[^>]+>/g,'')} 거리를 모르면 ${esc(ssDef(l)[0])} 기준 위치는 그만큼 틀려요 (✏ 고치기 → 지중·인출 km에 넣기)</div>`:'';})()}${faultInfo(l).src==='경간'?`<div class="lotw">💡 이 선로 기별대장 엑셀(누계경간·구간)을 📥 엑셀로 고치기로 넣으면 방향·거리가 정확해져요</div>`:''}<span class="lotll">거리 기준: ${faultInfo(l).src}${l.ugA||l.ugB?` · 지중·인출 ${l.ugA||0}/${l.ugB||0}km`:''}</span>
+  b.innerHTML=`<button type="button" class="lot3x" data-fb="clear" aria-label="고장점 지우기">×</button><div class="lotpop"><span class="lotj">⚡ 고장점 · ${esc(LN(l))}</span>${rows}${both}${faultInfo(l).src==='경간'?`<div class="lotw">💡 이 선로 기별대장 엑셀(누계경간·구간)을 📥 엑셀로 고치기로 넣으면 방향·거리가 정확해져요</div>`:''}<span class="lotll">거리 기준: ${faultInfo(l).src}${l.ugA||l.ugB?` · 지중·인출 ${l.ugA||0}/${l.ugB||0}km`:''}</span>
     <div style="display:flex;gap:6px;margin-top:6px"><button class="ghost" type="button" data-fb="fly">📍 가 보기</button><button class="ghost" type="button" data-fb="edit">✏ 고치기</button><button class="ghost" type="button" data-fb="swap" title="No.1 쪽·끝 쪽 변전소를 서로 바꿈">⇄ 변전소</button><button class="ghost" type="button" data-fb="clear">지우기</button></div></div>`;
 }
 function faultFly(){if(!FAULT)return;const l=cur();if(!l||l.id!==FAULT.lineId)return;const w=faultWhere(l,FAULT.pts[0].d),i=Math.max(0,Math.min(towers.length-1,w.i));const t=towers[i],t2=towers[Math.min(towers.length-1,i+1)];if(!t)return;const tg=new T.Vector3((t.x+t2.x)/2,(t.y+t2.y)/2+t.H*.6,(t.z+t2.z)/2),D=Math.max(550,(FAULT.err||0)*1400);
@@ -4904,8 +4896,7 @@ function openFault(pre){
       if(r.ss.length>=2&&!l.ssA&&!l.ssB){const ia=r.ss.findIndex(x=>ssKey(x)===ssKey(a)),ib=r.ss.findIndex(x=>ssKey(x)===ssKey(b));if(ia<0&&ib<0){A.value=r.ss[0];B.value=r.ss[1];}}
       let used=null;r.km.forEach(k=>{const ka=ssKey(k.ss);if(ka&&ka===ssKey(A.value))KA.value=k.km;else if(ka&&ka===ssKey(B.value))KB.value=k.km;else if(!KA.value){KA.value=k.km;used=k;}});
       const nm=k=>(k.ry?k.ry+'Ry ':'')+(k.ss?k.ss+' ':'')+k.km+'km';
-      if(used&&!used.ss){ambOn=true;if(AMB)AMB.checked=true;}
-      say(r.km.length?`${r.line?LN(r.line)+' · ':''}거리 ${r.km.map(nm).join(', ')} 를 읽었어요.${used&&!used.ss?` 어느 변전소 기준인지 없어서 ${nm(used)}를 양쪽 기준으로 둘 다 표시할게요.`:''}`:'메시지에 km 거리가 없어요. 거리를 직접 넣어 주세요.',true);};
+            say(r.km.length?`${r.line?LN(r.line)+' · ':''}거리 ${r.km.map(nm).join(', ')} 를 읽었어요.${used&&!used.ss?` 변전소 이름이 없어 선로 이름 앞쪽 ${A.value} S/S(${NO(l.towers[0].label).replace(/<[^>]+>/g,'')} 쪽)에서 잰 거리로 넣었어요.`:''}`:'메시지에 km 거리가 없어요. 거리를 직접 넣어 주세요.',true);};
     const go=el('button','primary','📍 표시');go.type='button';
     go.onclick=()=>{const l=lines.find(x=>x.id===sel.value);
       const pts=[];[['A',A,KA],['B',B,KB]].forEach(([end,s,k])=>{const km=parseFloat(k.value);if(km>=0&&k.value!=='')pts.push({end,ss:s.value.trim()||(end==='A'?'기점':'종점'),km});});
