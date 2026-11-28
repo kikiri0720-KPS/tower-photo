@@ -602,6 +602,8 @@ function revertLocal(){
   lines=lines.filter(l=>serverHash[l.id]).map(l=>{const d=normalize(JSON.parse(serverHash[l.id]));d.id=l.id;return d;});
   if(!lines.find(l=>l.id===curId))curId=lines[0].id;
 }
+let FLUSH_FAIL=[];   // v21.67: 마지막 올리기에서 실패한 선로 id
+const canon=o=>JSON.stringify(o,(k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.keys(v).sort().reduce((a,x)=>(a[x]=v[x],a),{}):v);   // 키 순서 무시 비교 (서버 jsonb는 키 순서를 바꿈)
 let DB=null, AS=null, DL=true, serverHash={}, serverStamp={}, flushT=null, flushing=false, again=false, cloudReady=false, pulling=false;
 let photos=[], photoStamp='';   // 기별사진: {id,towerId,lineId,slot,path,name,at}
 const urlCache={};
@@ -623,12 +625,15 @@ async function flush(){
     const now={}; lines.forEach(l=>now[l.id]=JSON.stringify(l));
     const up=lines.filter(l=>now[l.id]!==serverHash[l.id]).map(l=>({id:l.id,data:JSON.parse(now[l.id]),updated_by:CLIENT}));
     const gone=Object.keys(serverHash).filter(id=>!(id in now));
-    if(up.length){
-      const {data,error}=await sb.from(T_LINES).upsert(up).select('id,updated_at');
-      if(error) throw error;
-      up.forEach(r=>{serverHash[r.id]=now[r.id];});
-      (data||[]).forEach(r=>{serverStamp[r.id]=r.updated_at;});
+    // v21.67: 선로를 하나씩 올림 (여러 선로를 한 번에 올리면 크기가 커서 서버가 거절할 수 있음) · 실패한 선로는 다음에 다시
+    let firstErr=null;FLUSH_FAIL=[];
+    for(const r of up){
+      const {data,error}=await sb.from(T_LINES).upsert([r]).select('id,updated_at');
+      if(error){firstErr=firstErr||error;FLUSH_FAIL.push(r.id);console.error('upload',r.id,error);if(/fetch|network|Load failed|timeout/i.test(String(error.message||error)))break;continue;}
+      serverHash[r.id]=now[r.id];
+      (data||[]).forEach(x=>{serverStamp[x.id]=x.updated_at;});
     }
+    if(firstErr) throw firstErr;
     if(gone.length){
       const {error}=await sb.from(T_LINES).delete().in('id',gone);
       if(error) throw error;
@@ -636,7 +641,7 @@ async function flush(){
     }
     writeCache(); syncState('ok','저장됨 · 공유 중');
   }catch(e){
-    console.error(e); syncState('err',navigator.onLine===false||/fetch|network|Load failed|timeout/i.test(String(e&&e.message||e))?'📵 연결 안 됨 · 휴대폰에 저장됨 (연결되면 자동으로 올림)':'저장 실패 · 다시 시도 중'); clearTimeout(flushT); flushT=setTimeout(flush,10000);
+    console.error(e); syncState('err',navigator.onLine===false||/fetch|network|Load failed|timeout/i.test(String(e&&e.message||e))?'📵 연결 안 됨 · 휴대폰에 저장됨 (연결되면 자동으로 올림)':'저장 실패 · 다시 시도 중 ('+String((e&&(e.code||e.message))||'').slice(0,40)+')'); clearTimeout(flushT); flushT=setTimeout(flush,10000);
   }finally{
     flushing=false; if(again){again=false;flush();}
   }
@@ -5062,7 +5067,7 @@ gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syn
         lines=rows.map(r=>{const d=normalize(r.data);d.id=r.id;serverHash[r.id]=JSON.stringify(d);serverStamp[r.id]=r.updated_at;
           // 연결 안 될 때 이 기기에서 고친 선로는 이 기기 것을 살려서 서버에 올림
           const L0=loc[r.id], j0=L0&&JSON.stringify(L0);
-          if(L0&&baseH[r.id]&&strHash(j0)!==baseH[r.id]&&j0!==serverHash[r.id]){keptLocal.push(L0);return L0;}
+          if(L0&&baseH[r.id]&&strHash(j0)!==baseH[r.id]&&j0!==serverHash[r.id]&&canon(L0)!==canon(d)){keptLocal.push(L0);return L0;}   // v21.67: 내용이 같으면(키 순서만 다르면) 서버 것
           return d;});
         lines.sort((a,b)=>String(a.name).localeCompare(String(b.name),'ko',{numeric:true}));
         const lastCur=lsGet('tower3d-cur'); if(lastCur&&lines.find(l=>l.id===lastCur)) curId=lastCur;
@@ -5076,7 +5081,9 @@ gid('sync')&&gid('sync').addEventListener('click',()=>{if(!cloudReady)return;syn
       writeCache();
       if(localOnly.length&&rows.length){localOnly.forEach(l=>{if(!lines.find(x=>x.id===l.id))lines.push(l);});rebuildSoon();}
       if(!rows.length||localOnly.length||keptLocal.length) await flush();
-      if(keptLocal.length)say('📶 연결됐어요 · 연결 안 될 때 고친 내용('+keptLocal.map(l=>LN(l)).join(', ')+')을 서버에 올렸어요',true);
+      if(keptLocal.length){const ok=keptLocal.filter(l=>!FLUSH_FAIL.includes(l.id)&&serverHash[l.id]===JSON.stringify(l)),bad=keptLocal.filter(l=>!ok.includes(l));
+        if(ok.length)say('📶 연결됐어요 · 연결 안 될 때 고친 내용('+ok.map(l=>LN(l)).join(', ')+')을 서버에 올렸어요',true);
+        if(bad.length)setTimeout(()=>say('⚠ 서버에 못 올린 선로: '+bad.map(l=>LN(l)).join(', ')+' · 휴대폰에는 저장돼 있고 다시 올려 볼게요',true),ok.length?4500:0);}
       else if(!first)say('📶 연결됐어요 · 서버와 맞췄어요');
       lsSet('tower3d-mig','1');
       gid('zipBtn').hidden=false;
