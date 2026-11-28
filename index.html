@@ -4246,7 +4246,12 @@ const safe=s=>(s||'').replace(/[\\/:*?"<>|]/g,'_').trim()||'이름없음';
    · 철탑형·높이를 고치지 않은 철탑은 "미수정"으로 남김 */
 function loadXLSX(){
   if(window.XLSX)return Promise.resolve();
-  return new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';s.onload=res;s.onerror=()=>rej(new Error('엑셀 프로그램을 불러오지 못했어요. 인터넷 연결을 확인하세요.'));document.head.appendChild(s);});
+  // v21.69: 일부 .xls(셀 메모가 깨진 파일)에서 엑셀 도구가 멈추는 버그를 고쳐서 불러옴
+  const URL_X='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+  const viaTag=()=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=URL_X;s.onload=res;s.onerror=()=>rej(new Error('엑셀 프로그램을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'));document.head.appendChild(s);});
+  return fetch(URL_X).then(r=>{if(!r.ok)throw 0;return r.text();}).then(js=>{
+    js=js.replace('p={a:q[1],t:ue.TxO.t}','p={a:q[1],t:ue&&ue.TxO?ue.TxO.t:""}');
+    const s=document.createElement('script');s.textContent=js;document.head.appendChild(s);if(!window.XLSX)throw 0;}).catch(()=>window.XLSX?null:viaTag());
 }
 function xlTension(l,i){const d=l.towers[i],n=l.towers.length,auto=i===0||i===n-1||i%6===5||(i>0&&i<n-1&&angOf(d)!==0);return {ten:d.type!=null?!!d.type:auto,auto:d.type==null};}
 function xlProgress(l,i){
@@ -4392,7 +4397,7 @@ function lgCols(r1,r2){   // 두 줄 제목 → 칸마다 "큰제목|작은제�
 }
 const lgNorm=s=>String(s||'').replace(/\d+\s*kv/ig,'').replace(/t\s*\/\s*l/ig,'').replace(/\(.*?\)/g,'').replace(/[\s·\-–_~#]/g,'').replace(/량/g,'랑').toLowerCase();
 const lgO=v=>/^(o|○|◯|0|ㅇ)$/i.test(String(v||'').trim())&&String(v).trim()!=='0';
-const lgNum=v=>{if(typeof v==='number')return v;const t=String(v||'').trim();if(!t||/^x$/i.test(t)||t==='-')return 0;const m=t.match(/\d+(\.\d+)?/);return m?+m[0]:0;};
+const lgNum=v=>{if(typeof v==='number')return v;const t=String(v||'').trim();if(!t||/^x$/i.test(t)||t==='-')return 0;const m=t.replace(/(\d),(?=\d{3}\b)/g,'$1').match(/\d+(\.\d+)?/);return m?+m[0]:0;};   // 12,345 → 12345
 const lgLab=v=>typeof v==='number'?(Number.isInteger(v)?String(v):String(+v.toFixed(2))):String(v||'').trim().replace(/[ㅡ–—~_]/g,'-').replace(/\s+/g,'');
 function lgBall(v){   // 9(주) · 8(백) · 백(5) · 적(5) · 적8 · 백7 · 주황3
   const t=String(v||'').replace(/\s/g,''); if(!t||/^x$/i.test(t)) return null;
@@ -4510,7 +4515,7 @@ function stdCols(rows,h){
   const f=(re,from)=>{for(let c=from||1;c<n;c++)if(re.test(J[c]))return c;return -1;};
   const C={span:f(/^경간/),dir:f(/방향/),deg:f(/도분/),form:J.indexOf('형'),tot:f(/전장/),low:f(/하단/),rfid:f(/RFID/i),
     ry:J.map((x,c)=>/련형/.test(x)?c:-1).filter(c=>c>0).slice(0,2),arc:f(/^아킹/),arr:f(/^피뢰기/),
-    paint:f(/철탑도장/),jm:f(/^지목/),lamp:f(/^표시등/),ball:f(/^표시구/),note:f(/^특기/)};
+    paint:f(/철탑도장/),jm:f(/^지목/),cum:f(/^누계/),lamp:f(/^표시등/),ball:f(/^표시구/),note:f(/^특기/)};
   C.sb1=f(/^SB/i);C.sb2=C.sb1>0?f(/^SB/i,C.sb1+2):-1;
   C.balls=C.ball>0?[C.ball].concat(C.ball+1<n&&!/기초/.test(J[C.ball+1])&&!/기초/.test(G[C.ball+1]||'')&&G[C.ball+1]===G[C.ball]?[C.ball+1]:[]):[];
   // 가공지선 댐퍼 칸마다 GW / OPGW (제목에 적힌 대로, 없으면 null → 앱 선로 설정)
@@ -4585,6 +4590,8 @@ function stdTower(l,d,t,C,ctx){
       const sup=ten&&rs.some(x=>tenS.test(x)&&susS.test(x));
       if(sup&&!(d.sup&&d.sup.insulator)) add('지지애자','없음','있음',()=>{d.sup=d.sup||{};d.sup.insulator=true;d.sup.insulator_year=true;});}
   }
+  // v21.69: 누계경간 → d.cumM (고장점 거리 계산용)
+  {const cm=lgNum(v(C.cum));if(cm>0&&cm!==(+d.cumM||0))add('누계경간',d.cumM?d.cumM+'m':'없음',cm+'m',()=>{d.cumM=cm;});}
   // v21.56: 애자 수량 #1·#2 (련형 옆 수량 칸) + 련형 기호
   C.ry.forEach((c,i)=>{const k=i+1,x=v(c+1),n=typeof x==='number'?x:(/^\s*\d+\s*$/.test(String(x))?+x:0),ty=lgT(v(c)).replace(/\s/g,'');
     // v21.63: 회선마다 전원·부하 따로 — 련 수(ren1S…) · 련당 애자 개수(insQ1S…)
@@ -4753,6 +4760,14 @@ function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
       const ix=t=>{const d=byLab.get(labKey(t.label));return d?l.towers.indexOf(d):-1;};let fw=0,bw=0;
       for(let i=1;i<ts.length;i++){const a=ix(ts[i-1]),b=ix(ts[i]);if(a<0||b<0)continue;if(b===a+1)fw++;else if(a===b+1)bw++;}
       ctx={rev:bw>fw,circ:P.C.circ};
+      // v21.69: 제목의 '구간 : 고리NP S/S ~ 북부산 S/S' → No.1(작은 번호) 쪽 변전소 / 끝 쪽 변전소 (고장점 거리 기준)
+      {const h=rows.findIndex(STD_isHead),tt=rows.slice(0,Math.max(0,h)).flat().map(lgT).join(' ');
+        const seg=(tt.match(/구간\s*[:：]?([^\n]*?S\/S[^\n]*?S\/S)/)||[])[1]||tt;
+        const found=[...seg.matchAll(/([가-힣A-Za-z0-9]{2,12})\s*S\/S/g)].map(x=>x[1]);
+        const parts=stripTL(l.name).replace(/#\s*\d+/g,'').split(/\s*[-–~]\s*/).map(x=>x.trim()).filter(Boolean);
+        const mp=found.map(f=>parts.find(pp=>f.includes(pp)||pp.includes(f))).filter(Boolean),ord=[...new Set(mp)];
+        if(ord.length===2&&l.towers.length){let a=ord[0],b=ord[1];if(ctx.rev)[a,b]=[b,a];const [a0,b0]=ssDef(l);
+          if(a!==a0||b!==b0){const d0=l.towers[0];push(l,d0,{ch:[`고장점 기준 변전소 (${NO(d0.label).replace(/<[^>]+>/g,'')} 쪽 / 끝 쪽) ${a0}/${b0} → ${a}/${b}`],set:[()=>{l.ssA=a;l.ssB=b;}]},sn);}}}
       // 경간: 엑셀은 '앞 철탑 → 이 철탑' 거리
       for(let i=1;i<ts.length;i++){const a=ix(ts[i-1]),b=ix(ts[i]),sp=lgNum(ts[i].row[P.C.span]);if(a<0||b<0||!(sp>0))continue;
         const tg=b===a+1?l.towers[a]:a===b+1?l.towers[b]:null;if(!tg)continue;{const s0=stdSrc.get(tg);if(s0&&s0!==sn)continue;}
@@ -4774,20 +4789,36 @@ function lgParse(wb,sheetRows){   // sheetRows: {시트이름: rows}
 let FAULT=null;   // {lineId, pts:[{ss,km,d}], err(km)}
 const ssDef=l=>{const n=stripTL(l.name).replace(/#\s*\d+/g,'').split(/\s*[-–~]\s*/);return [(l.ssA||n[0]||'').trim(),(l.ssB||n[n.length-1]||'').trim()];};
 const ssKey=s=>String(s||'').replace(/\s|S\/S|SS|변전소|발전소|개폐소|S\.S/gi,'');
-function faultSpans(l){const n=l.towers.length,cum=[0];for(let i=0;i<n-1;i++){const d=l.towers[i];cum.push(cum[i]+(d.span>0?+d.span:defSpan(i,l.seed)));}return cum;}
-// 변전소 기준 km → 선로(No.1 철탑부터) 거리 m
-function faultD(l,end,km){const cum=faultSpans(l),L=cum[cum.length-1],ug=(+(end==='A'?l.ugA:l.ugB)||0)*1000,m=km*1000-ug;return end==='A'?m:L-m;}
-function faultWhere(l,d){const cum=faultSpans(l),n=cum.length,L=cum[n-1];
-  if(d<0)return {txt:`${ssDef(l)[0]} S/S ~ ${NO(l.towers[0].label)} 사이 (지중·인출 구간, 첫 철탑에서 ${Math.round(-d)}m 전)`,i:-1};
-  if(d>L)return {txt:`${NO(l.towers[n-1].label)} ~ ${ssDef(l)[1]} S/S 사이 (지중·인출 구간, 끝 철탑에서 ${Math.round(d-L)}m 뒤)`,i:n-1};
+// v21.69: 철탑마다 'A쪽(No.1 쪽) 변전소에서의 거리' — 기별대장 엑셀의 누계경간이 있으면 그걸 씀
+//   (앱 선로가 No.54부터만 있어도 북부산 S/S부터 거리가 맞음) · 없으면 앱 경간을 차례로 더함 + 지중·인출 길이
+const cumOfD=d=>{if(d.cumM>0)return +d.cumM;const r=d.ledger&&d.ledger.rows&&d.ledger.rows[0];if(!r)return null;const k=Object.keys(r).find(x=>/누계/.test(x)&&!/메모/.test(x));const v=k?lgNum(r[k]):0;return v>0?v:null;};
+function faultInfo(l){
+  const n=l.towers.length,rel=[0];for(let i=0;i<n-1;i++){const d=l.towers[i];rel.push(rel[i]+(d.span>0?+d.span:defSpan(i,l.seed)));}
+  const uA=(+l.ugA||0)*1000,uB=(+l.ugB||0)*1000,v=l.towers.map(cumOfD),K=v.map((x,i)=>x!=null?i:-1).filter(i=>i>=0);
+  let P,src='경간';
+  if(K.length>=2&&v[K[K.length-1]]!==v[K[0]]){
+    const inc=v[K[K.length-1]]>v[K[0]],sg=inc?1:-1;
+    // 모르는 철탑은 가까운 아는 철탑 + 앱 경간
+    const f=v.map((x,i)=>{if(x!=null)return x;let j=K.reduce((a,k)=>Math.abs(k-i)<Math.abs(a-i)?k:a,K[0]);return v[j]+sg*(rel[i]-rel[j]);});
+    if(inc){P=f.map(x=>x+uA);src='엑셀 누계';}
+    else{const Q=f.map(x=>x+uB),T=Q[0]+uA;P=Q.map(x=>T-x);src='엑셀 누계(끝 쪽부터)';}
+  }else P=rel.map(x=>x+uA);
+  return {P,total:P[n-1]+uB,src};
+}
+const faultSpans=l=>faultInfo(l).P;
+// 변전소 기준 km → A쪽 변전소에서의 거리 m
+function faultD(l,end,km){const F=faultInfo(l);return end==='A'?km*1000:F.total-km*1000;}
+function faultWhere(l,d){const cum=faultSpans(l),n=cum.length;
+  if(d<cum[0])return {txt:`${ssDef(l)[0]} S/S ~ ${NO(l.towers[0].label)} 사이 (${NO(l.towers[0].label)}에서 ${Math.round(cum[0]-d)}m 전)`,i:-1};
+  if(d>cum[n-1])return {txt:`${NO(l.towers[n-1].label)} ~ ${ssDef(l)[1]} S/S 사이 (${NO(l.towers[n-1].label)}에서 ${Math.round(d-cum[n-1])}m 뒤)`,i:n-1};
   let i=0;while(i<n-2&&cum[i+1]<d)i++;const a=d-cum[i],b=cum[i+1]-d;
   return {i,u:(cum[i+1]-cum[i])?a/(cum[i+1]-cum[i]):0,txt:`${NO(l.towers[i].label)} → ${NO(l.towers[i+1].label)} 경간 · ${NO(l.towers[i].label)}에서 ${Math.round(a)}m (${NO(l.towers[i+1].label)}까지 ${Math.round(b)}m)`};}
 function faultRangeTxt(l,d0,d1){const cum=faultSpans(l),n=cum.length;const ix=d=>{let i=0;while(i<n-1&&cum[i+1]<d)i++;return Math.max(0,Math.min(n-1,i));};
-  const a=ix(Math.max(0,d0)),b=Math.min(n-1,ix(Math.max(0,d1))+1);return `${NO(l.towers[a].label)} ~ ${NO(l.towers[b].label)}`;}
+  const a=ix(Math.max(cum[0],d0)),b=Math.min(n-1,ix(Math.max(cum[0],d1))+1);return `${NO(l.towers[a].label)} ~ ${NO(l.towers[b].label)}`;}
 function faultRedraw(){
   if(!FAULT||ALL||!world||!cur()||cur().id!==FAULT.lineId)return;
   const l=cur(),cum=faultSpans(l),n=cum.length;if(n<2||towers.length!==n)return;
-  const P=d=>{d=Math.max(0,Math.min(cum[n-1],d));let i=0;while(i<n-2&&cum[i+1]<d)i++;const u=(cum[i+1]-cum[i])?(d-cum[i])/(cum[i+1]-cum[i]):0,A=towers[i],B=towers[i+1];
+  const P=d=>{d=Math.max(cum[0],Math.min(cum[n-1],d));let i=0;while(i<n-2&&cum[i+1]<d)i++;const u=(cum[i+1]-cum[i])?(d-cum[i])/(cum[i+1]-cum[i]):0,A=towers[i],B=towers[i+1];
     return new T.Vector3(A.x+(B.x-A.x)*u,(A.y+A.H*.78)+((B.y+B.H*.78)-(A.y+A.H*.78))*u-Math.sin(Math.PI*u)*(cum[i+1]-cum[i])*.02,A.z+(B.z-A.z)*u);};
   const g=new T.Group(),red=new T.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:.95,depthTest:false}),band=new T.MeshBasicMaterial({color:0xff3b3b,transparent:true,opacity:.5,depthTest:false});
   const tube=(a,b,r,mat)=>{const v=b.clone().sub(a),len=v.length();if(len<.1)return;const m=new T.Mesh(new T.CylinderGeometry(r,r,len,8,1,true),mat);m.position.copy(a).addScaledVector(v,.5);m.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),v.normalize());m.renderOrder=9;g.add(m);};
@@ -4800,7 +4831,8 @@ function faultRedraw(){
     const p=P(f.d),gy=p.y-(towers[Math.max(0,Math.min(n-1,faultWhere(l,f.d).i))].H||40)*.78;
     tube(new T.Vector3(p.x,gy,p.z),new T.Vector3(p.x,p.y+120,p.z),2.2,red);
     const s=new T.Mesh(new T.SphereGeometry(9,16,12),red);s.position.copy(p);s.renderOrder=10;g.add(s);
-    lab(`⚡ ${f.ss} ${f.km}km`,new T.Vector3(p.x,p.y+150+ii*40,p.z));
+    const out=f.d<cum[0]||f.d>cum[n-1];
+    lab(`${f.amb?'❓':'⚡'} ${f.ss} ${f.km}km${out?' (범위 밖)':''}`,new T.Vector3(p.x,p.y+150+ii*40,p.z));
   });
   world.add(g);
 }
@@ -4813,9 +4845,9 @@ function faultBox(){
       if(x.dataset.fb==='clear'){FAULT=null;faultBox();build();}
       if(x.dataset.fb==='fly')faultFly();
       if(x.dataset.fb==='edit')openFault();});}
-  const e=FAULT.err||0,rows=FAULT.pts.map(f=>`<div class="lotr"><b>${esc(f.ss)} S/S ${f.km}km</b> → ${esc(faultWhere(l,f.d).txt.replace(/<[^>]+>/g,''))}${e?`<br>오차 ±${e}km 범위: ${esc(faultRangeTxt(l,f.d-e*1000,f.d+e*1000).replace(/<[^>]+>/g,''))}`:''}</div>`).join('');
-  const both=FAULT.pts.length===2?`<div class="lotw">양쪽 표정 차이 ${Math.round(Math.abs(FAULT.pts[0].d-FAULT.pts[1].d))}m · 두 지점 사이가 유력</div>`:'';
-  b.innerHTML=`<button type="button" class="lot3x" data-fb="clear" aria-label="고장점 지우기">×</button><div class="lotpop"><span class="lotj">⚡ 고장점 · ${esc(LN(l))}</span>${rows}${both}
+  const e=FAULT.err||0,rows=FAULT.pts.map(f=>`<div class="lotr"><b>${f.amb?'❓ ':''}${esc(f.ss)} S/S ${f.km}km${f.amb?' 기준이면':''}</b> → ${esc(faultWhere(l,f.d).txt.replace(/<[^>]+>/g,''))}${e?`<br>오차 ±${e}km 범위: ${esc(faultRangeTxt(l,f.d-e*1000,f.d+e*1000).replace(/<[^>]+>/g,''))}`:''}</div>`).join('');
+  const both=FAULT.pts.length===2&&!FAULT.pts[0].amb?`<div class="lotw">양쪽 표정 차이 ${Math.round(Math.abs(FAULT.pts[0].d-FAULT.pts[1].d))}m · 두 지점 사이가 유력</div>`:'';
+  b.innerHTML=`<button type="button" class="lot3x" data-fb="clear" aria-label="고장점 지우기">×</button><div class="lotpop"><span class="lotj">⚡ 고장점 · ${esc(LN(l))}</span>${rows}${both}${(()=>{const f0=String(l.towers[0].label),n0=parseInt(f0,10);return n0>1&&!(+l.ugA>0)?`<div class="lotw">⚠ 앱 선로가 ${NO(f0).replace(/<[^>]+>/g,'')}부터라 ${esc(ssDef(l)[0])} S/S~${NO(f0).replace(/<[^>]+>/g,'')} 거리를 모르면 ${esc(ssDef(l)[0])} 기준 위치는 그만큼 틀려요 (✏ 고치기 → 지중·인출 km에 넣기)</div>`:'';})()}<span class="lotll">거리 기준: ${faultInfo(l).src}${l.ugA||l.ugB?` · 지중·인출 ${l.ugA||0}/${l.ugB||0}km`:''}</span>
     <div style="display:flex;gap:6px;margin-top:6px"><button class="ghost" type="button" data-fb="fly">📍 가 보기</button><button class="ghost" type="button" data-fb="edit">✏ 고치기</button><button class="ghost" type="button" data-fb="clear">지우기</button></div></div>`;
 }
 function faultFly(){if(!FAULT)return;const l=cur();if(!l||l.id!==FAULT.lineId)return;const w=faultWhere(l,FAULT.pts[0].d),i=Math.max(0,Math.min(towers.length-1,w.i));const t=towers[i],t2=towers[Math.min(towers.length-1,i+1)];if(!t)return;const tg=new T.Vector3((t.x+t2.x)/2,(t.y+t2.y)/2+t.H*.6,(t.z+t2.z)/2),D=Math.max(550,(FAULT.err||0)*1400);
@@ -4846,14 +4878,16 @@ function openFault(pre){
     sel.value=(FAULT&&FAULT.lineId)||(cur()&&cur().id)||lines[0].id;bx.append(sel);
     const f=el('div');bx.append(f);
     const inp=(ph,v,w)=>{const i=document.createElement('input');i.type=ph==='km'?'number':'text';if(ph==='km'){i.inputMode='decimal';i.step='0.01';i.min='0';}i.placeholder=ph;i.value=v==null?'':v;i.style.cssText=`width:${w||'100%'}`;return i;};
-    let A,B,UA,UB,KA,KB,ERR=FAULT?FAULT.err:0.5;
+    let A,B,UA,UB,KA,KB,AMB=null,ERR=FAULT?FAULT.err:0.5,ambOn=!!(FAULT&&FAULT.pts.some(p=>p.amb));
     const draw=()=>{const l=lines.find(x=>x.id===sel.value);const [a,b]=ssDef(l);f.innerHTML='';
       const row=(lbl,...xs)=>{const r=el('div');r.style.cssText='display:grid;grid-template-columns:96px 1fr 1fr;gap:6px;align-items:center;margin-top:6px';r.append(el('span','lb',lbl),...xs);f.append(r);};
       A=inp('변전소',a);B=inp('변전소',b);UA=inp('km',l.ugA);UB=inp('km',l.ugB);
       const old=FAULT&&FAULT.lineId===l.id?FAULT.pts:[];KA=inp('km',(old.find(p=>p.end==='A')||{}).km);KB=inp('km',(old.find(p=>p.end==='B')||{}).km);
       const hd=el('div');hd.style.cssText='display:grid;grid-template-columns:96px 1fr 1fr;gap:6px;margin-top:8px;font-size:12px';hd.append(el('span'),el('span','lb',`${NO(l.towers[0].label)} 쪽`.replace(/<[^>]+>/g,'')),el('span','lb',`${NO(l.towers[l.towers.length-1].label)} 쪽`.replace(/<[^>]+>/g,'')));f.append(hd);
       row('변전소',A,B);row('지중·인출 km',UA,UB);row('표정 거리 km',KA,KB);
-      f.append(el('p','note','지중·인출 km = 변전소에서 첫(끝) 철탑까지 지중 케이블·인출 길이. 없으면 비워 두세요. 거리는 한쪽만 넣어도 돼요.'));
+      f.append(el('p','note','지중·인출 km = 변전소에서 앱의 첫(끝) 철탑까지 거리 (지중 케이블·인출, 앱에 없는 철탑 구간). 엑셀 누계경간이 있으면 그걸 써요. 거리는 한쪽만 넣어도 돼요.'));
+      {const lb=document.createElement('label');lb.className='check';AMB=document.createElement('input');AMB.type='checkbox';AMB.checked=ambOn;AMB.onchange=()=>{ambOn=AMB.checked;};
+        lb.append(AMB,document.createTextNode(' 어느 변전소에서 잰 거리인지 모름 → 한쪽 거리를 양쪽 기준으로 둘 다 표시'));f.append(lb);}
       const er=el('div');er.innerHTML=`<span class="lb">오차 범위</span>`+segHTML('data-ferr',[0,0.3,0.5,1,2],ERR,v=>v?'±'+v+'km':'없음');f.append(er);
       er.querySelectorAll('[data-ferr]').forEach(x=>x.onclick=()=>{ERR=+x.getAttribute('data-ferr');er.querySelectorAll('[data-ferr]').forEach(y=>y.setAttribute('aria-pressed',String(y===x)));});
     };
@@ -4864,11 +4898,13 @@ function openFault(pre){
       if(r.ss.length>=2&&!l.ssA&&!l.ssB){const ia=r.ss.findIndex(x=>ssKey(x)===ssKey(a)),ib=r.ss.findIndex(x=>ssKey(x)===ssKey(b));if(ia<0&&ib<0){A.value=r.ss[0];B.value=r.ss[1];}}
       let used=null;r.km.forEach(k=>{const ka=ssKey(k.ss);if(ka&&ka===ssKey(A.value))KA.value=k.km;else if(ka&&ka===ssKey(B.value))KB.value=k.km;else if(!KA.value){KA.value=k.km;used=k;}});
       const nm=k=>(k.ry?k.ry+'Ry ':'')+(k.ss?k.ss+' ':'')+k.km+'km';
-      say(r.km.length?`${r.line?LN(r.line)+' · ':''}거리 ${r.km.map(nm).join(', ')} 를 읽었어요.${used&&!used.ss?` 변전소 이름이 없어 ${nm(used)}를 ${A.value||'No.1 쪽'} 쪽 거리로 넣었어요 — 다른 쪽이면 옮겨 주세요.`:''}`:'메시지에 km 거리가 없어요. 거리를 직접 넣어 주세요.',true);};
+      if(used&&!used.ss){ambOn=true;if(AMB)AMB.checked=true;}
+      say(r.km.length?`${r.line?LN(r.line)+' · ':''}거리 ${r.km.map(nm).join(', ')} 를 읽었어요.${used&&!used.ss?` 어느 변전소 기준인지 없어서 ${nm(used)}를 양쪽 기준으로 둘 다 표시할게요.`:''}`:'메시지에 km 거리가 없어요. 거리를 직접 넣어 주세요.',true);};
     const go=el('button','primary','📍 표시');go.type='button';
     go.onclick=()=>{const l=lines.find(x=>x.id===sel.value);
       const pts=[];[['A',A,KA],['B',B,KB]].forEach(([end,s,k])=>{const km=parseFloat(k.value);if(km>=0&&k.value!=='')pts.push({end,ss:s.value.trim()||(end==='A'?'기점':'종점'),km});});
       if(!pts.length){say('표정 거리(km)를 넣어 주세요.');return;}
+      if(ambOn&&pts.length===1){const p0=pts[0];pts.length=0;pts.push({end:'A',ss:A.value.trim()||'기점',km:p0.km,amb:1},{end:'B',ss:B.value.trim()||'종점',km:p0.km,amb:1});}
       // 선로에 변전소 이름·지중 길이 저장 (고칠 수 있는 사람만)
       const ua=parseFloat(UA.value),ub=parseFloat(UB.value),[a0,b0]=ssDef(l);
       if(canEdit()){let ch=false;const setK=(k,v)=>{if((l[k]??'')!==(v??'')){if(v===''||v==null||Number.isNaN(v))delete l[k];else l[k]=v;ch=true;}};
@@ -4958,8 +4994,8 @@ xlIn.addEventListener('change',async()=>{
   const SR={};wb.SheetNames.forEach(sn=>{SR[sn]=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:''});});
   // v21.52: 셀 메모(주석)도 읽음 — 댐퍼 '각상 2개씩' 같은 설명이 메모에 있음
   LG_CM={};wb.SheetNames.forEach(sn=>{const ws=wb.Sheets[sn];if(!ws||!ws['!ref'])return;const R=XLSX.utils.decode_range(ws['!ref']);const M={};
-    Object.keys(ws).forEach(k=>{if(k[0]==='!')return;const c=ws[k];if(!c||!c.c||!c.c.length)return;const a=XLSX.utils.decode_cell(k);
-      const t=c.c.map(x=>String(x.t||'')).join('\n').replace(/^\s*[^\n:]{0,20}:\s*/,'').trim();if(!t)return;(M[a.r-R.s.r]=M[a.r-R.s.r]||{})[a.c-R.s.c]=t;});
+    Object.keys(ws).forEach(k=>{if(k[0]==='!')return;const c=ws[k];if(!c||!c.c||!c.c.length)return;try{const a=XLSX.utils.decode_cell(k);
+      const t=[].concat(c.c).filter(Boolean).map(x=>String(x.t||x.h||'')).join('\n').replace(/^\s*[^\n:]{0,20}:\s*/,'').trim();if(!t)return;(M[a.r-R.s.r]=M[a.r-R.s.r]||{})[a.c-R.s.c]=t;}catch(_){}});   // v21.69: .xls 메모가 이상해도 엑셀은 읽음
     LG_CM[sn]=M;});
   if(Object.values(SR).some(LG_any)){lgPreview(SR);return;}   // v21.48: 표준 기별대장·애자 제작사 시트도
   const l=lines.find(x=>x.id===lid); if(!l){say('이 엑셀은 선로 하나씩 넣는 양식이에요. 위에서 선로를 고른 뒤 다시 하세요.');return;}
