@@ -2100,7 +2100,7 @@ function renderCard(){
           <div class="unit" data-unit="" style="margin-top:6px"><input id="fLowMemo" type="text" placeholder="예: 경간 중앙 농로 위, 수목 근접" value="${esc(t.d.lowMemo||'')}" style="font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);width:100%"></div>`:''}</div>
       <div class="field"><span class="lb">🏭 변전소 철골타워 · 변전소 인출 구조물 (선로 맨 앞·맨 뒤)</span>
         <label class="check"><input type="checkbox" id="xGan" ${t.d.gantry?'checked':''}>변전소 철골타워<i class="sw" style="background:#6d7a82"></i></label>
-        ${(()=>{const ix=l.towers.indexOf(t.d),lastI=l.towers.length-1;return (ix===0?`<button class="ghost" type="button" id="chFront" style="margin-top:6px">+ 앞에 변전소 철골타워 ${chLab(l)} 추가</button>`:'')+(ix===lastI?`<button class="ghost" type="button" id="chBack" style="margin-top:6px">+ 뒤에 변전소 철골타워 ${chLab(l)} 추가</button>`:'');})()}
+        ${(()=>{const ix=l.towers.indexOf(t.d),lastI=l.towers.length-1;return (ix===0?`<button class="ghost" type="button" id="chFront" style="margin-top:6px">+ 앞에 변전소 철골타워 ${chLab(l)} 추가</button>`:'')+(ix===lastI?`<button class="ghost" type="button" id="chBack" style="margin-top:6px">+ 뒤에 변전소 철골타워 ${chLab(l)} 추가</button>`:`<button class="ghost" type="button" id="ctMid" style="margin-top:6px">+ ${esc(H_(t))} 다음에 ${chLab(l)} 끼워넣기 (지중 구간 시작·끝)</button>`);})()}
         <p class="note" style="margin:6px 0 0">체크하면 철탑 대신 철골 기둥 2개와 가로 보로 된 3D 구조물로 보여요.</p></div>
       ${next?`${SHOW_CROSS?`<div class="field"><span class="lb">경간 ${esc(H_(t))} → ${esc(H_(next))} 횡단</span>
         <div class="checks">${CROSS.map(c=>`<label class="check"><input type="checkbox" data-x="${c.k}" ${t.d[c.k]?'checked':''}>${c.name}<i class="sw" style="background:${c.c}"></i></label>`).join('')}</div></div>`:''}
@@ -2138,6 +2138,11 @@ function renderCard(){
     if(l.towers.length>=MAX_TOWERS)return;
     const nt=newTower(chLab(l)); nt.gantry=true; if(dir<0)l.towers.unshift(nt);else l.towers.push(nt);
     save(); build(); selectTower(towers[dir<0?0:towers.length-1]);});});
+  // v21.73: 선로 중간에도 C/T(케이블 헤드) — 지중 구간 앞뒤
+  if(q('#ctMid'))q('#ctMid').addEventListener('click',()=>{
+    if(l.towers.length>=MAX_TOWERS)return;const ix=l.towers.indexOf(t.d),sp=spans[t.i]?spans[t.i].len:400;
+    const nt=newTower(chLab(l));t.d.span=Math.round(sp/2);nt.span=Math.round(sp-sp/2);
+    l.towers.splice(ix+1,0,nt);save();build();selectTower(towers[ix+1]);});
   if(q('#addEnd')) q('#addEnd').addEventListener('click',()=>{
     if(l.towers.length>=MAX_TOWERS) return;
     const nt=newTower(nextAfterLast(l)); let k=l.towers.length; while(k>0&&isCT(l.towers[k-1].label))k--;   // v21.13: 끝 C/T 앞에 넣기
