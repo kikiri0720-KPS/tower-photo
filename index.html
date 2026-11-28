@@ -1388,6 +1388,7 @@ function buildAll(){
       const a=tw[i], b=tw[i+1], k=[idOf(a),idOf(b)].sort().join('|');
       if(drawn.has(k)){const cs=drawn.get(k);if(!cs.list.includes(lc))cs.list.push(lc);continue;}
       drawn.set(k,{a,b,list:[lc]});
+      if(a.d&&a.d.ug)continue;   // v21.74: 지중 구간은 전선 안 그림
       Object.keys(a.attach||{}).filter(q=>b.attach&&b.attach[q]).map(q=>[q,q]).concat(a.attach&&b.attach?gwPairs(a,b):[]).forEach(([q,qb])=>{
         const A=a.attach[q].fwd, Q=b.attach[qb].back, isG=a.attach[q].gw, arr=isG?gwA:ph;
         const sp=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=sp*sp*.000075*(isG?.8:1); let pv=null;
@@ -1627,12 +1628,13 @@ function build(){
   });
 
   // 전선
-  const ph=[],gw=[],op=[];
+  const ph=[],gw=[],op=[],ugSeg=[];
   spans=[];
   for(let i=0;i<n-1;i++){
     let midY=0,cnt=0;
     // v17: 회선 수가 다른 철탑 사이(2회선↔4회선)는 양쪽에 다 있는 회선만 이음
-    Object.keys(towers[i].attach).filter(k=>towers[i+1].attach[k]).map(k=>[k,k]).concat(gwPairs(towers[i],towers[i+1])).forEach(([key,kb])=>{
+    if(l.towers[i].ug){ugSeg.push(towers[i].x,towers[i].y+.6,towers[i].z,towers[i+1].x,towers[i+1].y+.6,towers[i+1].z);}   // v21.74: 지중(케이블) 구간 — 전선 대신 땅에 점선
+    else Object.keys(towers[i].attach).filter(k=>towers[i+1].attach[k]).map(k=>[k,k]).concat(gwPairs(towers[i],towers[i+1])).forEach(([key,kb])=>{
       const A=towers[i].attach[key].fwd, Q=towers[i+1].attach[kb].back, isG=towers[i].attach[key].gw;
       const span=Math.hypot(Q[0]-A[0],Q[2]-A[2]), sag=span*span*.000075*(isG?.8:1), arr=isG?(wireOfKey(l,key)==='OPGW'?op:gw):ph;
       const at=u=>[A[0]+(Q[0]-A[0])*u,A[1]+(Q[1]-A[1])*u-sag*4*u*(1-u),A[2]+(Q[2]-A[2])*u];
@@ -1653,6 +1655,7 @@ function build(){
   }
   if(n>1){
     const mk=(arr,color)=>{const gg=new T.BufferGeometry();gg.setAttribute('position',new T.Float32BufferAttribute(arr,3));return new T.LineSegments(gg,new T.LineBasicMaterial({color}));};
+    if(ugSeg.length){const ug=new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(ugSeg,3)),new T.LineDashedMaterial({color:0xd97706,dashSize:8,gapSize:6}));ug.computeLineDistances();world.add(ug);}
     const wires=new T.Group(); wires.add(mk(ph,wireC)); if(gw.length)wires.add(mk(gw,steel)); if(op.length)wires.add(mk(op,OPGW_C)); wires.visible=showWires; world.add(wires); world.userData.wires=wires;
     // 항공장애표시구: 가공지선에 주황·백색 번갈아 설치
     const ballGrp=new T.Group(); ballGrp.visible=pickKey==='ball'; world.add(ballGrp); world.userData.balls=ballGrp;
@@ -2019,6 +2022,7 @@ function renderCard(){
         ${[1,2].map(i=>{const r=+t.d['supR'+i]||0,pos=r===1?[['C','지지']]:r===2?[['S','전원'],['L','부하']]:r>=3?[['S','전원'],['C','중앙'],['L','부하']]:[];
           return `<div class="renrow"><span class="lb">#${i} 지지</span>${segHTML('data-supr'+i,[0,1,2,3],r,v=>v===0?'없음':v+'련')}</div>`+(pos.length?`<div style="display:grid;grid-template-columns:repeat(${pos.length},1fr);gap:6px;margin:4px 0 0 62px">${pos.map(([k,n])=>`<div><span class="lb" style="font-size:12px">${n}</span><div class="unit" data-unit="개"><input data-supq="${i}${k}" type="number" inputmode="numeric" min="0" max="999" step="1" aria-label="#${i} 지지애자 ${n} 개수" value="${t.d['supQ'+i+k]>0?t.d['supQ'+i+k]:''}"></div></div>`).join('')}</div>`:'');}).join('')}</div>`:''}
       ${next?`<div class="field"><label for="fSpan">경간 ${esc(H_(t))} → ${esc(H_(next))}</label><div class="unit" data-unit="m"><input id="fSpan" type="number" inputmode="decimal" min="30" max="3000" step="1" placeholder="${t.autoSpan}" value="${t.d.span>0?t.d.span:''}"></div>${gpsSpan(t.d,next.d)!=null?`<div class="row2" style="margin-top:6px;align-items:center"><span class="lb" style="font-size:12px">📍 찍은 위치 거리 ${gpsSpan(t.d,next.d)} m${t.d.spanSrc==='manual'?' · 직접 고친 값을 쓰는 중':' · 자동 적용됨'}</span>${t.d.spanSrc==='manual'?`<button class="ghost" type="button" id="spanGps" style="flex:none">위치값으로 되돌리기</button>`:''}</div>`:''}</div>`:''}
+      ${next?`<label class="check" style="margin-top:6px"><input type="checkbox" id="xUg" ${t.d.ug?'checked':''}>경간 ${esc(H_(t))} → ${esc(H_(next))} 지중(케이블) 구간 · 전선 대신 땅에 점선<i class="sw" style="background:#d97706"></i></label>`:''}
       <p class="err" id="tErr" hidden></p>
       <dl>
         <dt>후경간</dt><dd>${prev?Math.round(spans[t.i-1].len)+' m':'—'}</dd>
@@ -2139,6 +2143,7 @@ function renderCard(){
     const nt=newTower(chLab(l)); nt.gantry=true; if(dir<0)l.towers.unshift(nt);else l.towers.push(nt);
     save(); build(); selectTower(towers[dir<0?0:towers.length-1]);});});
   // v21.73: 선로 중간에도 C/T(케이블 헤드) — 지중 구간 앞뒤
+  if(q('#xUg'))q('#xUg').addEventListener('change',e=>{if(e.target.checked)t.d.ug=true;else delete t.d.ug;save();build();});
   if(q('#ctMid'))q('#ctMid').addEventListener('click',()=>{
     if(l.towers.length>=MAX_TOWERS)return;const ix=l.towers.indexOf(t.d),sp=spans[t.i]?spans[t.i].len:400;
     const nt=newTower(chLab(l));t.d.span=Math.round(sp/2);nt.span=Math.round(sp-sp/2);
