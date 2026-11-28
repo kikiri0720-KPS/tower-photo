@@ -602,7 +602,10 @@ function revertLocal(){
   lines=lines.filter(l=>serverHash[l.id]).map(l=>{const d=normalize(JSON.parse(serverHash[l.id]));d.id=l.id;return d;});
   if(!lines.find(l=>l.id===curId))curId=lines[0].id;
 }
-let FLUSH_FAIL=[];   // v21.67: 마지막 올리기에서 실패한 선로 id
+let FLUSH_FAIL=[];
+function scrub(o){if(!o||typeof o!=='object')return;for(const k in o){const v=o[k];if(typeof v==='string'){const c=v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'');if(c!==v)o[k]=c;}else if(v&&typeof v==='object')scrub(v);}
+  // 키 이름에 든 것도
+  for(const k of Object.keys(o)){const c=k.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'');if(c!==k){o[c]=o[k];delete o[k];}}}   // v21.67: 마지막 올리기에서 실패한 선로 id
 const canon=o=>JSON.stringify(o,(k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.keys(v).sort().reduce((a,x)=>(a[x]=v[x],a),{}):v);   // 키 순서 무시 비교 (서버 jsonb는 키 순서를 바꿈)
 let DB=null, AS=null, DL=true, serverHash={}, serverStamp={}, flushT=null, flushing=false, again=false, cloudReady=false, pulling=false;
 let photos=[], photoStamp='';   // 기별사진: {id,towerId,lineId,slot,path,name,at}
@@ -622,7 +625,8 @@ async function flush(){
   if(flushing){again=true;return;}
   flushing=true; clearTimeout(flushT); flushT=null;
   try{
-    const now={}; lines.forEach(l=>now[l.id]=JSON.stringify(l));
+    // v21.70: 엑셀(.xls)에서 온 글자 속 보이지 않는 제어문자(\u0000 등)는 서버가 거절(22P05) → 지우고 올림
+    const now={}; lines.forEach(l=>{let j=JSON.stringify(l);if(/\\u00(0[0-8bcef]|1[0-9a-f])/i.test(j)){scrub(l);j=JSON.stringify(l);}now[l.id]=j;});
     const up=lines.filter(l=>now[l.id]!==serverHash[l.id]).map(l=>({id:l.id,data:JSON.parse(now[l.id]),updated_by:CLIENT}));
     const gone=Object.keys(serverHash).filter(id=>!(id in now));
     // v21.67: 선로를 하나씩 올림 (여러 선로를 한 번에 올리면 크기가 커서 서버가 거절할 수 있음) · 실패한 선로는 다음에 다시
@@ -4498,7 +4502,7 @@ function lgTower(l,d,t){
 }
 // ── v21.48: 표준 '송전선로 기별대장' 양식 (지지물·수평각도·애자장치·전력선·가공지선·항공장애등…) ──
 const lgC=v=>String(v==null?'':v).replace(/\s+/g,'');
-const lgT=v=>typeof v==='number'?lgLab(v):String(v==null?'':v).replace(/\s*\n\s*/g,' ').replace(/\s{2,}/g,' ').trim();
+const lgT=v=>typeof v==='number'?lgLab(v):String(v==null?'':v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').replace(/\s*\n\s*/g,' ').replace(/\s{2,}/g,' ').trim();
 let LG_CM=null, LG_CLR=false;   // LG_CLR: 엑셀에 없는 항공구는 지우기 (예전에 잘못 넣은 것 정리)
    // v21.52: 엑셀 셀 메모 {시트:{행:{열:글}}}
 const STD_isHead=row=>row&&row.some(c=>lgC(c)==='지지물')&&row.some(c=>lgC(c)==='수평각도');
@@ -4823,7 +4827,7 @@ function faultRedraw(){
   const g=new T.Group(),red=new T.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:.95,depthTest:false}),band=new T.MeshBasicMaterial({color:0xff3b3b,transparent:true,opacity:.5,depthTest:false});
   const tube=(a,b,r,mat)=>{const v=b.clone().sub(a),len=v.length();if(len<.1)return;const m=new T.Mesh(new T.CylinderGeometry(r,r,len,8,1,true),mat);m.position.copy(a).addScaledVector(v,.5);m.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),v.normalize());m.renderOrder=9;g.add(m);};
   const lab=(txt,p)=>{const c=document.createElement('canvas'),x=c.getContext('2d');c.width=512;c.height=96;x.fillStyle='rgba(200,20,20,.92)';x.fillRect(0,0,512,96);x.fillStyle='#fff';x.font='bold 44px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(txt,256,50);
-    const s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(c),depthTest:false}));const k=Math.max(40,(towers[0].H||40)*1.4);s.scale.set(k*2.1,k*.4,1);s.position.copy(p);s.renderOrder=11;g.add(s);};
+    const s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(c),depthTest:false,sizeAttenuation:false}));s.scale.set(.32,.06,1);/* v21.70: 화면에서 늘 같은 크기 */s.position.copy(p);s.renderOrder=11;g.add(s);};
   const e=(FAULT.err||0)*1000;
   FAULT.pts.forEach((f,ii)=>{
     // 오차 범위: 전선 높이를 따라 빨간 띠
@@ -4832,7 +4836,7 @@ function faultRedraw(){
     tube(new T.Vector3(p.x,gy,p.z),new T.Vector3(p.x,p.y+120,p.z),2.2,red);
     const s=new T.Mesh(new T.SphereGeometry(9,16,12),red);s.position.copy(p);s.renderOrder=10;g.add(s);
     const out=f.d<cum[0]||f.d>cum[n-1];
-    lab(`${f.amb?'❓':'⚡'} ${f.ss} ${f.km}km${out?' (범위 밖)':''}`,new T.Vector3(p.x,p.y+150+ii*40,p.z));
+    lab(`${f.amb?'❓':'⚡'} ${f.ss} ${f.km}km${out?' (범위 밖)':''}`,new T.Vector3(p.x,p.y+60+ii*12,p.z));
   });
   world.add(g);
 }
