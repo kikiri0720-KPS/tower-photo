@@ -5255,7 +5255,7 @@ function loop(now){
     if(ALL)spans.forEach(s=>{const p=proj(s.x,s.y-8,s.z,w,h);const lineOf=s.line;
       s.tags.forEach((el,k)=>{if(!p||s._occ||(FOCUS&&lineOf&&lineOf!==FOCUS))show(el,false);else place(el,p,k*24);});});
     const cand=[];
-    towers.forEach(t=>{if(t===selT)return;if(t._occ||(ALL&&!onFocus(t))){hideT(t);return;}const p=proj(t.x,t.y+t.H+8,t.z,w,h);if(!p){hideT(t);return;}
+    towers.forEach(t=>{if(t===selT)return;if(t._occ||(ALL&&(!FOCUS||!onFocus(t)))){hideT(t);return;}   // v21.76: 전체 보기에서 멀리 볼 땐 선로 이름만const p=proj(t.x,t.y+t.H+8,t.z,w,h);if(!p){hideT(t);return;}
       const dx=t.x-camera.position.x,dy=t.y-camera.position.y,dz=t.z-camera.position.z;cand.push([dx*dx+dy*dy+dz*dz,t,p]);});
     cand.sort((a,b)=>a[0]-b[0]);
     cand.forEach(([d2,t,p])=>{
