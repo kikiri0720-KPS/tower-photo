@@ -4827,7 +4827,7 @@ function faultRedraw(){
   const g=new T.Group(),red=new T.MeshBasicMaterial({color:0xff2a2a,transparent:true,opacity:.95,depthTest:false}),band=new T.MeshBasicMaterial({color:0xff3b3b,transparent:true,opacity:.5,depthTest:false});
   const tube=(a,b,r,mat)=>{const v=b.clone().sub(a),len=v.length();if(len<.1)return;const m=new T.Mesh(new T.CylinderGeometry(r,r,len,8,1,true),mat);m.position.copy(a).addScaledVector(v,.5);m.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),v.normalize());m.renderOrder=9;g.add(m);};
   const lab=(txt,p)=>{const c=document.createElement('canvas'),x=c.getContext('2d');c.width=512;c.height=96;x.fillStyle='rgba(200,20,20,.92)';x.fillRect(0,0,512,96);x.fillStyle='#fff';x.font='bold 44px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(txt,256,50);
-    const s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(c),depthTest:false,sizeAttenuation:false}));s.scale.set(.32,.06,1);/* v21.70: 화면에서 늘 같은 크기 */s.position.copy(p);s.renderOrder=11;g.add(s);};
+    const s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(c),depthTest:false,sizeAttenuation:false}));s.scale.set(.2,.0375,1);/* v21.70: 화면에서 늘 같은 크기 */s.position.copy(p);s.renderOrder=11;g.add(s);};
   const e=(FAULT.err||0)*1000;
   FAULT.pts.forEach((f,ii)=>{
     // 오차 범위: 전선 높이를 따라 빨간 띠
@@ -4848,11 +4848,13 @@ function faultBox(){
     b.addEventListener('click',ev=>{const x=ev.target.closest('[data-fb]');if(!x)return;
       if(x.dataset.fb==='clear'){FAULT=null;faultBox();build();}
       if(x.dataset.fb==='fly')faultFly();
-      if(x.dataset.fb==='edit')openFault();});}
+      if(x.dataset.fb==='edit')openFault();
+      if(x.dataset.fb==='swap'&&FAULT){const L=lines.find(y=>y.id===FAULT.lineId);if(!L)return;const [a,b]=ssDef(L);L.ssA=b;L.ssB=a;[L.ugA,L.ugB]=[L.ugB,L.ugA];if(L.ugA==null)delete L.ugA;if(L.ugB==null)delete L.ugB;
+        FAULT.pts.forEach(p=>{if(p.amb){p.ss=p.end==='A'?b:a;}else{p.end=p.end==='A'?'B':'A';}p.d=faultD(L,p.end,p.km);});if(canEdit())save();build();faultBox();say(`${NO(L.towers[0].label).replace(/<[^>]+>/g,'')} 쪽 = ${b} S/S, 끝 쪽 = ${a} S/S 로 바꿨어요`);}});}
   const e=FAULT.err||0,rows=FAULT.pts.map(f=>`<div class="lotr"><b>${f.amb?'❓ ':''}${esc(f.ss)} S/S ${f.km}km${f.amb?' 기준이면':''}</b> → ${esc(faultWhere(l,f.d).txt.replace(/<[^>]+>/g,''))}${e?`<br>오차 ±${e}km 범위: ${esc(faultRangeTxt(l,f.d-e*1000,f.d+e*1000).replace(/<[^>]+>/g,''))}`:''}</div>`).join('');
   const both=FAULT.pts.length===2&&!FAULT.pts[0].amb?`<div class="lotw">양쪽 표정 차이 ${Math.round(Math.abs(FAULT.pts[0].d-FAULT.pts[1].d))}m · 두 지점 사이가 유력</div>`:'';
-  b.innerHTML=`<button type="button" class="lot3x" data-fb="clear" aria-label="고장점 지우기">×</button><div class="lotpop"><span class="lotj">⚡ 고장점 · ${esc(LN(l))}</span>${rows}${both}${(()=>{const f0=String(l.towers[0].label),n0=parseInt(f0,10);return n0>1&&!(+l.ugA>0)?`<div class="lotw">⚠ 앱 선로가 ${NO(f0).replace(/<[^>]+>/g,'')}부터라 ${esc(ssDef(l)[0])} S/S~${NO(f0).replace(/<[^>]+>/g,'')} 거리를 모르면 ${esc(ssDef(l)[0])} 기준 위치는 그만큼 틀려요 (✏ 고치기 → 지중·인출 km에 넣기)</div>`:'';})()}<span class="lotll">거리 기준: ${faultInfo(l).src}${l.ugA||l.ugB?` · 지중·인출 ${l.ugA||0}/${l.ugB||0}km`:''}</span>
-    <div style="display:flex;gap:6px;margin-top:6px"><button class="ghost" type="button" data-fb="fly">📍 가 보기</button><button class="ghost" type="button" data-fb="edit">✏ 고치기</button><button class="ghost" type="button" data-fb="clear">지우기</button></div></div>`;
+  b.innerHTML=`<button type="button" class="lot3x" data-fb="clear" aria-label="고장점 지우기">×</button><div class="lotpop"><span class="lotj">⚡ 고장점 · ${esc(LN(l))}</span>${rows}${both}${(()=>{const f0=String(l.towers[0].label),n0=parseInt(f0,10);return n0>1&&!(+l.ugA>0)?`<div class="lotw">⚠ 앱 선로가 ${NO(f0).replace(/<[^>]+>/g,'')}부터라 ${esc(ssDef(l)[0])} S/S~${NO(f0).replace(/<[^>]+>/g,'')} 거리를 모르면 ${esc(ssDef(l)[0])} 기준 위치는 그만큼 틀려요 (✏ 고치기 → 지중·인출 km에 넣기)</div>`:'';})()}${faultInfo(l).src==='경간'?`<div class="lotw">💡 이 선로 기별대장 엑셀(누계경간·구간)을 📥 엑셀로 고치기로 넣으면 방향·거리가 정확해져요</div>`:''}<span class="lotll">거리 기준: ${faultInfo(l).src}${l.ugA||l.ugB?` · 지중·인출 ${l.ugA||0}/${l.ugB||0}km`:''}</span>
+    <div style="display:flex;gap:6px;margin-top:6px"><button class="ghost" type="button" data-fb="fly">📍 가 보기</button><button class="ghost" type="button" data-fb="edit">✏ 고치기</button><button class="ghost" type="button" data-fb="swap" title="No.1 쪽·끝 쪽 변전소를 서로 바꿈">⇄ 변전소</button><button class="ghost" type="button" data-fb="clear">지우기</button></div></div>`;
 }
 function faultFly(){if(!FAULT)return;const l=cur();if(!l||l.id!==FAULT.lineId)return;const w=faultWhere(l,FAULT.pts[0].d),i=Math.max(0,Math.min(towers.length-1,w.i));const t=towers[i],t2=towers[Math.min(towers.length-1,i+1)];if(!t)return;const tg=new T.Vector3((t.x+t2.x)/2,(t.y+t2.y)/2+t.H*.6,(t.z+t2.z)/2),D=Math.max(550,(FAULT.err||0)*1400);
   const hx=t2.x-t.x,hz=t2.z-t.z,hl=Math.hypot(hx,hz)||1;flyTo(new T.Vector3(tg.x-hz/hl*D*.9,tg.y+D*.6,tg.z+hx/hl*D*.9),tg);}
