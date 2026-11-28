@@ -4825,12 +4825,16 @@ function faultParse(txt){
   const r={line:null,ss:[],km:[]};const s=String(txt||'');
   const m=s.match(/고장\s*선로\s*[:：]\s*([^\n(]+)/);const nm=m?m[1]:'';
   if(nm){const k=lgNorm(nm);let best=null,bs=0;lines.forEach(l=>{const n=lgNorm(l.name);if(!n)return;const sc=n===k?3:(k.includes(n)||n.includes(k))?2:0;if(sc>bs){bs=sc;best=l;}});r.line=best;r.name=nm.trim();}
+  // v21.68: '고장선로 :' 가 없어도 글 안에 있는 선로 이름으로 (예: 345kv 북부산-고리np#1t/l) — #1·#2 까지 맞으면 우선
+  if(!r.line){const all=lgNorm(s.replace(/\n/g,' '));let best=null,bs=0;lines.forEach(l=>{const n=lgNorm(l.name),b=lgNorm(String(l.name).replace(/#\s*\d+/g,''));
+      const sc=n&&n.length>=4&&all.includes(n)?n.length+100:b&&b.length>=4&&all.includes(b)?b.length:0;if(sc>bs){bs=sc;best=l;}});
+    if(best){r.line=best;r.name=LN(best);}}
   [...s.matchAll(/([가-힣A-Za-z]{1,8})\s*(?:S\/S|SS|S\.S|변전소|개폐소|발전소)/gi)].forEach(x=>{if(!r.ss.includes(x[1]))r.ss.push(x[1]);});
   // 줄마다: 그 줄의 '○○S/S' + 'N.Nkm' (154kV 같은 숫자는 km가 아니라 안 읽음)
   s.split(/\n/).forEach(ln=>{const k=[...ln.matchAll(/(\d+(?:\.\d+)?)\s*(?:km|㎞|키로|킬로)/gi)];if(!k.length)return;
     const sm=ln.match(/([가-힣A-Za-z]{1,8})\s*(?:S\/S|SS|S\.S|변전소|개폐소|발전소)/i);
-    k.forEach(x=>{const before=ln.slice(0,x.index),m2=[...before.matchAll(/([가-힣A-Za-z]{1,8})\s*(?:S\/S|SS|S\.S|변전소|개폐소|발전소)/gi)].pop();
-      r.km.push({ss:(m2||sm||[,''])[1],km:+x[1]});});});
+    k.forEach(x=>{const before=ln.slice(0,x.index),m2=[...before.matchAll(/([가-힣A-Za-z]{1,8})\s*(?:S\/S|SS|S\.S|변전소|개폐소|발전소)/gi)].pop(),ry=(before.match(/(\d{2})\s*ry\s*\(?\s*$/i)||[])[1];
+      r.km.push({ss:(m2||sm||[,''])[1],km:+x[1],ry});});});
   return r;
 }
 function openFault(pre){
@@ -4858,8 +4862,9 @@ function openFault(pre){
     rd.onclick=()=>{const r=faultParse(ta.value);if(r.line){sel.value=r.line.id;draw();}else if(r.name)say(`'${r.name}' 선로를 앱에서 못 찾았어요. 선로를 직접 고르세요.`);
       const l=lines.find(x=>x.id===sel.value),[a,b]=ssDef(l);
       if(r.ss.length>=2&&!l.ssA&&!l.ssB){const ia=r.ss.findIndex(x=>ssKey(x)===ssKey(a)),ib=r.ss.findIndex(x=>ssKey(x)===ssKey(b));if(ia<0&&ib<0){A.value=r.ss[0];B.value=r.ss[1];}}
-      r.km.forEach(k=>{const ka=ssKey(k.ss);if(ka&&ka===ssKey(A.value))KA.value=k.km;else if(ka&&ka===ssKey(B.value))KB.value=k.km;else if(!KA.value)KA.value=k.km;});
-      say(r.km.length?`거리 ${r.km.map(k=>k.ss+' '+k.km+'km').join(', ')} 를 읽었어요.`:'메시지에 km 거리가 없어요. 거리를 직접 넣어 주세요.');};
+      let used=null;r.km.forEach(k=>{const ka=ssKey(k.ss);if(ka&&ka===ssKey(A.value))KA.value=k.km;else if(ka&&ka===ssKey(B.value))KB.value=k.km;else if(!KA.value){KA.value=k.km;used=k;}});
+      const nm=k=>(k.ry?k.ry+'Ry ':'')+(k.ss?k.ss+' ':'')+k.km+'km';
+      say(r.km.length?`${r.line?LN(r.line)+' · ':''}거리 ${r.km.map(nm).join(', ')} 를 읽었어요.${used&&!used.ss?` 변전소 이름이 없어 ${nm(used)}를 ${A.value||'No.1 쪽'} 쪽 거리로 넣었어요 — 다른 쪽이면 옮겨 주세요.`:''}`:'메시지에 km 거리가 없어요. 거리를 직접 넣어 주세요.',true);};
     const go=el('button','primary','📍 표시');go.type='button';
     go.onclick=()=>{const l=lines.find(x=>x.id===sel.value);
       const pts=[];[['A',A,KA],['B',B,KB]].forEach(([end,s,k])=>{const km=parseFloat(k.value);if(km>=0&&k.value!=='')pts.push({end,ss:s.value.trim()||(end==='A'?'기점':'종점'),km});});
