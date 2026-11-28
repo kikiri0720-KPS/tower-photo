@@ -4999,7 +4999,7 @@ xlIn.addEventListener('change',async()=>{
   // v21.52: 셀 메모(주석)도 읽음 — 댐퍼 '각상 2개씩' 같은 설명이 메모에 있음
   LG_CM={};wb.SheetNames.forEach(sn=>{const ws=wb.Sheets[sn];if(!ws||!ws['!ref'])return;const R=XLSX.utils.decode_range(ws['!ref']);const M={};
     Object.keys(ws).forEach(k=>{if(k[0]==='!')return;const c=ws[k];if(!c||!c.c||!c.c.length)return;try{const a=XLSX.utils.decode_cell(k);
-      const t=[].concat(c.c).filter(Boolean).map(x=>String(x.t||x.h||'')).join('\n').replace(/^\s*[^\n:]{0,20}:\s*/,'').trim();if(!t)return;(M[a.r-R.s.r]=M[a.r-R.s.r]||{})[a.c-R.s.c]=t;}catch(_){}});   // v21.69: .xls 메모가 이상해도 엑셀은 읽음
+      const t=[].concat(c.c).filter(Boolean).map(x=>String(x.t||x.h||'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'')).join('\n').replace(/^\s*[^\n:]{0,20}:\s*/,'').trim();if(!t)return;(M[a.r-R.s.r]=M[a.r-R.s.r]||{})[a.c-R.s.c]=t;}catch(_){}});   // v21.69: .xls 메모가 이상해도 엑셀은 읽음
     LG_CM[sn]=M;});
   if(Object.values(SR).some(LG_any)){lgPreview(SR);return;}   // v21.48: 표준 기별대장·애자 제작사 시트도
   const l=lines.find(x=>x.id===lid); if(!l){say('이 엑셀은 선로 하나씩 넣는 양식이에요. 위에서 선로를 고른 뒤 다시 하세요.');return;}
